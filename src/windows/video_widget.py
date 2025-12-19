@@ -32,7 +32,7 @@ import uuid
 
 from qt_api import (
     Qt, QCoreApplication, QMutex, QTimer,
-    QPoint, QPointF, QSize, QSizeF, QRect, QRectF,
+    QPoint, QPointF, QSize, QSizeF, QRect, QRectF, QLineF,
 )
 from qt_api import QT_API
 from qt_api import modifiers_has
@@ -355,7 +355,10 @@ class VideoWidget(QWidget, updates.UpdateInterface):
             center = origin_rect.center()
             halfW = QPointF(origin_rect.width() * 0.75, 0)
             halfH = QPointF(0, origin_rect.height() * 0.75)
-            painter.drawLines(center - halfW, center + halfW, center - halfH, center + halfH)
+            painter.drawLines([
+                QLineF(center - halfW, center + halfW),
+                QLineF(center - halfH, center + halfH),
+            ])
 
         painter.resetTransform()
 
@@ -638,7 +641,10 @@ class VideoWidget(QWidget, updates.UpdateInterface):
                     cross_h = self.cropOriginHandleScreen.height() * 0.75
                     halfW = QPointF(cross_w / 2.0, 0)
                     halfH = QPointF(0, cross_h / 2.0)
-                    painter.drawLines(c - halfW, c + halfW, c - halfH, c + halfH)
+                    painter.drawLines([
+                        QLineF(c - halfW, c + halfW),
+                        QLineF(c - halfH, c + halfH),
+                    ])
 
             # Region selection UI (also uses global opacity)
             if self.region_enabled:

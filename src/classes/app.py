@@ -344,6 +344,11 @@ class OpenShotApp(QApplication):
     def cleanup(self):
         """aboutToQuit signal handler for application exit"""
         self.log.debug("Saving settings in app.cleanup")
+        if getattr(self, "window", None):
+            try:
+                self.window._shutdown()
+            except Exception:
+                self.log.warning("Window shutdown raised during app cleanup.", exc_info=1)
         try:
             self.settings.save()
         except Exception:

@@ -32,7 +32,7 @@ from qt_api import (
 )
 from qt_api import modifiers_has
 from qt_api import (
-    QPainter, QColor, QPen, QBrush, QCursor, QPainterPath, QIcon
+    QPainter, QColor, QPen, QBrush, QCursor, QPainterPath, QIcon, QPalette
 )
 from qt_api import QSizePolicy, QWidget
 
@@ -63,6 +63,9 @@ class ZoomSlider(QWidget, updates.UpdateInterface):
 
     # This method is invoked by the UpdateManager each time a change happens (i.e UpdateInterface)
     def changed(self, action):
+        from qt_api import isdeleted
+        if isdeleted(self):
+            return
         # Ignore changes that don't affect this
         if (action and len(action.key) >= 1 and action.key[0].lower() in ["files", "history", "profile"]) or self.ignore_updates:
             return
@@ -143,7 +146,10 @@ class ZoomSlider(QWidget, updates.UpdateInterface):
         painter.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform | QPainter.TextAntialiasing, True)
 
         # Fill the whole widget with the solid color (background solid color)
-        background_color = self.palette().color(self.palette().Base)
+        base_role = getattr(QPalette, "Base", None)
+        if base_role is None:
+            base_role = QPalette.ColorRole.Base
+        background_color = self.palette().color(base_role)
         painter.fillRect(event.rect(), background_color)
 
         # Create pens / colors

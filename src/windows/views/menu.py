@@ -39,6 +39,25 @@ class StyledContextMenu(QMenu):
         self.border = self.get_border()
         self.border_radius = self.get_border_radius()
 
+    def show_at(self, event_or_pos):
+        """Show the menu at a position or context menu event."""
+        pos = event_or_pos
+        if hasattr(event_or_pos, "globalPosition"):
+            try:
+                pos = event_or_pos.globalPosition().toPoint()
+            except Exception:
+                pos = event_or_pos
+        if hasattr(event_or_pos, "globalPos"):
+            try:
+                pos = event_or_pos.globalPos()
+            except Exception:
+                pass
+        exec_fn = getattr(self, "exec", None) or getattr(self, "exec_", None)
+        if exec_fn:
+            exec_fn(pos)
+        else:
+            self.popup(pos)
+
     def get_border(self):
         """Parses border width and color from app.styleSheet()"""
         pattern = r'QMenu\s*{\s*[^}]*border:\s*([^;]+);'

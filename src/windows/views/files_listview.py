@@ -107,7 +107,7 @@ class FilesListView(QListView):
             menu.addSeparator()
 
         # Show menu
-        menu.popup(event.globalPos())
+        menu.show_at(event)
 
     def mouseDoubleClickEvent(self, event):
         super(FilesListView, self).mouseDoubleClickEvent(event)

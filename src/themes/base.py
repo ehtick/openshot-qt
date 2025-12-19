@@ -132,8 +132,14 @@ class BaseTheme:
         """Iterate through toolbar button settings, and apply them to each button.
         [{"text": "", "icon": ""},...]
         """
-        # List of colors for demonstration
-        toolbar.clear()
+        from qt_api import QT_API, isdeleted
+
+        # Clear toolbar without deleting actions on PySide6
+        if QT_API == "pyside6":
+            for action in list(toolbar.actions()):
+                toolbar.removeAction(action)
+        else:
+            toolbar.clear()
 
         # Set icon size
         qsize_icon = QSize(icon_size, icon_size)
@@ -178,6 +184,8 @@ class BaseTheme:
 
             # Create button from action
             if button_action:
+                if QT_API == "pyside6" and isdeleted(button_action):
+                    continue
                 toolbar.addAction(button_action)
                 button_action.setVisible(button_visible)
                 button = toolbar.widgetForAction(button_action)

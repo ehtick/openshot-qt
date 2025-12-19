@@ -110,7 +110,7 @@ class FilesTreeView(QTreeView):
             menu.addSeparator()
 
         # Show menu
-        menu.popup(event.globalPos())
+        menu.show_at(event)
 
     def mouseDoubleClickEvent(self, event):
         # Get the index of the item at the click position

@@ -150,7 +150,7 @@ class TitleEditor(QDialog):
         self.verticalLayout.addWidget(self.titlesView)
 
         # Disable Save button on window load
-        self.buttonBox.button(self.buttonBox.Save).setEnabled(False)
+        self.saveButton.setEnabled(False)
 
         # Connect thumbnail listener
         self.thumbnailReady.connect(self.display_pixmap)
@@ -476,7 +476,7 @@ class TitleEditor(QDialog):
             self.btnFontColor.setEnabled(False)
 
         # Enable Save button when a template is selected
-        self.buttonBox.button(self.buttonBox.Save).setEnabled(True)
+        self.saveButton.setEnabled(True)
 
     def writeToFile(self, xmldoc):
         '''writes a new svg file containing the user edited data'''

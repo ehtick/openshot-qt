@@ -84,7 +84,7 @@ class TimelineThumbnailManager(QObject):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._thread = QThread(self)
+        self._thread = QThread()
         self._worker = _ThumbnailWorker()
         self._worker.moveToThread(self._thread)
         self._request_job.connect(self._worker.request_thumbnail)
@@ -106,7 +106,12 @@ class TimelineThumbnailManager(QObject):
 
     def shutdown(self):
         """Stop the worker thread."""
+        if self._thread is None:
+            return
         self._clear_jobs.emit()
         if self._thread.isRunning():
             self._thread.quit()
             self._thread.wait(2000)
+        self._worker.deleteLater()
+        self._thread.deleteLater()
+        self._thread = None

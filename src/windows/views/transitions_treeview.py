@@ -48,7 +48,7 @@ class TransitionsTreeView(QTreeView):
 
         menu = StyledContextMenu(parent=self)
         menu.addAction(self.win.actionThumbnailView)
-        menu.popup(event.globalPos())
+        menu.show_at(event)
 
     def startDrag(self, event):
         """ Override startDrag method to display custom icon """

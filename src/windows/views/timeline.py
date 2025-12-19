@@ -89,6 +89,8 @@ else:
                     "Need QtWebEngine for the active Qt binding (PyQt6/PyQt5 or PySide6/PySide2)."
                 ) from ex
 
+log.info("Timeline backend: %s (%s)", info.WEB_BACKEND, getattr(ViewClass, "__name__", "unknown"))
+
 
 def _event_posf(event):
     if hasattr(event, "posF"):
@@ -792,7 +794,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
 
             # Show context menu
             self.context_menu_cursor_position = QCursor.pos()
-            return menu.popup(self.context_menu_cursor_position)
+            return menu.show_at(self.context_menu_cursor_position)
 
     @pyqtSlot(str)
     def ShowEffectMenu(self, effect_id=None):
@@ -819,7 +821,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
 
         # Show context menu
         self.context_menu_cursor_position = QCursor.pos()
-        return menu.popup(self.context_menu_cursor_position)
+        return menu.show_at(self.context_menu_cursor_position)
 
     @pyqtSlot(float, int)
     def ShowTimelineMenu(self, position, layer_number):
@@ -905,7 +907,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
 
         # Show context menu
         self.context_menu_cursor_position = QCursor.pos()
-        return menu.popup(self.context_menu_cursor_position)
+        return menu.show_at(self.context_menu_cursor_position)
 
     @pyqtSlot(str)
     def ShowClipMenu(self, clip_id=None):
@@ -1406,7 +1408,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
 
         # Show context menu
         self.context_menu_cursor_position = QCursor.pos()
-        return menu.popup(self.context_menu_cursor_position)
+        return menu.show_at(self.context_menu_cursor_position)
 
     def Transform_Triggered(self, action, clip_ids):
         log.debug("Transform_Triggered")
@@ -3307,7 +3309,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
 
         # Show context menu
         self.context_menu_cursor_position = QCursor.pos()
-        return menu.popup(self.context_menu_cursor_position)
+        return menu.show_at(self.context_menu_cursor_position)
 
     @pyqtSlot(str)
     def ShowTrackMenu(self, layer_id=None):
@@ -3382,7 +3384,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
 
         # Show context menu
         self.context_menu_cursor_position = QCursor.pos()
-        return menu.popup(self.context_menu_cursor_position)
+        return menu.show_at(self.context_menu_cursor_position)
 
     @pyqtSlot(str)
     def ShowMarkerMenu(self, marker_id=None):
@@ -3396,7 +3398,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
 
         # Show context menu
         self.context_menu_cursor_position = QCursor.pos()
-        return menu.popup(self.context_menu_cursor_position)
+        return menu.show_at(self.context_menu_cursor_position)
 
     @pyqtSlot()
     def EnableCacheThread(self):
@@ -3623,6 +3625,88 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             get_app().updates.update(["scale"], newScale)
             get_app().updates.ignore_history = False
 
+    def _mime_text_payload(self, mime):
+        """Return text payload from a mime object, if available."""
+        try:
+            text = mime.text()
+        except Exception:
+            text = ""
+        if text:
+            return text
+        for fmt in ("text/plain", "application/json"):
+            try:
+                raw = mime.data(fmt)
+            except Exception:
+                raw = None
+            if not raw:
+                continue
+            try:
+                return bytes(raw).decode("utf-8", "ignore")
+            except Exception:
+                try:
+                    return raw.data().decode("utf-8", "ignore")
+                except Exception:
+                    continue
+        return ""
+
+    def _mime_json_list(self, mime):
+        """Parse a JSON list from mime text, if present."""
+        payload = self._mime_text_payload(mime)
+        if not payload:
+            return []
+        try:
+            data_list = json.loads(payload)
+        except Exception:
+            return []
+        if not isinstance(data_list, list):
+            data_list = [data_list]
+        return data_list
+
+    def _parse_js_position_result(self, result):
+        """Normalize JS position results into a dict."""
+        if isinstance(result, dict):
+            return result
+        if result is None:
+            return None
+        if isinstance(result, (bytes, bytearray)):
+            try:
+                result = result.decode("utf-8", "ignore")
+            except Exception:
+                return None
+        if isinstance(result, str):
+            if not result:
+                return None
+            try:
+                parsed = json.loads(result)
+            except Exception:
+                return None
+            return parsed if isinstance(parsed, dict) else None
+        return None
+
+    def _run_js_position(self, x, y, callback):
+        """Run getJavaScriptPosition and normalize its result."""
+        code = (
+            "(function(){"
+            "try{var r="
+            + JS_SCOPE_SELECTOR
+            + ".getJavaScriptPosition("
+            + str(x)
+            + ","
+            + str(y)
+            + ");return JSON.stringify(r);}catch(e){return JSON.stringify({error:String(e)});}"
+            "})()"
+        )
+
+        def _wrapped(result):
+            parsed = self._parse_js_position_result(result)
+            if parsed is None:
+                log.warning("Timeline js_position: empty result (%s)", result)
+            elif parsed.get("error"):
+                log.warning("Timeline js_position error: %s", parsed.get("error"))
+            callback(parsed)
+
+        self.run_js(code, _wrapped)
+
     # An item is being dragged onto the timeline (mouse is entering the timeline now)
     def dragEnterEvent(self, event):
         if ViewClass == TimelineWidget:
@@ -3643,8 +3727,12 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         fps_float = float(get_app().project.get("fps")["num"]) / float(get_app().project.get("fps")["den"])
         snap_to_grid = lambda t: round(t * fps_float) / fps_float
 
+        # Handle text-based mime data (clips or transitions)
+        if event.mimeData().html():
+            self.item_type = event.mimeData().html()
+            data_list = self._mime_json_list(event.mimeData())
         # Handle URL-based OS file drop
-        if event.mimeData().hasUrls():
+        elif event.mimeData().hasUrls():
             self.item_type = "clip"
             urls = event.mimeData().urls()
 
@@ -3662,14 +3750,6 @@ class TimelineView(updates.UpdateInterface, ViewClass):
                     if file:
                         data_list.append(file.id)
 
-        # Handle text-based mime data (clips or transitions)
-        elif event.mimeData().html():
-            self.item_type = event.mimeData().html()
-            data_list = json.loads(event.mimeData().text())
-
-            if not isinstance(data_list, list):
-                data_list = [data_list]
-
         # If no valid item type, return
         if not self.item_type:
             return
@@ -3686,8 +3766,16 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             tid = self.get_uuid()
             get_app().updates.transaction_id = tid
 
+            if not js_position_data:
+                log.warning("Timeline dragEnter js_position: empty result")
+                return
             js_position = snap_to_grid(js_position_data.get('position', 0.0))
             js_nearest_track = js_position_data.get('track', 0)
+            if not js_nearest_track:
+                try:
+                    js_nearest_track = int(self.timeline_sync.timeline.GetTrackCount())
+                except Exception:
+                    js_nearest_track = 0
 
             pos.setX(js_position)
 
@@ -3713,8 +3801,13 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             self.run_js(JS_SCOPE_SELECTOR + ".startManualMove('{}', '{}');".format(self.item_type, json.dumps(self.item_ids)))
 
         # Get JS position and pass initial position to the callback
-        self.run_js(JS_SCOPE_SELECTOR + ".getJavaScriptPosition({}, {});"
-                    .format(initial_pos.x(), initial_pos.y()), partial(handle_js_position, initial_pos))
+        def _deferred_js_position():
+            self._run_js_position(
+                initial_pos.x(),
+                initial_pos.y(),
+                partial(handle_js_position, initial_pos),
+            )
+        QTimer.singleShot(0, _deferred_js_position)
 
         # Accept the event
         event.accept()
@@ -3724,6 +3817,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         # Retrieve File object by file_id
         file = File.get(id=file_id)
         if not file:
+            log.warning("addClip: file_id not found: %s", file_id)
             return  # Skip if the file is not found
 
         # Get file name and path
@@ -4028,9 +4122,76 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         # Accept the event
         event.accept()
 
+        def cleanup_drop():
+            self.new_item = False
+            self.item_type = None
+            self.item_ids = []
+            get_app().updates.transaction_id = None
+
+        # If drag enter didn't build item_ids, fall back to parsing drop mime data.
+        if self.item_type in ["clip", "transition"] and not self.item_ids:
+            mime = event.mimeData()
+            data_list = []
+            data_list = self._mime_json_list(mime)
+            if not data_list and mime.hasUrls():
+                urls = mime.urls()
+                get_app().window.files_model.process_urls(urls, import_quietly=True, prevent_image_seq=True)
+                for uri in urls:
+                    filepath = uri.toLocalFile()
+                    if not os.path.exists(filepath) or not os.path.isfile(filepath):
+                        continue
+                    for file in File.filter(path=filepath):
+                        if file:
+                            data_list.append(file.id)
+            if data_list:
+                pos = _event_posf(event)
+
+                def handle_js_position(pos, js_position_data):
+                    tid = self.get_uuid()
+                    get_app().updates.transaction_id = tid
+
+                    fps_float = float(get_app().project.get("fps")["num"]) / float(get_app().project.get("fps")["den"])
+                    snap_to_grid = lambda t: round(t * fps_float) / fps_float
+                    if not js_position_data:
+                        log.warning("Timeline drop fallback js_position: empty result")
+                        cleanup_drop()
+                        return
+                    js_position = snap_to_grid(js_position_data.get('position', 0.0))
+                    js_nearest_track = js_position_data.get('track', 0)
+                    if not js_nearest_track:
+                        try:
+                            js_nearest_track = int(self.timeline_sync.timeline.GetTrackCount())
+                        except Exception:
+                            js_nearest_track = 0
+                    pos.setX(js_position)
+
+                    self.item_ids = []
+                    for index, drag_id in enumerate(data_list):
+                        ignore_refresh = False if index == len(data_list) - 1 else True
+                        if self.item_type == "clip":
+                            self.addClip(drag_id, pos, js_nearest_track, ignore_refresh, call_manual_move=False)
+                        elif self.item_type == "transition":
+                            self.addTransition(drag_id, pos, js_nearest_track, ignore_refresh, call_manual_move=False)
+
+                    if self.item_ids:
+                        self.run_js(
+                            JS_SCOPE_SELECTOR + ".updateRecentItemJSON('{}', '{}', '{}');"
+                            .format(self.item_type, json.dumps(self.item_ids), get_app().updates.transaction_id)
+                        )
+                    cleanup_drop()
+
+                def _deferred_drop_position():
+                    self._run_js_position(
+                        pos.x(),
+                        pos.y(),
+                        partial(handle_js_position, pos),
+                    )
+                QTimer.singleShot(0, _deferred_drop_position)
+                return
+
         if self.item_type == "effect":
             pos = _event_posf(event)
-            data = json.loads(event.mimeData().text())
+            data = self._mime_json_list(event.mimeData())
             self.addEffect(data, pos)
 
         elif self.item_type in ["clip", "transition"] and self.item_ids:
@@ -4039,10 +4200,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
                         .format(self.item_type, json.dumps(self.item_ids), get_app().updates.transaction_id))
 
         # Cleanup after drop
-        self.new_item = False
-        self.item_type = None
-        self.item_ids = []
-        get_app().updates.transaction_id = None
+        cleanup_drop()
 
     def dragLeaveEvent(self, event):
         """A drag is in-progress and the user moves mouse outside of timeline"""
@@ -4109,6 +4267,8 @@ class TimelineView(updates.UpdateInterface, ViewClass):
                 # Get the JSON from the cache object (i.e. which frames are cached)
                 cache_json = cache_object.Json()
                 cache_dict = json.loads(cache_json)
+                if not isinstance(cache_dict, dict):
+                    return
                 cache_version = cache_dict["version"]
 
                 if self.cache_renderer_version == cache_version:
@@ -4129,9 +4289,10 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         self.run_js(JS_SCOPE_SELECTOR + ".refreshTimeline();")
 
     def __init__(self, window):
-        super().__init__()
         if ViewClass == TimelineWidget:
             TimelineWidget.__init__(self)
+        else:
+            super().__init__()
         self.setObjectName("TimelineView")
 
         app = get_app()

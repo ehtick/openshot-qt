@@ -166,8 +166,16 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         if self.shutting_down:
             log.debug("Already shutting down, skipping the closeEvent() method")
             return
-        else:
-            self.shutting_down = True
+
+        self._shutdown()
+
+    def _shutdown(self):
+        """Perform shutdown without prompting (used by closeEvent and app cleanup)."""
+        app = get_app()
+        if self.shutting_down:
+            log.debug("Already shutting down, skipping the shutdown routine")
+            return
+        self.shutting_down = True
 
         # Log the exit routine
         log.info('---------------- Shutting down -----------------')
@@ -192,8 +200,10 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         # Stop timeline background workers (such as the thumbnail thread) before Qt
         # begins destroying child widgets, to avoid QThread warnings on shutdown.
         timeline_widget = getattr(self, "timeline", None)
+        from qt_api import isdeleted
         if timeline_widget and getattr(timeline_widget, "thumbnail_manager", None):
-            timeline_widget.thumbnail_manager.shutdown()
+            if not isdeleted(timeline_widget.thumbnail_manager):
+                timeline_widget.thumbnail_manager.shutdown()
 
         # Stop thumbnail server thread (if any)
         if self.http_server_thread:
@@ -210,9 +220,10 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         if self.preview_thread:
             self.preview_thread.player.CloseAudioDevice()
             self.preview_thread.kill()
-            if self.videoPreview:
+            from qt_api import isdeleted
+            if self.videoPreview and not isdeleted(self.videoPreview):
                 self.videoPreview.deleteLater()
-                self.videoPreview = None
+            self.videoPreview = None
             self.preview_parent.Stop()
 
         # Clean-up Timeline
@@ -2641,6 +2652,11 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
     def caption_editor_load(self, new_caption_text, caption_model_row):
         """Load the caption editor with text, or disable it if empty string detected"""
         self.caption_model_row = caption_model_row
+        if self.captionTextEdit is None:
+            self.captionTextEdit = QTextEdit(self.dockCaptionContents)
+            self.captionTextEdit.setReadOnly(True)
+            self.tabCaptions.addWidget(self.captionTextEdit)
+            self.captionTextEdit.textChanged.connect(self.captionTextEdit_TextChanged)
         self.captionTextEdit.setPlainText(new_caption_text.strip())
         if not caption_model_row:
             self.captionTextEdit.setReadOnly(True)
@@ -2826,6 +2842,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
     # Get window settings from setting store
     def load_settings(self):
         s = get_app().get_settings()
+        from qt_api import QT_API
 
         # Window state and geometry (also toolbar, dock locations and frozen UI state)
         if s.get('window_geometry_v2'):
@@ -3039,7 +3056,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         self.actionRedo.setEnabled(False)
 
         # Add files toolbar
-        self.filesToolbar = QToolBar("Files Toolbar")
+        self.filesToolbar = QToolBar("Files Toolbar", self.dockFilesContents)
         self.filesActionGroup = QActionGroup(self)
         self.filesActionGroup.setExclusive(True)
         self.filesActionGroup.addAction(self.actionFilesShowAll)
@@ -3051,15 +3068,15 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         self.filesToolbar.addAction(self.actionFilesShowVideo)
         self.filesToolbar.addAction(self.actionFilesShowAudio)
         self.filesToolbar.addAction(self.actionFilesShowImage)
-        self.filesFilter = QLineEdit()
+        self.filesFilter = QLineEdit(self.filesToolbar)
         self.filesFilter.setObjectName("filesFilter")
         self.filesFilter.setPlaceholderText(_("Filter"))
         self.filesFilter.setClearButtonEnabled(True)
         self.filesToolbar.addWidget(self.filesFilter)
-        self.tabFiles.layout().insertWidget(0, self.filesToolbar)
+        self.tabFiles.insertWidget(0, self.filesToolbar)
 
         # Add transitions toolbar
-        self.transitionsToolbar = QToolBar("Transitions Toolbar")
+        self.transitionsToolbar = QToolBar("Transitions Toolbar", self.dockTransitionsContents)
         self.transitionsActionGroup = QActionGroup(self)
         self.transitionsActionGroup.setExclusive(True)
         self.transitionsActionGroup.addAction(self.actionTransitionsShowAll)
@@ -3067,16 +3084,16 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         self.actionTransitionsShowAll.setChecked(True)
         self.transitionsToolbar.addAction(self.actionTransitionsShowAll)
         self.transitionsToolbar.addAction(self.actionTransitionsShowCommon)
-        self.transitionsFilter = QLineEdit()
+        self.transitionsFilter = QLineEdit(self.transitionsToolbar)
         self.transitionsFilter.setObjectName("transitionsFilter")
         self.transitionsFilter.setPlaceholderText(_("Filter"))
         self.transitionsFilter.setClearButtonEnabled(True)
         self.transitionsToolbar.addWidget(self.transitionsFilter)
-        self.tabTransitions.layout().addWidget(self.transitionsToolbar)
+        self.tabTransitions.addWidget(self.transitionsToolbar)
 
         # Add effects toolbar
-        self.effectsToolbar = QToolBar("Effects Toolbar")
-        self.effectsFilter = QLineEdit()
+        self.effectsToolbar = QToolBar("Effects Toolbar", self.dockEffectsContents)
+        self.effectsFilter = QLineEdit(self.effectsToolbar)
         self.effectsActionGroup = QActionGroup(self)
         self.effectsActionGroup.setExclusive(True)
         self.effectsActionGroup.addAction(self.actionEffectsShowAll)
@@ -3090,38 +3107,38 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         self.effectsFilter.setPlaceholderText(_("Filter"))
         self.effectsFilter.setClearButtonEnabled(True)
         self.effectsToolbar.addWidget(self.effectsFilter)
-        self.tabEffects.layout().addWidget(self.effectsToolbar)
+        self.tabEffects.addWidget(self.effectsToolbar)
 
         # Add emojis toolbar
-        self.emojisToolbar = QToolBar("Emojis Toolbar")
-        self.emojiFilterGroup = QComboBox()
-        self.emojisFilter = QLineEdit()
+        self.emojisToolbar = QToolBar("Emojis Toolbar", self.dockEmojisContents)
+        self.emojiFilterGroup = QComboBox(self.emojisToolbar)
+        self.emojisFilter = QLineEdit(self.emojisToolbar)
         self.emojisFilter.setObjectName("emojisFilter")
         self.emojisFilter.setPlaceholderText(_("Filter"))
         self.emojisFilter.setClearButtonEnabled(True)
         self.emojisToolbar.addWidget(self.emojiFilterGroup)
         self.emojisToolbar.addWidget(self.emojisFilter)
-        self.tabEmojis.layout().addWidget(self.emojisToolbar)
+        self.tabEmojis.addWidget(self.emojisToolbar)
 
         # Add Video Preview toolbar
-        self.videoToolbar = QToolBar("Video Toolbar")
-        self.tabVideo.layout().addWidget(self.videoToolbar)
+        self.videoToolbar = QToolBar("Video Toolbar", self.dockVideoContents)
+        self.tabVideo.addWidget(self.videoToolbar)
 
         # Add Timeline toolbar
-        self.timelineToolbar = QToolBar("Timeline Toolbar", self)
+        self.timelineToolbar = QToolBar("Timeline Toolbar", getattr(self, "dockTimelineContents", self))
         self.timelineToolbar.setObjectName("timelineToolbar")
 
         # Add Video Preview toolbar
-        self.captionToolbar = QToolBar(_("Caption Toolbar"))
+        self.captionToolbar = QToolBar(_("Caption Toolbar"), self.dockCaptionContents)
 
         # Add Caption text editor widget
-        self.captionTextEdit = QTextEdit()
+        self.captionTextEdit = QTextEdit(self.dockCaptionContents)
         self.captionTextEdit.setReadOnly(True)
 
         # Playback controls (centered)
         self.captionToolbar.addAction(self.actionInsertTimestamp)
-        self.tabCaptions.layout().addWidget(self.captionToolbar)
-        self.tabCaptions.layout().addWidget(self.captionTextEdit)
+        self.tabCaptions.addWidget(self.captionToolbar)
+        self.tabCaptions.addWidget(self.captionTextEdit)
 
         # Hook up caption editor signal
         self.captionTextEdit.textChanged.connect(self.captionTextEdit_TextChanged)
@@ -3145,7 +3162,8 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         self.timelineToolbar.addWidget(self.sliderZoomWidget)
 
         # Add timeline toolbar to web frame
-        self.frameWeb.addWidget(self.timelineToolbar)
+        self.frameWeb.insertWidget(0, self.timelineToolbar)
+        self.timelineToolbar.show()
 
     def clearSelections(self):
         """Clear all selection containers and reset preview transforms"""
@@ -3237,7 +3255,6 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         if (self.saved_geometry or self.saved_state) and not self._restored_saved_window:
             # Delay the restore until after the window is shown so layouts are settled.
             QTimer.singleShot(0, self._restore_saved_window)
-
     def hideEvent(self, event):
         """ Have any child windows hide with main window """
         QMainWindow.hideEvent(self, event)
@@ -3342,8 +3359,8 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         self.filesTreeView = FilesTreeView(self.files_model)
         self.filesListView = FilesListView(self.files_model)
         self.files_model.update_model()
-        self.tabFiles.layout().insertWidget(-1, self.filesTreeView)
-        self.tabFiles.layout().insertWidget(-1, self.filesListView)
+        self.tabFiles.insertWidget(-1, self.filesTreeView)
+        self.tabFiles.insertWidget(-1, self.filesListView)
         if s.get("file_view") == "details":
             self.filesView = self.filesTreeView
             self.filesListView.hide()
@@ -3359,8 +3376,8 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         self.transitionsTreeView = TransitionsTreeView(self.transition_model)
         self.transitionsListView = TransitionsListView(self.transition_model)
         self.transition_model.update_model()
-        self.tabTransitions.layout().insertWidget(-1, self.transitionsTreeView)
-        self.tabTransitions.layout().insertWidget(-1, self.transitionsListView)
+        self.tabTransitions.insertWidget(-1, self.transitionsTreeView)
+        self.tabTransitions.insertWidget(-1, self.transitionsListView)
         if s.get("transitions_view") == "details":
             self.transitionsView = self.transitionsTreeView
             self.transitionsListView.hide()
@@ -3376,8 +3393,8 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         self.effectsTreeView = EffectsTreeView(self.effects_model)
         self.effectsListView = EffectsListView(self.effects_model)
         self.effects_model.update_model()
-        self.tabEffects.layout().insertWidget(-1, self.effectsTreeView)
-        self.tabEffects.layout().insertWidget(-1, self.effectsListView)
+        self.tabEffects.insertWidget(-1, self.effectsTreeView)
+        self.tabEffects.insertWidget(-1, self.effectsListView)
         if s.get("effects_view") == "details":
             self.effectsView = self.effectsTreeView
             self.effectsListView.hide()
@@ -3392,7 +3409,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         self.emojis_model = EmojisModel()
         self.emojis_model.update_model()
         self.emojiListView = EmojisListView(self.emojis_model)
-        self.tabEmojis.layout().addWidget(self.emojiListView)
+        self.tabEmojis.addWidget(self.emojiListView)
 
     def actionInsertKeyframe(self):
         log.debug("actionInsertKeyframe")
@@ -3726,7 +3743,11 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
                         # Get the shortcut key sequence
                         sequences = get_app().window.getShortcutByName(action_name)
                         for sequence in sequences:
-                            if (sequence == QKeySequence(event.modifiers() | event.key())):
+                            if hasattr(event, "keyCombination"):
+                                event_sequence = QKeySequence(event.keyCombination())
+                            else:
+                                event_sequence = QKeySequence(event.modifiers() | event.key())
+                            if sequence == event_sequence:
                                 event.accept()
                                 return True
 
@@ -3924,7 +3945,10 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
 
         # Setup timeline
         self.timeline = TimelineView(self)
-        self.frameWeb.layout().addWidget(self.timeline)
+        self.frameWeb.addWidget(self.timeline)
+        self.frameWeb.setStretch(0, 0)
+        self.frameWeb.setStretch(1, 1)
+        self.timeline.show()
 
         # Configure the side docks to full-height
         self.setCorner(Qt.TopLeftCorner, Qt.LeftDockWidgetArea)
@@ -3976,9 +4000,10 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         self.clearSelections()
 
         # Setup video preview QWidget
-        self.videoPreview = VideoWidget()
+        self.videoPreview = VideoWidget(self.dockVideoContents)
         self.videoPreview.setObjectName("videoPreview")
-        self.tabVideo.layout().insertWidget(0, self.videoPreview)
+        self.tabVideo.insertWidget(0, self.videoPreview)
+        self.videoPreview.show()
 
         # Load window state and geometry
         self.saved_state = None

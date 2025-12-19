@@ -957,7 +957,7 @@ class PropertiesTableView(QTableView):
             # Show context menu (if any options present)
             # There is always at least 1 QAction in an empty menu though
             if len(self.menu.children()) > 1:
-                self.menu.popup(event.globalPos())
+                self.menu.show_at(event)
 
     def build_menu(self, data, parent_menu=None):
         """Build a Context Menu, included nested sub-menus, and divide lists if too large"""
@@ -1355,21 +1355,27 @@ class SelectionLabel(QFrame):
             self.btnSelectionName.setIcon(QIcon())
             self.btnSelectionName.setMenu(None)
             return
+        def _set_item_icon(path):
+            if path and isinstance(path, (str, bytes, os.PathLike)) and os.path.exists(path):
+                self.item_icon = QIcon(QPixmap(path))
+            else:
+                self.item_icon = QIcon()
+
         if self.item_type == "clip":
             clip = Clip.get(id=self.item_id)
             if clip:
                 self.item_name = clip.title()
-                self.item_icon = QIcon(QPixmap(clip.data.get('image')))
+                _set_item_icon(clip.data.get('image'))
         elif self.item_type == "transition":
             trans = Transition.get(id=self.item_id)
             if trans:
                 self.item_name = _(trans.title())
-                self.item_icon = QIcon(QPixmap(trans.data.get('reader', {}).get('path')))
+                _set_item_icon(trans.data.get('reader', {}).get('path'))
         elif self.item_type == "effect":
             effect = Effect.get(id=self.item_id)
             if effect:
                 self.item_name = _(effect.title())
-                self.item_icon = QIcon(QPixmap(os.path.join(info.PATH, "effects", "icons", "%s.png" % effect.data.get('class_name').lower())))
+                _set_item_icon(os.path.join(info.PATH, "effects", "icons", "%s.png" % effect.data.get('class_name').lower()))
 
         # Truncate long text
         if self.item_name and len(self.item_name) > 25:

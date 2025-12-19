@@ -22,6 +22,7 @@ QState = QStateMachine = None
 uic = None
 QT_API: Optional[str] = None
 QT_VERSION_STR: Optional[str] = None
+PYQT_VERSION_STR: Optional[str] = None
 BINDING_VERSION_STR: Optional[str] = None
 _MODULES = []
 _FAILED_IMPORT: Optional[Exception] = None
@@ -1165,6 +1166,7 @@ def _import_binding(name: str) -> Tuple:
             uicMod,
             QtCoreMod.QT_VERSION_STR,
             QtCoreMod.PYQT_VERSION_STR,
+            QtCoreMod.PYQT_VERSION_STR,
         )
 
     if name == "pyside6":
@@ -1217,6 +1219,7 @@ def _import_binding(name: str) -> Tuple:
             QtUiToolsMod,
             QtCoreMod.__version__,  # PySide binds Qt version here
             QtCoreMod.__version__,
+            QtCoreMod.__version__,
         )
 
     if name == "pyqt5":
@@ -1266,6 +1269,7 @@ def _import_binding(name: str) -> Tuple:
             q_state_machine,
             uicMod,
             QtCoreMod.QT_VERSION_STR,
+            QtCoreMod.PYQT_VERSION_STR,
             QtCoreMod.PYQT_VERSION_STR,
         )
 
@@ -1323,6 +1327,7 @@ def _import_binding(name: str) -> Tuple:
             QtUiToolsMod,
             QtCoreMod.__version__,
             QtCoreMod.__version__,
+            QtCoreMod.__version__,
         )
 
     raise ImportError(f"Unknown binding '{name}'")
@@ -1331,7 +1336,7 @@ def _import_binding(name: str) -> Tuple:
 def _select_binding() -> str:
     """Select and load the first available binding."""
     global QtCore, QtGui, QtWidgets, QtSvg, QtWebEngineCore, QtWebEngineWidgets, QtWebChannel, QtWebKitWidgets
-    global Signal, Slot, Property, QRegularExpression, QState, QStateMachine, uic, QT_API, QT_VERSION_STR, BINDING_VERSION_STR, _MODULES
+    global Signal, Slot, Property, QRegularExpression, QState, QStateMachine, uic, QT_API, QT_VERSION_STR, PYQT_VERSION_STR, BINDING_VERSION_STR, _MODULES
     global _FAILED_IMPORT, _SELECTING
 
     if _FAILED_IMPORT:
@@ -1366,6 +1371,7 @@ def _select_binding() -> str:
                 QStateMachine,
                 uic,
                 QT_VERSION_STR,
+                PYQT_VERSION_STR,
                 BINDING_VERSION_STR,
             ) = _import_binding(candidate)
             logger.info(
@@ -1420,12 +1426,106 @@ def load_ui(path: str, baseinstance=None):
     from importlib import import_module
 
     QtUiTools = import_module("PySide6.QtUiTools" if QT_API == "pyside6" else "PySide2.QtUiTools")  # type: ignore
-    loader = QtUiTools.QUiLoader()
+    if baseinstance is not None:
+        class UiLoader(QtUiTools.QUiLoader):
+            def __init__(self, base):
+                super().__init__(base)
+                self.base = base
+
+            def createWidget(self, class_name, parent=None, name=""):
+                if parent is None and self.base is not None:
+                    return self.base
+                widget = super().createWidget(class_name, parent, name)
+                if self.base is not None and name:
+                    setattr(self.base, name, widget)
+                return widget
+
+            def createAction(self, parent=None, name=""):
+                if parent is None and self.base is not None:
+                    parent = self.base
+                action = super().createAction(parent, name)
+                if self.base is not None and name:
+                    setattr(self.base, name, action)
+                return action
+
+        loader = UiLoader(baseinstance)
+        setattr(baseinstance, "_qt_ui_loader", loader)
+    else:
+        loader = QtUiTools.QUiLoader()
     ui_file = QtCore.QFile(path)
     if not ui_file.open(QtCore.QFile.ReadOnly):
         raise IOError(f"Cannot open UI file: {path}")
     try:
-        return loader.load(ui_file, baseinstance)
+        widget = loader.load(ui_file)
+        if baseinstance is not None:
+            if widget is not None and widget is not baseinstance:
+                setattr(baseinstance, "_qt_loaded_ui", widget)
+                main_window_type = getattr(QtWidgets, "QMainWindow", None)
+                if main_window_type and isinstance(baseinstance, main_window_type) and isinstance(widget, main_window_type):
+                    central = widget.centralWidget()
+                    if central is not None:
+                        baseinstance.setCentralWidget(central)
+                    menubar = widget.menuBar()
+                    if menubar is not None:
+                        baseinstance.setMenuBar(menubar)
+                    statusbar = widget.statusBar()
+                    if statusbar is not None:
+                        baseinstance.setStatusBar(statusbar)
+                    tool_bar_type = getattr(QtWidgets, "QToolBar", None)
+                    if tool_bar_type:
+                        for toolbar in widget.findChildren(tool_bar_type):
+                            baseinstance.addToolBar(toolbar)
+                    dock_type = getattr(QtWidgets, "QDockWidget", None)
+                    if dock_type:
+                        for dock in widget.findChildren(dock_type):
+                            try:
+                                area = widget.dockWidgetArea(dock)
+                            except Exception:
+                                area = None
+                            if area is None or area == QtCore.Qt.NoDockWidgetArea:
+                                baseinstance.addDockWidget(QtCore.Qt.LeftDockWidgetArea, dock)
+                            else:
+                                baseinstance.addDockWidget(area, dock)
+            if widget is not None:
+                main_window_type = getattr(QtWidgets, "QMainWindow", None)
+                if main_window_type and isinstance(baseinstance, main_window_type):
+                    root = baseinstance
+                else:
+                    root = widget
+            else:
+                root = baseinstance
+            qaction_type = getattr(QtGui, "QAction", None)
+            actions = []
+            seen = set()
+            if qaction_type is not None:
+                for holder in (root, baseinstance, loader):
+                    if holder is None:
+                        continue
+                    for act in holder.findChildren(qaction_type):
+                        ident = id(act)
+                        if ident in seen:
+                            continue
+                        seen.add(ident)
+                        actions.append(act)
+                for act in actions:
+                    try:
+                        act.setParent(baseinstance)
+                    except Exception:
+                        pass
+            for obj in root.findChildren(QtCore.QObject):
+                obj_name = obj.objectName()
+                if obj_name and not hasattr(baseinstance, obj_name):
+                    setattr(baseinstance, obj_name, obj)
+            if widget is not None and widget is not baseinstance:
+                widget_type = getattr(QtWidgets, "QWidget", None)
+                if widget_type and isinstance(baseinstance, widget_type) and isinstance(widget, widget_type):
+                    try:
+                        if baseinstance.layout() is None and widget.layout() is not None:
+                            baseinstance.setLayout(widget.layout())
+                    except Exception:
+                        pass
+            return baseinstance
+        return widget
     finally:
         ui_file.close()
 
@@ -1500,6 +1600,7 @@ __all__ = [
     "QLibraryInfo",
     "QT_API",
     "QT_VERSION_STR",
+    "PYQT_VERSION_STR",
     "BINDING_VERSION_STR",
     "ensure_binding",
     "load_ui",

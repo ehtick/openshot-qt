@@ -120,11 +120,11 @@ class ProfilesTreeView(QTreeView):
             delete_action.triggered.connect(lambda: get_app().window.actionProfileEdit_trigger(profile, delete=True, parent=self))
             menu.addAction(delete_action)
 
-        menu.popup(event.globalPos())
+        menu.show_at(event)
 
     def __init__(self, dialog, profiles, *args):
         # Invoke parent init
-        QListView.__init__(self, *args)
+        QTreeView.__init__(self, *args)
 
         # Get a reference to the window object
         self.parent = dialog

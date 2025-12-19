@@ -49,7 +49,7 @@ class EffectsTreeView(QTreeView):
 
         menu = StyledContextMenu(parent=self)
         menu.addAction(self.win.actionThumbnailView)
-        menu.popup(event.globalPos())
+        menu.show_at(event)
 
     def startDrag(self, supportedActions):
         """ Override startDrag method to display custom icon """

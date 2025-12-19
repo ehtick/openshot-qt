@@ -48,7 +48,7 @@ class EffectsListView(QListView):
 
         menu = StyledContextMenu(parent=self)
         menu.addAction(self.win.actionDetailsView)
-        menu.popup(event.globalPos())
+        menu.show_at(event)
 
     def startDrag(self, event):
         """ Override startDrag method to display custom icon """
@@ -88,7 +88,7 @@ class EffectsListView(QListView):
         filter_text = self.win.effectsFilter.text()
         self.model().setFilterRegularExpression(QRegularExpression(filter_text.replace(' ', '.*')))
         self.model().setFilterCaseSensitivity(Qt.CaseInsensitive)
-        self.model().sort(Qt.AscendingOrder)
+        self.model().sort(0, Qt.AscendingOrder)
 
     def __init__(self, model):
         # Invoke parent init

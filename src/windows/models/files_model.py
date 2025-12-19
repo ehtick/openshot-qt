@@ -34,7 +34,7 @@ import functools
 import uuid
 
 from qt_api import (
-    QMimeData, Qt, pyqtSignal, QEventLoop, QObject,
+    QMimeData, Qt, QUrl, pyqtSignal, QEventLoop, QObject,
     QSortFilterProxyModel, QItemSelectionModel, QPersistentModelIndex, QModelIndex
 )
 from qt_api import (
@@ -57,10 +57,13 @@ class FileFilterProxyModel(QSortFilterProxyModel):
 
     def filterAcceptsRow(self, sourceRow, sourceParent):
         """Filter for text"""
+        from qt_api import isdeleted
+        files_filter = get_app().window.filesFilter
+        filter_text = "" if isdeleted(files_filter) else files_filter.text()
         if get_app().window.actionFilesShowVideo.isChecked() \
                 or get_app().window.actionFilesShowAudio.isChecked() \
                 or get_app().window.actionFilesShowImage.isChecked() \
-                or get_app().window.filesFilter.text():
+                or filter_text:
             # Fetch the file name
             index = self.sourceModel().index(sourceRow, 0, sourceParent)
             file_name = self.sourceModel().data(index)  # file name (i.e. MyVideo.mp4)
@@ -92,23 +95,51 @@ class FileFilterProxyModel(QSortFilterProxyModel):
         # Create MimeData for drag operation
         data = QMimeData()
 
-        # Get list of all selected file ids
-        ids = self.parent.selected_file_ids()
+        # Get list of selected file ids from indexes (more reliable across bindings)
+        ids = []
+        seen_rows = set()
+        for idx in indexes:
+            row = idx.row()
+            if row in seen_rows:
+                continue
+            seen_rows.add(row)
+            id_index = idx.sibling(row, 5)
+            file_id = id_index.data()
+            if file_id:
+                ids.append(file_id)
+        if not ids:
+            ids = self.model_owner.selected_file_ids()
         data.setText(json.dumps(ids))
         data.setHtml("clip")
+        urls = []
+        for file_id in ids:
+            try:
+                file = File.get(id=file_id)
+            except Exception:
+                file = None
+            if not file:
+                continue
+            try:
+                path = file.absolute_path()
+            except Exception:
+                path = file.data.get("path")
+            if path:
+                urls.append(QUrl.fromLocalFile(path))
+        if urls:
+            data.setUrls(urls)
 
         # Return Mimedata
         return data
 
     def get_file_index(self, file_id):
         # Find the index in the proxy model based on the file ID
-        if file_id in self.parent.model_ids:
-            return self.mapFromSource(QModelIndex(self.parent.model_ids[file_id]))
+        if file_id in self.model_owner.model_ids:
+            return self.mapFromSource(QModelIndex(self.model_owner.model_ids[file_id]))
         return QModelIndex()
 
     def __init__(self, **kwargs):
         if "parent" in kwargs:
-            self.parent = kwargs["parent"]
+            self.model_owner = kwargs["parent"]
             kwargs.pop("parent")
 
         # Call base class implementation
@@ -613,6 +644,7 @@ class FilesModel(QObject, updates.UpdateInterface):
                 f.save()
 
     def __init__(self, *args):
+        super().__init__(*args)
 
         # Add self as listener to project data updates
         # (undo/redo, as well as normal actions handled within this class all update the model)
@@ -644,9 +676,6 @@ class FilesModel(QObject, updates.UpdateInterface):
         app.window.FileUpdated.connect(self.update_file_thumbnail)
         app.window.refreshFilesSignal.connect(
             functools.partial(self.update_model, clear=False))
-
-        # Call init for superclass QObject
-        super(QObject, FilesModel).__init__(self, *args)
 
         # Attempt to load model testing interface, if requested
         # (will only succeed with Qt 5.11+)

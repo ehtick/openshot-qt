@@ -26,7 +26,7 @@
  """
 
 import os
-from qt_api import QMimeData, QSize, QPoint, Qt, pyqtSlot, QRegularExpression
+from qt_api import QMimeData, QSize, QPoint, Qt, QUrl, pyqtSlot, QRegularExpression
 from qt_api import clear_override_cursor
 from qt_api import QDrag, QListView
 import openshot  # Python module for libopenshot (required video editing module installed separately)
@@ -72,6 +72,12 @@ class EmojisListView(QListView):
         data = QMimeData()
         data.setText(json.dumps([file.id]))
         data.setHtml("clip")
+        try:
+            data.setUrls([QUrl.fromLocalFile(file.absolute_path())])
+        except Exception:
+            file_path = file.data.get("path")
+            if file_path:
+                data.setUrls([QUrl.fromLocalFile(file_path)])
         drag.setMimeData(data)
 
         # Start drag
