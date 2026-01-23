@@ -150,7 +150,7 @@ msgstr "Description de l'effet"
 # Translated with gpt-4.1-mini
 #: ../effects.rst:197
 msgid "|analogtape_icon|"
-msgstr "|icône_bande_analogique|"
+msgstr "|analogtape_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:59
@@ -170,7 +170,7 @@ msgstr "Oscillation, débordement et neige d'une vidéo domestique vintage."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:198
 msgid "|mask_icon|"
-msgstr "|icône_masque|"
+msgstr "|mask_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:63
@@ -190,7 +190,7 @@ msgstr "Transition de masque en niveaux de gris entre les images."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:199
 msgid "|bars_icon|"
-msgstr "|icône_barres|"
+msgstr "|bars_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:67
@@ -210,7 +210,7 @@ msgstr "Ajoutez des barres colorées autour de votre vidéo."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:200
 msgid "|blur_icon|"
-msgstr "|icône_flou|"
+msgstr "|blur_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:71
@@ -230,7 +230,7 @@ msgstr "Ajustez le flou de l'image."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:201
 msgid "|brightness_icon|"
-msgstr "|icône_luminosité|"
+msgstr "|brightness_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:75
@@ -250,7 +250,7 @@ msgstr "Modifiez la luminosité et le contraste de l'image."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:202
 msgid "|caption_icon|"
-msgstr "|icône_légende|"
+msgstr "|caption_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:79
@@ -270,7 +270,7 @@ msgstr "Ajoutez des légendes textuelles à n'importe quel clip."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:203
 msgid "|chromakey_icon|"
-msgstr "|icône_chroma_key|"
+msgstr "|chromakey_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:83
@@ -290,7 +290,7 @@ msgstr "Remplacez une couleur par de la transparence."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:204
 msgid "|colormap_icon|"
-msgstr "|icône_carte_de_couleur|"
+msgstr "|colormap_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:87
@@ -312,7 +312,7 @@ msgstr ""
 # Translated with gpt-4.1-mini
 #: ../effects.rst:205
 msgid "|saturation_icon|"
-msgstr "|icône_saturation|"
+msgstr "|saturation_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:91
@@ -332,7 +332,7 @@ msgstr "Ajustez l'intensité des couleurs."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:206
 msgid "|colorshift_icon|"
-msgstr "|icône_décalage_couleur|"
+msgstr "|colorshift_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:95
@@ -352,7 +352,7 @@ msgstr "Décalez les couleurs de l'image dans différentes directions."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:207
 msgid "|crop_icon|"
-msgstr "|icône_recadrage|"
+msgstr "|crop_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:99
@@ -372,7 +372,7 @@ msgstr "Recadrez des parties de votre vidéo."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:208
 msgid "|deinterlace_icon|"
-msgstr "|icône_désentrelacement|"
+msgstr "|deinterlace_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:103
@@ -392,7 +392,7 @@ msgstr "Supprimez l'entrelacement de la vidéo."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:209
 msgid "|hue_icon|"
-msgstr "|icône_teinte|"
+msgstr "|hue_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:107
@@ -412,7 +412,7 @@ msgstr "Ajuster la teinte / la couleur."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:210
 msgid "|lensflare_icon|"
-msgstr "|icône_lentille_éclat|"
+msgstr "|lensflare_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:111
@@ -432,7 +432,7 @@ msgstr "Simuler la lumière du soleil frappant une lentille avec des éclats."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:211
 msgid "|negate_icon|"
-msgstr "|icône_négation|"
+msgstr "|negate_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:115
@@ -452,7 +452,7 @@ msgstr "Produire une image négative."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:212
 msgid "|objectdetection_icon|"
-msgstr "|icône_détection_objet|"
+msgstr "|objectdetection_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:119
@@ -472,7 +472,7 @@ msgstr "Détecter des objets dans la vidéo."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:213
 msgid "|outline_icon|"
-msgstr "|icône_contour|"
+msgstr "|outline_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:123
@@ -492,7 +492,7 @@ msgstr "Ajouter un contour autour de toute image ou texte."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:214
 msgid "|pixelate_icon|"
-msgstr "|icône_pixeliser|"
+msgstr "|pixelate_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:127
@@ -512,7 +512,7 @@ msgstr "Augmenter ou diminuer les pixels visibles."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:215
 msgid "|sharpen_icon|"
-msgstr "|icône_nettoyer|"
+msgstr "|sharpen_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:131
@@ -533,7 +533,7 @@ msgstr ""
 # Translated with gpt-4.1-mini
 #: ../effects.rst:216
 msgid "|shift_icon|"
-msgstr "|icône_déplacer|"
+msgstr "|shift_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:135
@@ -553,7 +553,7 @@ msgstr "Décaler l'image dans différentes directions."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:217
 msgid "|sphericalprojection_icon|"
-msgstr "|icône_projection_sphérique|"
+msgstr "|sphericalprojection_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:139
@@ -573,7 +573,7 @@ msgstr "Aplatir ou projeter des séquences 360° et fisheye."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:218
 msgid "|stabilizer_icon|"
-msgstr "|icône_stabilisateur|"
+msgstr "|stabilizer_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:143
@@ -593,7 +593,7 @@ msgstr "Réduire les secousses vidéo."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:219
 msgid "|tracker_icon|"
-msgstr "|icône_suivi|"
+msgstr "|tracker_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:147
@@ -613,7 +613,7 @@ msgstr "Suivre la boîte englobante dans la vidéo."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:220
 msgid "|wave_icon|"
-msgstr "|icône_vague|"
+msgstr "|wave_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:151
@@ -633,7 +633,7 @@ msgstr "Déformer l'image en un motif ondulé."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:221
 msgid "|compressor_icon|"
-msgstr "|icône_compresseur|"
+msgstr "|compressor_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:155
@@ -653,7 +653,7 @@ msgstr "Réduire le volume ou amplifier les sons faibles."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:222
 msgid "|delay_icon|"
-msgstr "|icône_délai|"
+msgstr "|delay_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:159
@@ -673,7 +673,7 @@ msgstr "Ajuster la synchronisation audio-vidéo."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:223
 msgid "|distortion_icon|"
-msgstr "|icône_distorsion|"
+msgstr "|distortion_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:163
@@ -693,7 +693,7 @@ msgstr "Saturer le signal audio pour la distorsion."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:224
 msgid "|echo_icon|"
-msgstr "|icône_écho|"
+msgstr "|echo_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:167
@@ -713,7 +713,7 @@ msgstr "Ajouter une réflexion sonore retardée."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:225
 msgid "|expander_icon|"
-msgstr "|icône_expandeur|"
+msgstr "|expander_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:171
@@ -733,7 +733,7 @@ msgstr "Rendre les parties fortes relativement plus fortes."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:226
 msgid "|noise_icon|"
-msgstr "|icône_bruit|"
+msgstr "|noise_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:175
@@ -753,7 +753,7 @@ msgstr "Ajouter des signaux aléatoires d'intensité égale."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:227
 msgid "|parametriceq_icon|"
-msgstr "|icône_égaliseur_paramétrique|"
+msgstr "|parametriceq_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:179
@@ -773,7 +773,7 @@ msgstr "Ajuster le volume des fréquences audio."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:228
 msgid "|robotization_icon|"
-msgstr "|icône_robotisation|"
+msgstr "|robotization_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:183
@@ -793,7 +793,7 @@ msgstr "Transformer l'audio en voix robotique."
 # Translated with gpt-4.1-mini
 #: ../effects.rst:229
 msgid "|whisperization_icon|"
-msgstr "|icône_chuchotement|"
+msgstr "|whisperization_icon|"
 
 # Translated with gpt-4.1-mini
 #: ../effects.rst:187
