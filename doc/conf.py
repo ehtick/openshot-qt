@@ -188,6 +188,10 @@ html_favicon = "../xdg/openshot-qt.ico"
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['css']
 
+# Use XeLaTeX for Unicode/RTL language support in PDF output.
+latex_engine = "xelatex"
+
+
 # Add any extra paths that contain custom files (such as robots.txt or
 # .htaccess) here, relative to this directory. These files are copied
 # directly to the root of the documentation.
@@ -289,6 +293,64 @@ latex_elements = {
     #
     # 'figure_align': 'htbp',
 }
+
+def _configure_latex_fonts(app, config):
+    lang = (config.language or "").lower()
+    latex_elements = dict(config.latex_elements or {})
+
+    fontpkg = r"""
+\usepackage{fontspec}
+\defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase}
+
+% Keep global fonts Latin-capable (Sphinx headings/UI)
+\setmainfont{Noto Serif}
+\setsansfont{Noto Sans}
+\setmonofont{Noto Sans Mono}[Scale=0.9]
+"""
+
+    if lang.startswith("hi"):
+        fontpkg += r"""
+% XeTeX-only unicode block switching
+\usepackage{ucharclasses}
+\newfontfamily\devanagarifont[
+  Script=Devanagari,
+  AutoFakeSlant=0.2,
+  AutoFakeBold=2.0
+]{Noto Sans Devanagari}
+
+\setTransitionsFor{Devanagari}{\begingroup\devanagarifont}{\endgroup}
+\setTransitionsFor{DevanagariExtended}{\begingroup\devanagarifont}{\endgroup}
+\setTransitionsFor{DevanagariExtendedA}{\begingroup\devanagarifont}{\endgroup}
+\setTransitionsFor{DevanagariMarks}{\begingroup\devanagarifont}{\endgroup}
+\setTransitionsFor{Inherited}{\begingroup\devanagarifont}{\endgroup}
+"""
+    elif lang.startswith("bn"):
+        fontpkg += r"""
+\usepackage{ucharclasses}
+\newfontfamily\bengalifont[
+  Script=Bengali,
+  AutoFakeSlant=0.2,
+  AutoFakeBold=2.0
+]{Noto Sans Bengali}
+\setTransitionsFor{Bengali}{\begingroup\bengalifont}{\endgroup}
+"""
+    elif lang.startswith("fa"):
+        fontpkg += r"""
+\usepackage{ucharclasses}
+\usepackage{newunicodechar}
+\newfontfamily\arabicfont[
+  Script=Arabic,
+  Language=Farsi,
+  AutoFakeSlant=0.2,
+  AutoFakeBold=2.0
+]{Noto Naskh Arabic}
+\setTransitionsFor{Arabic}{\begingroup\arabicfont}{\endgroup}
+\newunicodechar{^^^^200c}{}
+"""
+
+    latex_elements["fontpkg"] = fontpkg
+    config.latex_elements = latex_elements
+
 
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title,
@@ -456,3 +518,6 @@ epub_exclude_files = ['search.html']
 # If false, no index is generated.
 #
 # epub_use_index = True
+
+def setup(app):
+    app.connect("config-inited", _configure_latex_fonts)
