@@ -18,6 +18,7 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
 import os
+import re
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath('.')), "src"))
 
@@ -302,29 +303,15 @@ def _configure_latex_fonts(app, config):
 \usepackage{fontspec}
 \defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase}
 
-% Keep global fonts Latin-capable (Sphinx headings/UI)
+% Global fonts must support Latin because Sphinx headings/UI/macros use these.
 \setmainfont{Noto Serif}
 \setsansfont{Noto Sans}
 \setmonofont{Noto Sans Mono}[Scale=0.9]
 """
 
-    if lang.startswith("hi"):
-        fontpkg += r"""
-% XeTeX-only unicode block switching
-\usepackage{ucharclasses}
-\newfontfamily\devanagarifont[
-  Script=Devanagari,
-  AutoFakeSlant=0.2,
-  AutoFakeBold=2.0
-]{Noto Sans Devanagari}
-
-\setTransitionsFor{Devanagari}{\begingroup\devanagarifont}{\endgroup}
-\setTransitionsFor{DevanagariExtended}{\begingroup\devanagarifont}{\endgroup}
-\setTransitionsFor{DevanagariExtendedA}{\begingroup\devanagarifont}{\endgroup}
-\setTransitionsFor{DevanagariMarks}{\begingroup\devanagarifont}{\endgroup}
-\setTransitionsFor{Inherited}{\begingroup\devanagarifont}{\endgroup}
-"""
-    elif lang.startswith("bn"):
+    preamble = latex_elements.get("preamble", "")
+    if lang.startswith("bn"):
+        # If your bn is already fine, leave it alone — but polyglossia is also OK.
         fontpkg += r"""
 \usepackage{ucharclasses}
 \newfontfamily\bengalifont[
@@ -334,6 +321,7 @@ def _configure_latex_fonts(app, config):
 ]{Noto Sans Bengali}
 \setTransitionsFor{Bengali}{\begingroup\bengalifont}{\endgroup}
 """
+
     elif lang.startswith("fa"):
         fontpkg += r"""
 \usepackage{ucharclasses}
@@ -349,7 +337,48 @@ def _configure_latex_fonts(app, config):
 """
 
     latex_elements["fontpkg"] = fontpkg
+    latex_elements["preamble"] = preamble
     config.latex_elements = latex_elements
+
+
+def _rewrite_shared_assets(app, exception):
+    if exception is not None:
+        return
+    if os.environ.get("OPENSHOT_SHARED_ASSETS") != "1":
+        return
+    lang = (app.config.language or "").lower()
+    if not lang or lang == "en":
+        return
+
+    replacements = {
+        "_static/": "../_static/",
+        "_images/": "../_images/",
+        "_sources/": "../_sources/",
+        "_downloads/": "../_downloads/",
+    }
+    pattern = re.compile(r'(?<=["\'])(' + "|".join(map(re.escape, replacements.keys())) + r')')
+
+    for root, _, files in os.walk(app.outdir):
+        for name in files:
+            if not name.endswith(".html"):
+                continue
+            path = os.path.join(root, name)
+            with open(path, "r", encoding="utf-8") as handle:
+                data = handle.read()
+            new_data = pattern.sub(lambda m: replacements[m.group(1)], data)
+            if new_data != data:
+                with open(path, "w", encoding="utf-8") as handle:
+                    handle.write(new_data)
+
+    for shared in ("_static", "_images", "_sources", "_downloads", ".doctrees"):
+        target = os.path.join(app.outdir, shared)
+        if os.path.isdir(target):
+            for root, dirs, files in os.walk(target, topdown=False):
+                for fname in files:
+                    os.remove(os.path.join(root, fname))
+                for dname in dirs:
+                    os.rmdir(os.path.join(root, dname))
+            os.rmdir(target)
 
 
 # Grouping the document tree into LaTeX files. List of tuples
@@ -521,3 +550,4 @@ epub_exclude_files = ['search.html']
 
 def setup(app):
     app.connect("config-inited", _configure_latex_fonts)
+    app.connect("build-finished", _rewrite_shared_assets)
