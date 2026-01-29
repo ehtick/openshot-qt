@@ -154,6 +154,7 @@ class TitleEditor(QDialog):
         self.buttonBox.button(self.buttonBox.Save).setEnabled(False)
 
         self._apply_tab_order()
+        QTimer.singleShot(0, lambda: self.titlesView.setFocus(Qt.TabFocusReason))
 
         # Connect thumbnail listener
         self.thumbnailReady.connect(self.display_pixmap)
@@ -483,36 +484,41 @@ class TitleEditor(QDialog):
 
         self._apply_tab_order()
 
-        # Ensure tab chain includes Save/Cancel after enabling Save
-        tabstops.apply_explicit_tab_order_later(
-            [self.saveButton, self.cancelButton], root=self, include_hidden=True
-        )
-
     def _apply_tab_order(self):
         """Apply explicit tab order for the title editor."""
         ordered = []
         titles_view = getattr(self, "titlesView", None)
-        if titles_view and titles_view.isVisibleTo(self):
+        if titles_view:
             ordered.append(titles_view)
 
         dynamic_widgets = tabstops.collect_focusable_from_layout(
-            self.settingsContainer.layout(), self, include_hidden=True
+            self.settingsContainer.layout(),
+            self,
+            include_hidden=True,
+            include_disabled=True,
         )
         if not dynamic_widgets:
             dynamic_widgets = [
                 w for w in self.settingsContainer.findChildren(QWidget)
-                if w.focusPolicy() != Qt.NoFocus and w.isEnabled() and w.isVisibleTo(self)
+                if w.focusPolicy() != Qt.NoFocus and w.isVisibleTo(self)
             ]
         ordered.extend(dynamic_widgets)
 
-        if getattr(self, "saveButton", None):
-            ordered.append(self.saveButton)
-        if getattr(self, "cancelButton", None):
-            ordered.append(self.cancelButton)
+        action_buttons = tabstops.sort_widgets_left_to_right(
+            [getattr(self, "saveButton", None), getattr(self, "cancelButton", None)],
+            self,
+        )
+        ordered.extend(action_buttons)
 
         tabstops.apply_explicit_tab_order_later(
-            ordered, root=self, include_hidden=True
+            ordered,
+            root=self,
+            include_hidden=True,
+            include_disabled=True,
         )
+
+        if ordered:
+            QTimer.singleShot(0, lambda: QWidget.setTabOrder(ordered[-1], ordered[0]))
 
     def writeToFile(self, xmldoc):
         '''writes a new svg file containing the user edited data'''

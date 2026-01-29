@@ -96,13 +96,23 @@ class AnimatedTitle(QDialog):
         ordered.extend([self.sliderPreview, self.btnRefresh])
         ordered.extend(
             tabstops.collect_focusable_from_layout(
-                self.settingsContainer.layout(), self, include_hidden=True
+                self.settingsContainer.layout(),
+                self,
+                include_hidden=True,
+                include_disabled=True,
             )
         )
-        ordered.extend([self.btnRender, self.btnCancel])
+        ordered.extend(
+            tabstops.sort_widgets_left_to_right(
+                [self.btnRender, self.btnCancel], self
+            )
+        )
 
         tabstops.apply_explicit_tab_order_later(
-            ordered, root=self, include_hidden=True
+            ordered,
+            root=self,
+            include_hidden=True,
+            include_disabled=True,
         )
 
     def accept(self):

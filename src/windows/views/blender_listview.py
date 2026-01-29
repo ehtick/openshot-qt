@@ -474,12 +474,6 @@ class BlenderListView(QListView):
         # Sort by column 0
         self.blender_model.proxy_model.sort(0)
 
-        # Ensure a default selection (top item) to enable controls.
-        if not self.selectionModel().hasSelection() and self.model().rowCount() > 0:
-            first = self.model().index(0, 0)
-            if first.isValid():
-                self.setCurrentIndex(first)
-
     def get_project_params(self, is_preview=True):
         """ Return a dictionary of project related settings, needed by the Blender python script. """
 
