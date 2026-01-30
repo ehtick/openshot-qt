@@ -3276,8 +3276,8 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         self._apply_saved_timeline_height()
 
     def _apply_saved_timeline_height(self):
-        """Apply the saved timeline dock height without a visible two-pass resize."""
-        if self._timeline_height_restored or not self.saved_timeline_height:
+        """Apply the saved timeline dock height."""
+        if not self.saved_timeline_height:
             return
 
         dock = getattr(self, "dockTimeline", None)
@@ -3286,8 +3286,15 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
 
         # If height already matches, skip the resize to avoid an extra layout pass.
         if dock.height() != self.saved_timeline_height:
-            self.resizeDocks([dock], [self.saved_timeline_height], Qt.Vertical)
-        self._timeline_height_restored = True
+            # Force the height by temporarily constraining min/max
+            old_min = dock.minimumHeight()
+            old_max = dock.maximumHeight()
+            dock.setFixedHeight(self.saved_timeline_height)
+            # Restore flexibility after layout processes
+            def restore_flex():
+                dock.setMinimumHeight(old_min)
+                dock.setMaximumHeight(old_max)
+            QTimer.singleShot(0, restore_flex)
 
     def show_property_timeout(self):
         """Callback for show property timer"""
@@ -4078,7 +4085,6 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         self.saved_geometry = None
         self.saved_timeline_height = None
         self._restored_saved_window = False
-        self._timeline_height_restored = False
         self.load_settings()
 
         # Setup Cache settings
@@ -4212,6 +4218,9 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
 
         # Save settings
         s.save()
+
+        # Re-apply timeline height after theme settles (theme changes dock sizes)
+        QTimer.singleShot(0, self._apply_saved_timeline_height)
 
         # Refresh frame
         QTimer.singleShot(100, self.refreshFrameSignal.emit)
