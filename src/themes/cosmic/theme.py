@@ -189,7 +189,7 @@ QToolBar#effectsToolbar QToolButton:checked {
 QToolBar#filesToolbar QToolButton:focus,
 QToolBar#transitionsToolbar QToolButton:focus,
 QToolBar#effectsToolbar QToolButton:focus {
-    background-color: #202b3a;
+    background-color: #1d2737;
 }
 
 
@@ -221,25 +221,29 @@ QToolBar#timelineToolbar QToolButton:checked {
 }
 
 QToolBar#toolBar QToolButton:focus {
-    background-color: #323C50;
+    background-color: #2f3848;
 }
 
 QToolBar#timelineToolbar QToolButton:focus:!checked {
-    background-color: #283241;
+    background-color: #2a3444;
+}
+
+QToolBar#timelineToolbar QToolButton:checked:focus {
+    background-color: #314055;
 }
 
 QToolBar#timelineToolbar QToolButton:pressed {
-    background-color: #353f4e;
+    background-color: #3a4558;
 }
 
 QToolBar#toolBar QToolButton:pressed {
-    background-color: #2b3445;
+    background-color: #3a4456;
 }
 
 QToolBar#filesToolbar QToolButton:pressed,
 QToolBar#transitionsToolbar QToolButton:pressed,
 QToolBar#effectsToolbar QToolButton:pressed {
-    background-color: #1b2433;
+    background-color: #2a374a;
 }
 
 QToolBar#toolBar QToolButton:hover {
@@ -247,11 +251,11 @@ QToolBar#toolBar QToolButton:hover {
 }
 
 QToolBar#videoToolbar QToolButton:focus {
-    background-color: #202b3a;
+    background-color: #1d2737;
 }
 
 QToolBar#videoToolbar QToolButton:pressed {
-    background-color: #1b2433;
+    background-color: #2a374a;
 }
 
 QPushButton#acceptButton {
@@ -620,7 +624,7 @@ QMessageBox QPushButton[text="&{_('Cancel')}"] {{
             {"expand": True},
             {"action": self.app.window.actionSave, "icon": "themes/cosmic/images/tool-save-project.svg", "style": Qt.ToolButtonTextBesideIcon},
             {"action": self.app.window.actionExportVideo, "icon": "themes/cosmic/images/tool-export.svg",
-             "style": Qt.ToolButtonTextBesideIcon, "stylesheet": "QToolButton { background-color: #0078FF; color: #FFFFFF; border: none; } QToolButton:hover, QToolButton:pressed { background-color: #006EE6; } QToolButton:focus { background-color: #1a86ff; }"},
+             "style": Qt.ToolButtonTextBesideIcon, "stylesheet": "QToolButton { background-color: #0078FF; color: #FFFFFF; border: none; } QToolButton:hover { background-color: #0a82ff; } QToolButton:focus { background-color: #0a82ff; } QToolButton:pressed { background-color: #3d9bff; }"},
             {"action": self.app.window.actionUpdate, "icon": "themes/cosmic/images/warning.svg", "visible": False, "style": Qt.ToolButtonTextBesideIcon, "stylesheet": "QToolButton {  background-color: #141923; color: #FABE0A; }"}
         ]
         self.set_toolbar_buttons(self.app.window.toolBar, icon_size=20, settings=toolbar_buttons)
@@ -630,9 +634,9 @@ QMessageBox QPushButton[text="&{_('Cancel')}"] {{
             {"action": self.app.window.actionAddTrack, "icon": "themes/cosmic/images/tool-add-track.svg", "style": Qt.ToolButtonTextBesideIcon, "stylesheet": "QToolButton { margin-left: 15px; }"},
             {"action": self.app.window.actionUndo, "icon": "themes/cosmic/images/tool-undo.svg", "style": Qt.ToolButtonIconOnly, "stylesheet": "QToolButton { margin-right: 0px; border-bottom-right-radius: 0px; border-top-right-radius: 0px; }"},
             {"action": self.app.window.actionRedo, "icon": "themes/cosmic/images/tool-redo.svg", "style": Qt.ToolButtonIconOnly, "stylesheet": "QToolButton { margin-left: 0px; border-bottom-left-radius: 0px; border-top-left-radius: 0px; }"},
-            {"action": self.app.window.actionSnappingTool, "icon": "themes/cosmic/images/tool-snapping.svg", "style": Qt.ToolButtonIconOnly, "stylesheet": "QToolButton { margin-right: 0px; border-bottom-right-radius: 0px; border-top-right-radius: 0px; }"},
-            {"action": self.app.window.actionTimingTool, "icon": "themes/cosmic/images/tool-timing.svg", "style": Qt.ToolButtonIconOnly, "stylesheet": "QToolButton { margin-left: 0px; margin-right: 0px; border-bottom-left-radius: 0px; border-top-left-radius: 0px; border-bottom-right-radius: 0px; border-top-right-radius: 0px; }"},
-            {"action": self.app.window.actionRazorTool, "icon": "themes/cosmic/images/tool-razor.svg", "style": Qt.ToolButtonIconOnly, "stylesheet": "QToolButton { margin-left: 0px; border-bottom-left-radius: 0px; border-top-left-radius: 0px; }"},
+            {"action": self.app.window.actionSnappingTool, "icon": "themes/cosmic/images/tool-snapping.svg", "style": Qt.ToolButtonIconOnly, "stylesheet": "QToolButton { margin-right: 0px; border-bottom-right-radius: 0px; border-top-right-radius: 0px; } QToolButton:focus { border: 1px solid #5aa2e6; background-color: #141923; } QToolButton:checked:focus { border: 1px solid #5aa2e6; background-color: #283241; }"},
+            {"action": self.app.window.actionTimingTool, "icon": "themes/cosmic/images/tool-timing.svg", "style": Qt.ToolButtonIconOnly, "stylesheet": "QToolButton { margin-left: 0px; margin-right: 0px; border-bottom-left-radius: 0px; border-top-left-radius: 0px; border-bottom-right-radius: 0px; border-top-right-radius: 0px; } QToolButton:focus { border: 1px solid #5aa2e6; background-color: #141923; } QToolButton:checked:focus { border: 1px solid #5aa2e6; background-color: #283241; }"},
+            {"action": self.app.window.actionRazorTool, "icon": "themes/cosmic/images/tool-razor.svg", "style": Qt.ToolButtonIconOnly, "stylesheet": "QToolButton { margin-left: 0px; border-bottom-left-radius: 0px; border-top-left-radius: 0px; } QToolButton:focus { border: 1px solid #5aa2e6; background-color: #141923; } QToolButton:checked:focus { border: 1px solid #5aa2e6; background-color: #283241; }"},
             {"action": self.app.window.actionAddMarker, "icon": "themes/cosmic/images/tool-add-marker.svg", "style": Qt.ToolButtonTextBesideIcon, "stylesheet": "QToolButton { margin-right: 0px; border-bottom-right-radius: 0px; border-top-right-radius: 0px; }"},
             {"action": self.app.window.actionPreviousMarker, "icon": "themes/cosmic/images/tool-prev-marker.svg", "style": Qt.ToolButtonIconOnly, "stylesheet": "QToolButton { margin-left: 0px; border-bottom-left-radius: 0px; border-top-left-radius: 0px; margin-right: 0px; border-bottom-right-radius: 0px; border-top-right-radius: 0px; }"},
             {"action": self.app.window.actionNextMarker, "icon": "themes/cosmic/images/tool-next-marker.svg", "style": Qt.ToolButtonIconOnly, "stylesheet": "QToolButton { margin-left: 0px; border-bottom-left-radius: 0px; border-top-left-radius: 0px; }"},
