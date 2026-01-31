@@ -42,7 +42,7 @@ except ImportError:
 
 from xml.parsers.expat import ExpatError
 
-from PyQt5.QtCore import Qt, QCoreApplication, QTimer, QSize, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import Qt, QCoreApplication, QTimer, QSize, QPoint, pyqtSignal, pyqtSlot
 from PyQt5.QtWidgets import (
     QMessageBox, QDialog, QFileDialog, QDialogButtonBox, QPushButton, QWidget, QLineEdit, QComboBox, QSpinBox, QCheckBox
 )
@@ -75,6 +75,7 @@ class Export(QDialog):
         # Load UI from designer & init
         ui_util.load_ui(self, self.ui_path)
         ui_util.init_ui(self)
+        self._setup_toolbox_tab_order()
 
         # get translations & settings
         _ = get_app()._tr
@@ -296,6 +297,7 @@ class Export(QDialog):
         self.load_settings()
 
         self.exportTabs.currentChanged.connect(self._apply_tab_order)
+        self.toolBox.currentChanged.connect(self._apply_tab_order)
         self._apply_tab_order()
         self.txtFileName.setFocus()
 
@@ -312,11 +314,14 @@ class Export(QDialog):
             self.exportTabs,
         ]
 
-        ordered.extend(
-            tabstops.collect_focusable_from_layout(
-                current_tab.layout(), self, include_hidden=True
+        if current_tab is self.Advanced:
+            ordered.extend(self._collect_toolbox_tab_order(self.toolBox))
+        else:
+            ordered.extend(
+                tabstops.collect_focusable_from_layout(
+                    current_tab.layout(), self, include_hidden=True
+                )
             )
-        )
 
         ordered.extend(
             [
@@ -873,6 +878,55 @@ class Export(QDialog):
         self.exportTabs.setEnabled(True)
         self.export_button.setEnabled(True)
         self.btnBrowse.setEnabled(True)
+
+    def _setup_toolbox_tab_order(self):
+        toolbox = self.toolBox
+        toolbox.setFocusPolicy(Qt.NoFocus)
+
+        for child in toolbox.findChildren(QWidget):
+            if child.metaObject().className() == "QToolBoxButton":
+                child.setFocusPolicy(Qt.TabFocus)
+
+    def _collect_toolbox_tab_order(self, toolbox):
+        if toolbox is None:
+            return []
+
+        buttons = []
+        for child in toolbox.findChildren(QWidget):
+            if child.metaObject().className() == "QToolBoxButton":
+                buttons.append(child)
+
+        if not buttons:
+            return []
+
+        buttons.sort(key=lambda button: button.pos().y())
+        ordered = []
+        current_index = toolbox.currentIndex()
+
+        for index, button in enumerate(buttons):
+            ordered.append(button)
+            if index != current_index:
+                continue
+            page = toolbox.widget(index)
+            page_widgets = tabstops.collect_focusable_from_layout(
+                page.layout(), self, include_hidden=True
+            )
+            ordered.extend(self._sort_widgets_by_position(page_widgets))
+
+        return ordered
+
+    def _sort_widgets_by_position(self, widgets):
+        if not widgets:
+            return []
+
+        def _pos_key(widget):
+            try:
+                pos = widget.mapTo(self, QPoint(0, 0))
+                return (pos.y(), pos.x())
+            except Exception:
+                return (0, 0)
+
+        return sorted(widgets, key=_pos_key)
 
     def accept(self):
         """ Start exporting video """

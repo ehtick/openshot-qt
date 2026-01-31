@@ -59,7 +59,8 @@ QLineEdit:focus, QTextEdit:focus, QComboBox:focus,
 QSpinBox:focus, QDoubleSpinBox:focus, QSlider:focus,
 QMenuBar:focus, QMenuBar::item:focus,
 QTabBar:focus, QTabBar::tab:focus, QMenu::item:focus,
-QCheckBox:focus, QRadioButton:focus {
+QCheckBox:focus, QRadioButton:focus,
+QToolBox::tab:focus {
     border: 2px solid #ff00ff;
 }
 QToolButton:focus, QToolBar QToolButton:focus {
