@@ -213,12 +213,12 @@ class FilesListView(QListView):
 
     def refresh_view(self):
         """Filter files with proxy class"""
-        model = self.model()
         filter_text = self.win.filesFilter.text()
-        model.setFilterRegExp(QRegExp(filter_text.replace(' ', '.*'), Qt.CaseInsensitive))
+        # Apply filter to the source proxy model (not the single-column wrapper)
+        self.files_model.proxy_model.setFilterRegExp(QRegExp(filter_text.replace(' ', '.*'), Qt.CaseInsensitive))
 
-        col = model.sortColumn()
-        model.sort(col)
+        col = self.files_model.proxy_model.sortColumn()
+        self.files_model.proxy_model.sort(col)
 
     def resize_contents(self):
         pass
@@ -233,13 +233,13 @@ class FilesListView(QListView):
 
         # Get Model data
         self.files_model = model
-        self.setModel(self.files_model.proxy_model)
+        self.setModel(self.files_model.list_proxy_model)
 
-        # Remove the default selection model and wire up to the shared one
+        # Remove the default selection model and wire up to the list-specific one
         self.selectionModel().deleteLater()
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.setSelectionModel(self.files_model.selection_model)
+        self.setSelectionModel(self.files_model.list_selection_model)
 
         # Keep track of mouse press start position to determine when to start drag
         self.setAcceptDrops(True)
@@ -247,6 +247,7 @@ class FilesListView(QListView):
         self.setDropIndicatorShown(True)
 
         # Setup header columns and layout
+        self.setModelColumn(0)  # Only display first column in icon mode
         self.setIconSize(info.LIST_ICON_SIZE)
         self.setGridSize(info.LIST_GRID_SIZE)
         self.setViewMode(QListView.IconMode)
