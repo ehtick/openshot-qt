@@ -125,11 +125,11 @@ class EmojisListView(QListView):
 
 
     def filter_changed(self, text):
-        self.model.set_text_filter(text)
+        self.emojis_model.set_text_filter(text)
 
     def group_changed(self, index):
         group_id = self.win.emojiFilterGroup.itemData(index)
-        self.model.set_group_filter(group_id or "")
+        self.emojis_model.set_group_filter(group_id or "")
 
     def refresh_view(self):
         """Filter emojis with proxy class"""
@@ -164,7 +164,8 @@ class EmojisListView(QListView):
         self.win = get_app().window
 
         # Set model (expects a proxy model)
-        self.model = model
+        self.emojis_model = model
+        self.model = self.emojis_model.proxy_model
         self.setModel(self.model)
 
         # Configure selection behavior
@@ -185,12 +186,12 @@ class EmojisListView(QListView):
         self.setWordWrap(False)
         self.setTextElideMode(Qt.ElideRight)
 
-        self.model.ModelRefreshed.connect(self.refresh_view)
+        self.emojis_model.ModelRefreshed.connect(self.refresh_view)
         # Activate filter and group selection
         _ = get_app()._tr
         self.win.emojisFilter.textChanged.connect(self.filter_changed)
         self.win.emojiFilterGroup.clear()
         self.win.emojiFilterGroup.addItem(_("All"), "")
-        for name, group_id in sorted(self.model.emoji_groups, key=lambda g: g[0]):
+        for name, group_id in sorted(self.emojis_model.emoji_groups, key=lambda g: g[0]):
             self.win.emojiFilterGroup.addItem(name, group_id)
         self.win.emojiFilterGroup.currentIndexChanged.connect(self.group_changed)

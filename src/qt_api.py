@@ -104,6 +104,72 @@ def clear_override_cursor():
         pass
 
 
+def make_filter_regex(pattern: str, case_insensitive: bool = True):
+    """Create a cross-binding regex for QSortFilterProxyModel filters."""
+    if QT_API in ("pyqt6", "pyside6") and QRegularExpression is not None:
+        regex = QRegularExpression(pattern)
+        if case_insensitive:
+            regex.setPatternOptions(QRegularExpression.CaseInsensitiveOption)
+        return regex
+    # PyQt5 path (QRegExp)
+    QRegExp = getattr(QtCore, "QRegExp", None)
+    if QRegExp is not None:
+        cs = QtCore.Qt.CaseInsensitive if case_insensitive else QtCore.Qt.CaseSensitive
+        return QRegExp(pattern, cs)
+    # Fallback to QRegularExpression if available
+    if QRegularExpression is not None:
+        regex = QRegularExpression(pattern)
+        if case_insensitive:
+            regex.setPatternOptions(QRegularExpression.CaseInsensitiveOption)
+        return regex
+    return pattern
+
+
+def set_proxy_filter(proxy, regex):
+    """Set a filter regex on a QSortFilterProxyModel, across bindings."""
+    if hasattr(proxy, "setFilterRegularExpression") and QRegularExpression is not None and isinstance(regex, QRegularExpression):
+        return proxy.setFilterRegularExpression(regex)
+    return proxy.setFilterRegExp(regex)
+
+
+def get_proxy_filter_regex(proxy):
+    """Get the current filter regex from a QSortFilterProxyModel."""
+    if QT_API == "pyqt5":
+        return proxy.filterRegExp()
+    if hasattr(proxy, "filterRegularExpression") and QRegularExpression is not None:
+        try:
+            return proxy.filterRegularExpression()
+        except Exception:
+            pass
+    # Fallback to legacy API if present or non-empty
+    return proxy.filterRegExp()
+
+
+def regex_is_empty(regex):
+    """Return True if the regex has no pattern."""
+    if regex is None:
+        return True
+    if QRegularExpression is not None and isinstance(regex, QRegularExpression):
+        return not regex.pattern()
+    if hasattr(regex, "isEmpty"):
+        try:
+            return regex.isEmpty()
+        except Exception:
+            return True
+    return not bool(regex)
+
+
+def regex_matches(regex, text):
+    """Return True if regex matches text, across bindings."""
+    if text is None:
+        text = ""
+    if QRegularExpression is not None and isinstance(regex, QRegularExpression):
+        return regex.match(text).hasMatch()
+    if hasattr(regex, "indexIn"):
+        return regex.indexIn(text) >= 0
+    return False
+
+
 def _patch_enums_for_qt6():
     """Backfill Qt5-style enum attributes on Qt6 scoped enums."""
     if QT_API not in ("pyqt6", "pyside6"):
@@ -681,6 +747,23 @@ def _patch_enums_for_qt6():
                         setattr(QAbstractItemView, name, getattr(scroll_hint, name))
                     except Exception:
                         pass
+
+    QSortFilterProxyModel = getattr(QtCore, "QSortFilterProxyModel", None)
+    if QSortFilterProxyModel:
+        if not hasattr(QSortFilterProxyModel, "setFilterRegExp") and hasattr(QSortFilterProxyModel, "setFilterRegularExpression"):
+            def _setFilterRegExp(self, exp):
+                return self.setFilterRegularExpression(exp)
+            try:
+                setattr(QSortFilterProxyModel, "setFilterRegExp", _setFilterRegExp)
+            except Exception:
+                pass
+        if not hasattr(QSortFilterProxyModel, "filterRegExp") and hasattr(QSortFilterProxyModel, "filterRegularExpression"):
+            def _filterRegExp(self):
+                return self.filterRegularExpression()
+            try:
+                setattr(QSortFilterProxyModel, "filterRegExp", _filterRegExp)
+            except Exception:
+                pass
 
     QListView = getattr(QtWidgets, "QListView", None)
     if QListView and not hasattr(QListView, "IconMode"):

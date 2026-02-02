@@ -2065,7 +2065,7 @@ class VideoWidget(QWidget, updates.UpdateInterface):
                             "hand"]:
             icon = QIcon(":/cursors/cursor_%s.png" % cursor_name)
             pixmap = icon.pixmap(32, 32)
-            if QT_API == "pyqt5" or pixmap.isNull() or pixmap.size().isEmpty():
+            if pixmap.isNull() or pixmap.size().isEmpty():
                 pixmap = None
             self.cursors[cursor_name] = (pixmap, cursor_fallbacks[cursor_name])
 

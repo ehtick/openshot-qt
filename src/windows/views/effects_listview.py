@@ -25,7 +25,7 @@
  along with OpenShot Library.  If not, see <http://www.gnu.org/licenses/>.
  """
 
-from qt_api import QSize, QPoint, Qt, QRegularExpression
+from qt_api import QSize, QPoint, Qt
 from qt_api import clear_override_cursor
 from qt_api import QDrag
 from qt_api import QListView, QAbstractItemView
@@ -86,9 +86,12 @@ class EffectsListView(QListView):
     def refresh_view(self):
         """Filter transitions with proxy class"""
         filter_text = self.win.effectsFilter.text()
-        self.model().setFilterRegularExpression(QRegularExpression(filter_text.replace(' ', '.*')))
-        self.model().setFilterCaseSensitivity(Qt.CaseInsensitive)
-        self.model().sort(0, Qt.AscendingOrder)
+        from qt_api import make_filter_regex, set_proxy_filter
+        pattern = filter_text.replace(' ', '.*')
+        regex = make_filter_regex(pattern, case_insensitive=True)
+        set_proxy_filter(self.effects_model.proxy_model, regex)
+        self.effects_model.proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
+        self.effects_model.proxy_model.sort(0, Qt.AscendingOrder)
 
     def __init__(self, model):
         # Invoke parent init

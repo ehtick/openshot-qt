@@ -26,7 +26,7 @@
  along with OpenShot Library.  If not, see <http://www.gnu.org/licenses/>.
  """
 
-from qt_api import QSize, Qt, QPoint, QRegularExpression
+from qt_api import QSize, Qt, QPoint
 from qt_api import clear_override_cursor
 from qt_api import modifiers_has
 from qt_api import QDrag, QCursor, QPixmap, QPainter, QIcon
@@ -221,7 +221,10 @@ class FilesListView(QListView):
         """Filter files with proxy class"""
         filter_text = self.win.filesFilter.text()
         # Apply filter to the source proxy model (not the single-column wrapper)
-        self.files_model.proxy_model.setFilterRegExp(QRegularExpression(filter_text.replace(' ', '.*'), Qt.CaseInsensitive))
+        from qt_api import make_filter_regex, set_proxy_filter
+        pattern = filter_text.replace(' ', '.*')
+        regex = make_filter_regex(pattern, case_insensitive=True)
+        set_proxy_filter(self.files_model.proxy_model, regex)
 
         col = self.files_model.proxy_model.sortColumn()
         self.files_model.proxy_model.sort(col)

@@ -87,7 +87,7 @@ class FileFilterProxyModel(QSortFilterProxyModel):
 
     def filterAcceptsRow(self, sourceRow, sourceParent):
         """Filter for text"""
-        from qt_api import isdeleted
+        from qt_api import isdeleted, get_proxy_filter_regex, regex_is_empty, regex_matches
         files_filter = get_app().window.filesFilter
         filter_text = "" if isdeleted(files_filter) else files_filter.text()
         if get_app().window.actionFilesShowVideo.isChecked() \
@@ -112,10 +112,11 @@ class FileFilterProxyModel(QSortFilterProxyModel):
             ]):
                 return False
 
-            # Match against regex pattern (Qt6-compatible)
-            regex = self.filterRegularExpression()
-            if regex.pattern():
-                return regex.match(file_name).hasMatch() or regex.match(tags).hasMatch()
+            # Match against regex pattern
+            regex = get_proxy_filter_regex(self)
+            if not regex_is_empty(regex):
+                tag_text = tags or ""
+                return regex_matches(regex, file_name) or regex_matches(regex, tag_text)
             return True
 
         # Continue running built-in parent filter logic

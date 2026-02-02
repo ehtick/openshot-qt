@@ -325,9 +325,6 @@ class TimelineWidgetBase(QWidget):
             "hand": Qt.OpenHandCursor,
         }
         for cursor_name in ["move", "resize_x", "hand"]:
-            if QT_API == "pyqt5":
-                self.cursors[cursor_name] = QCursor(cursor_fallbacks[cursor_name])
-                continue
             icon = QIcon(":/cursors/cursor_%s.png" % cursor_name)
             pixmap = icon.pixmap(24, 24)
             if pixmap.isNull() or pixmap.size().isEmpty():
