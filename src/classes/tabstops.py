@@ -3,8 +3,8 @@
  @brief Auto-assign tab order based on on-screen widget geometry.
 """
 
-from PyQt5.QtCore import Qt, QPoint, QTimer
-from PyQt5.QtWidgets import (
+from qt_api import Qt, QPoint, QTimer
+from qt_api import (
     QWidget,
     QLayout,
     QToolBar,
