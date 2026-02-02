@@ -295,6 +295,10 @@ QPushButton:hover {
     background-color: #283241;
 }
 
+QPushButton:focus {
+    background-color: #283241;
+}
+
 QWidget#settingsContainer {
     background-color: #141923;
 }
@@ -386,6 +390,22 @@ QTabWidget#tabCredits QTabBar::tab{
 
 QTabBar::tab:selected {
     color: rgba(145, 195, 255, 1.0);
+}
+
+QTabBar:focus {
+    outline: none;
+}
+
+QTabBar::tab:focus {
+    border-bottom: 1.2px solid #53a0ed;
+}
+
+QToolBox::tab:focus {
+    border-left: 1.2px solid #53a0ed;
+}
+
+QCheckBox:focus {
+    background-color: #283241;
 }
 
 QLineEdit#filesFilter, QLineEdit#effectsFilter, QLineEdit#transitionsFilter, QLineEdit#emojisFilter, QLineEdit#txtPropertyFilter {
