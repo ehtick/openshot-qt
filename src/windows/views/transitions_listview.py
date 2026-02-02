@@ -96,7 +96,8 @@ class TransitionsListView(QListView):
         QListView.__init__(self)
 
         # Get a reference to the window object
-        self.win = get_app().window
+        app = get_app()
+        self.win = app.window
 
         # Get Model data
         self.transition_model = model
@@ -106,13 +107,13 @@ class TransitionsListView(QListView):
         self.setDragEnabled(True)
         self.setDropIndicatorShown(True)
 
-        self.setModel(self.transition_model.proxy_model)
+        self.setModel(self.transition_model.list_proxy_model)
 
-        # Remove the default selection model and wire up to the shared one
+        # Remove the default selection model and wire up to the list-specific one
         self.selectionModel().deleteLater()
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.setSelectionModel(self.transition_model.selection_model)
+        self.setSelectionModel(self.transition_model.list_selection_model)
 
         # Setup header columns
         self.setIconSize(info.LIST_ICON_SIZE)
@@ -122,9 +123,7 @@ class TransitionsListView(QListView):
         self.setUniformItemSizes(True)
         self.setWordWrap(False)
         self.setTextElideMode(Qt.ElideRight)
-        self.setStyleSheet('QListView::item { padding-top: 2px; }')
 
         # setup filter events
-        app = get_app()
         app.window.transitionsFilter.textChanged.connect(self.filter_changed)
         app.window.refreshTransitionsSignal.connect(self.refresh_view)

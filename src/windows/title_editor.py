@@ -50,13 +50,33 @@ from qt_api import (
 
 import openshot
 
-from classes import info, ui_util
+from classes import info, ui_util, tabstops
 from classes.logger import log
 from classes.app import get_app
 from classes.metrics import track_metric_screen
 from windows.color_picker import ColorPicker, draw_checkerboard
 from classes.style_tools import style_to_dict, dict_to_style, set_if_existing
 from windows.views.titles_listview import TitlesListView
+
+
+def get_svg_title_translations():
+    """Return translatable strings used in SVG title templates.
+
+    These are placeholder texts that appear in title SVG files.
+    Listed here so xgettext can discover them for translation.
+    """
+    _ = get_app()._tr
+    return {
+        "The Title": _("The Title"),
+        "Sub-Title": _("Sub-Title"),
+        "Title": _("Title"),
+        "Header Text": _("Header Text"),
+        "Footer Text": _("Footer Text"),
+        "Line 1": _("Line 1"),
+        "Line 2": _("Line 2"),
+        "Line 3": _("Line 3"),
+        "Line 4": _("Line 4"),
+    }
 
 
 class TitleEditor(QDialog):
@@ -98,6 +118,8 @@ class TitleEditor(QDialog):
 
         # In your widget's initialization:
         self.lblPreviewLabel.installEventFilter(self)
+        self.lblPreviewLabel.setFocusPolicy(Qt.NoFocus)
+        self.scrollArea.setFocusPolicy(Qt.NoFocus)
 
         # Set up the buttons
         self.buttonBox = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
@@ -107,6 +129,8 @@ class TitleEditor(QDialog):
         # Set object names (for theme styles)
         self.saveButton.setObjectName("acceptButton")
         self.cancelButton.setObjectName("cancelButton")
+        self.saveButton.setFocusPolicy(Qt.StrongFocus)
+        self.cancelButton.setFocusPolicy(Qt.StrongFocus)
         self.layout().addWidget(self.buttonBox)
 
         # Connect the buttons
@@ -151,6 +175,9 @@ class TitleEditor(QDialog):
 
         # Disable Save button on window load
         self.saveButton.setEnabled(False)
+
+        self._apply_tab_order()
+        QTimer.singleShot(0, lambda: self.titlesView.setFocus(Qt.TabFocusReason))
 
         # Connect thumbnail listener
         self.thumbnailReady.connect(self.display_pixmap)
@@ -408,13 +435,24 @@ class TitleEditor(QDialog):
         self.txtFileName.setFixedHeight(28)
         layout.addRow(label, self.txtFileName)
 
+        # Get SVG title translations for placeholder text
+        svg_translations = get_svg_title_translations()
+
         # Get text values
         title_text = []
         for i, node in enumerate(self.tspan_nodes):
             if len(node.childNodes) < 1:
                 continue
             text = node.childNodes[0].data
-            title_text.append(text)
+            # Translate SVG placeholder text (if translation exists)
+            translated_text = svg_translations.get(text, text)
+            title_text.append(translated_text)
+            # Update the SVG node with translated text
+            if translated_text != text:
+                new_text_node = self.xmldoc.createTextNode(translated_text)
+                old_text_node = node.childNodes[0]
+                node.removeChild(old_text_node)
+                node.appendChild(new_text_node)
 
             # Create Label
             label_line_text = _("Line %s:") % str(i + 1)
@@ -422,7 +460,7 @@ class TitleEditor(QDialog):
             label.setToolTip(label_line_text)
 
             # create text editor for each text element in title
-            widget = QLineEdit(text)
+            widget = QLineEdit(translated_text)
             widget.setFixedHeight(28)
             widget.textChanged.connect(functools.partial(self.txtLine_changed, widget))
             layout.addRow(label, widget)
@@ -477,6 +515,44 @@ class TitleEditor(QDialog):
 
         # Enable Save button when a template is selected
         self.saveButton.setEnabled(True)
+
+        self._apply_tab_order()
+
+    def _apply_tab_order(self):
+        """Apply explicit tab order for the title editor."""
+        ordered = []
+        titles_view = getattr(self, "titlesView", None)
+        if titles_view:
+            ordered.append(titles_view)
+
+        dynamic_widgets = tabstops.collect_focusable_from_layout(
+            self.settingsContainer.layout(),
+            self,
+            include_hidden=True,
+            include_disabled=True,
+        )
+        if not dynamic_widgets:
+            dynamic_widgets = [
+                w for w in self.settingsContainer.findChildren(QWidget)
+                if w.focusPolicy() != Qt.NoFocus and w.isVisibleTo(self)
+            ]
+        ordered.extend(dynamic_widgets)
+
+        action_buttons = tabstops.sort_widgets_left_to_right(
+            [getattr(self, "saveButton", None), getattr(self, "cancelButton", None)],
+            self,
+        )
+        ordered.extend(action_buttons)
+
+        tabstops.apply_explicit_tab_order_later(
+            ordered,
+            root=self,
+            include_hidden=True,
+            include_disabled=True,
+        )
+
+        if ordered:
+            QTimer.singleShot(0, lambda: QWidget.setTabOrder(ordered[-1], ordered[0]))
 
     def writeToFile(self, xmldoc):
         '''writes a new svg file containing the user edited data'''

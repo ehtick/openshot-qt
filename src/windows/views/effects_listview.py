@@ -95,7 +95,8 @@ class EffectsListView(QListView):
         QListView.__init__(self)
 
         # Get a reference to the window object
-        self.win = get_app().window
+        app = get_app()
+        self.win = app.window
 
         # Get Model data
         self.effects_model = model
@@ -105,13 +106,13 @@ class EffectsListView(QListView):
         self.setDragEnabled(True)
         self.setDropIndicatorShown(True)
 
-        self.setModel(self.effects_model.proxy_model)
+        self.setModel(self.effects_model.list_proxy_model)
 
-        # Remove the default selection model and wire up to the shared one
+        # Remove the default selection model and wire up to the list-specific one
         self.selectionModel().deleteLater()
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.setSelectionModel(self.effects_model.selection_model)
+        self.setSelectionModel(self.effects_model.list_selection_model)
 
         # Setup header columns
         self.setIconSize(info.LIST_ICON_SIZE)
@@ -121,9 +122,7 @@ class EffectsListView(QListView):
         self.setUniformItemSizes(True)
         self.setWordWrap(False)
         self.setTextElideMode(Qt.ElideRight)
-        self.setStyleSheet('QListView::item { padding-top: 2px; }')
 
         # setup filter events
-        app = get_app()
         app.window.effectsFilter.textChanged.connect(self.filter_changed)
         app.window.refreshEffectsSignal.connect(self.refresh_view)

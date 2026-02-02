@@ -28,8 +28,9 @@
 import os
 import fnmatch
 
-from qt_api import Qt, QObject, QMimeData, QSortFilterProxyModel, QItemSelectionModel
+from qt_api import Qt, QObject, QMimeData, QSortFilterProxyModel, QItemSelectionModel, QLocale
 from qt_api import QStandardItemModel, QStandardItem, QIcon
+from qt_api import QMessageBox
 import openshot  # Python module for libopenshot (required video editing module installed separately)
 
 from classes import info
@@ -124,7 +125,7 @@ class TitlesModel(QObject):
             # replace suffix number with placeholder (if any)
             if suffix_number:
                 title_name = title_name.replace(suffix_number, "%s")
-                title_name = self.app._tr(title_name) % suffix_number
+                title_name = self.app._tr(title_name) % QLocale().toString(int(suffix_number))
             else:
                 title_name = self.app._tr(title_name)
 
