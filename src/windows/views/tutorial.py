@@ -280,6 +280,16 @@ class TutorialManager(QObject):
 
             break
 
+    def _get_associated_widgets(self, action):
+        """Get associated widgets from a QAction (Qt5/Qt6 compatible)."""
+        # Qt6 renamed associatedWidgets() to associatedObjects()
+        if hasattr(action, 'associatedWidgets'):
+            return action.associatedWidgets()
+        elif hasattr(action, 'associatedObjects'):
+            # Filter to only return QWidget instances
+            return [obj for obj in action.associatedObjects() if isinstance(obj, QWidget)]
+        return []
+
     def get_object(self, object_id):
         """Get an object from the main window by object id"""
         if object_id == "filesView":
@@ -298,16 +308,16 @@ class TutorialManager(QObject):
             return self.win.emojiListView
         elif object_id == "actionPlay":
             # Find play/pause button on transport controls toolbar
-            for w in self.win.actionPlay.associatedWidgets():
+            for w in self._get_associated_widgets(self.win.actionPlay):
                 if isinstance(w, QToolButton) and w.isVisible():
                     return w
-            for w in self.win.actionPause.associatedWidgets():
+            for w in self._get_associated_widgets(self.win.actionPause):
                 if isinstance(w, QToolButton) and w.isVisible():
                     return w
         elif object_id == "export_button":
             # Find export toolbar button on main window
-            for w in reversed(self.win.actionExportVideo.associatedWidgets()):
-                if isinstance(w, QToolButton) and  w.isVisible() and w.parent() == self.win.toolBar:
+            for w in reversed(self._get_associated_widgets(self.win.actionExportVideo)):
+                if isinstance(w, QToolButton) and w.isVisible() and w.parent() == self.win.toolBar:
                     return w
 
     def next_tip(self, tid):
