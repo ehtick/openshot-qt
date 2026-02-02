@@ -75,7 +75,7 @@ class ProcessEffect(QDialog):
             raise ModuleNotFoundError("Openshot not compiled with OpenCV")
 
         # Create dialog class
-        QDialog.__init__(self)
+        super().__init__()
         # Track effect details
         self.clip_id = clip_id
         self.effect_name = ""

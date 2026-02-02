@@ -762,7 +762,7 @@ class FilesModel(QObject, updates.UpdateInterface):
             functools.partial(self.update_model, clear=False))
 
         # Call init for superclass QObject
-        super(QObject, FilesModel).__init__(self, *args)
+        super().__init__(*args)
 
         # Attempt to load model testing interface, if requested
         # (will only succeed with Qt 5.11+)

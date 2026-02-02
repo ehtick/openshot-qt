@@ -54,7 +54,7 @@ class FileProperties(QDialog):
         self.file = file
 
         # Create dialog class
-        QDialog.__init__(self)
+        super().__init__()
 
         # Load UI from designer
         ui_util.load_ui(self, self.ui_path)

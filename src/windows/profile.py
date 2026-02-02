@@ -49,7 +49,7 @@ class Profile(QDialog):
     def __init__(self, initial_profile_desc=None):
 
         # Create dialog class
-        QDialog.__init__(self)
+        super().__init__()
 
         # Load UI from designer & init
         ui_util.load_ui(self, self.ui_path)

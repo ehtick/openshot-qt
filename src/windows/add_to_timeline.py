@@ -437,7 +437,7 @@ class AddToTimeline(QDialog):
 
     def __init__(self, files=None, position=0.0):
         # Create dialog class
-        QDialog.__init__(self)
+        super().__init__()
 
         # Load UI from Designer
         ui_util.load_ui(self, self.ui_path)

@@ -41,7 +41,7 @@ class EditProfileDialog(QDialog):
     ui_path = os.path.join(info.PATH, 'windows', 'ui', 'profile-edit.ui')
 
     def __init__(self, profile, duplicate):
-        super(EditProfileDialog, self).__init__()
+        super().__init__()
 
         # Make copy of profile
         self.original_profile = profile.Json()

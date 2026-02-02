@@ -1975,7 +1975,7 @@ class VideoWidget(QWidget, updates.UpdateInterface):
         """watch_project: watch for changes in project size / widget size, and
         continue to match the current project's aspect ratio."""
         # Invoke parent init
-        QWidget.__init__(self, *args)
+        super().__init__(*args)
 
         # Translate object
         _ = get_app()._tr

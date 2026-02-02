@@ -63,7 +63,7 @@ class SelectRegion(QDialog):
         _ = get_app()._tr
 
         # Create dialog class
-        QDialog.__init__(self)
+        super().__init__()
 
         # Load UI from designer
         ui_util.load_ui(self, self.ui_path)
@@ -277,6 +277,3 @@ class SelectRegion(QDialog):
         self.shutdownPlayer()
         get_app().window.SelectRegionSignal.emit("")
         super(SelectRegion, self).reject()
-
-
-

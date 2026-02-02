@@ -602,7 +602,7 @@ class ZoomSlider(QWidget, updates.UpdateInterface):
 
     def __init__(self, *args):
         # Invoke parent init
-        QWidget.__init__(self, *args)
+        super().__init__(*args)
 
         # Translate object
         _ = get_app()._tr

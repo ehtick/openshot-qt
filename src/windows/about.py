@@ -85,7 +85,7 @@ class About(QDialog):
 
     def __init__(self):
         # Create dialog class
-        QDialog.__init__(self)
+        super().__init__()
 
         # Load UI from designer & init
         ui_util.load_ui(self, self.ui_path)
@@ -304,7 +304,7 @@ class License(QDialog):
 
     def __init__(self):
         # Create dialog class
-        QDialog.__init__(self)
+        super().__init__()
 
         # Load UI from designer
         ui_util.load_ui(self, self.ui_path)
@@ -336,7 +336,7 @@ class Credits(QDialog):
     def __init__(self):
 
         # Create dialog class
-        QDialog.__init__(self)
+        super().__init__()
 
         # Load UI from designer
         ui_util.load_ui(self, self.ui_path)
@@ -429,7 +429,7 @@ class Changelog(QDialog):
     def __init__(self):
 
         # Create dialog class
-        QDialog.__init__(self)
+        super().__init__()
 
         # Load UI from designer
         ui_util.load_ui(self, self.ui_path)
