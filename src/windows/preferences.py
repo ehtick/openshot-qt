@@ -97,6 +97,15 @@ class Preferences(QDialog):
         self.btnRestoreDefaults.clicked.connect(self.confirm_restore_defaults)
         self.tabCategories.currentChanged.connect(self.category_tab_changed)
 
+        # Disable autoDefault so ENTER doesn't trigger Restore Defaults from random widgets
+        self.btnRestoreDefaults.setAutoDefault(False)
+        self.btnRestoreDefaults.setDefault(False)
+
+        # Make Close button the default so ENTER closes the dialog
+        close_button = self.buttonBox.button(self.buttonBox.Close)
+        if close_button:
+            close_button.setDefault(True)
+
         self.requires_restart = False
         self.category_names = {}
         self.category_tabs = {}
