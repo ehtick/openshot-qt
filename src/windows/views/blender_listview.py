@@ -823,8 +823,8 @@ class Worker(QObject):
                         os.killpg(self.process.pid, signal.SIGKILL)
                     else:
                         self.process.kill()
-                except Exception:
-                    pass
+                except Exception as ex:
+                    log.debug("Failed to kill Blender process: %s", ex)
 
     def blender_version_check(self):
         # Check the version of Blender

@@ -19,7 +19,6 @@ from PyQt5.QtWidgets import (
     QComboBox,
     QSpinBox,
     QDoubleSpinBox,
-    QPushButton,
 )
 
 
@@ -128,54 +127,58 @@ def _position_key(widget, root, fallback_index, row_tolerance):
     return (row, x, y, fallback_index)
 
 
-def _prepare_focusable_containers(root):
-    """Ensure menubars/toolbars/actions are eligible for focus and tab order."""
-    if root is None:
+def _prepare_main_window(root):
+    """Configure MainWindow and its menubar focus policies."""
+    if not isinstance(root, QMainWindow):
         return
+    if root.focusPolicy() != Qt.NoFocus:
+        root.setFocusPolicy(Qt.NoFocus)
+    menubar = root.menuBar()
+    if menubar is not None and menubar.focusPolicy() == Qt.NoFocus:
+        menubar.setFocusPolicy(Qt.StrongFocus)
 
-    if isinstance(root, QMainWindow):
-        # MainWindow itself should not accept Tab focus
-        if root.focusPolicy() != Qt.NoFocus:
-            root.setFocusPolicy(Qt.NoFocus)
-        menubar = root.menuBar()
-        if menubar is not None and menubar.focusPolicy() == Qt.NoFocus:
-            menubar.setFocusPolicy(Qt.StrongFocus)
 
-    # Skip Tab focus for empty tab bars only - dock tab bars should be focusable
+def _prepare_tab_bars(root):
+    """Configure tab bar focus policies."""
     for tab_bar in root.findChildren(QTabBar):
         if tab_bar.count() < 2:
             tab_bar.setFocusPolicy(Qt.NoFocus)
+        elif tab_bar.focusPolicy() == Qt.NoFocus:
+            tab_bar.setFocusPolicy(Qt.StrongFocus)
 
+
+def _prepare_toolbars(root):
+    """Configure toolbar widget focus policies."""
     focusable_types = (
-        QToolButton,
-        QLineEdit,
-        QTextEdit,
-        QPlainTextEdit,
-        QComboBox,
-        QSpinBox,
-        QDoubleSpinBox,
+        QToolButton, QLineEdit, QTextEdit, QPlainTextEdit,
+        QComboBox, QSpinBox, QDoubleSpinBox,
     )
-
     for toolbar in root.findChildren(QToolBar):
         for action in toolbar.actions():
             widget = toolbar.widgetForAction(action)
-            if widget is None:
-                continue
-            if isinstance(widget, focusable_types):
+            if widget is not None and isinstance(widget, focusable_types):
                 if widget.focusPolicy() == Qt.NoFocus:
                     widget.setFocusPolicy(Qt.StrongFocus)
-
         for button in toolbar.findChildren(QToolButton):
             if button.focusPolicy() == Qt.NoFocus:
                 button.setFocusPolicy(Qt.StrongFocus)
 
+
+def _prepare_menubars(root):
+    """Configure menubar focus policies."""
     for menubar in root.findChildren(QMenuBar):
         if menubar.focusPolicy() == Qt.NoFocus:
             menubar.setFocusPolicy(Qt.StrongFocus)
 
-    for tab_bar in root.findChildren(QTabBar):
-        if tab_bar.focusPolicy() == Qt.NoFocus:
-            tab_bar.setFocusPolicy(Qt.StrongFocus)
+
+def _prepare_focusable_containers(root):
+    """Ensure menubars/toolbars/actions are eligible for focus and tab order."""
+    if root is None:
+        return
+    _prepare_main_window(root)
+    _prepare_tab_bars(root)
+    _prepare_toolbars(root)
+    _prepare_menubars(root)
 
 
 _TOOLBAR_FOCUSABLE_TYPES = (
@@ -375,13 +378,13 @@ def _collect_dock_groups(root, include_hidden, include_disabled):
                     widget.setProperty("_original_focus_policy", widget.focusPolicy())
                     widget.setFocusPolicy(Qt.NoFocus)
             continue
-        else:
-            # Restore focus policy for widgets in active docks
-            for widget in dock.findChildren(QWidget):
-                original_policy = widget.property("_original_focus_policy")
-                if original_policy is not None:
-                    widget.setFocusPolicy(Qt.FocusPolicy(original_policy))
-                    widget.setProperty("_original_focus_policy", None)
+
+        # Restore focus policy for widgets in active docks
+        for widget in dock.findChildren(QWidget):
+            original_policy = widget.property("_original_focus_policy")
+            if original_policy is not None:
+                widget.setFocusPolicy(Qt.FocusPolicy(original_policy))
+                widget.setProperty("_original_focus_policy", None)
 
         titlebar_widgets = _collect_titlebar_widgets(dock, excluded_widgets)
         _process_dock_tab_bar(root, dock, titlebar_widgets, seen_tab_bars, excluded_widgets)

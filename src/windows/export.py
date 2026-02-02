@@ -904,17 +904,17 @@ class Export(QDialog):
             if child.metaObject().className() == "QToolBoxButton":
                 child.setFocusPolicy(Qt.TabFocus)
 
-    def focusNextPrevChild(self, next):
+    def focusNextPrevChild(self, forward):
         tab_list = getattr(self, "_tab_order_list", None)
         if not tab_list:
-            return super().focusNextPrevChild(next)
+            return super().focusNextPrevChild(forward)
 
         current = self.focusWidget()
         if current is self.exportTabs.tabBar():
             current = self.exportTabs
 
         if current not in tab_list:
-            target = tab_list[0] if next else tab_list[-1]
+            target = tab_list[0] if forward else tab_list[-1]
             if target is self.exportTabs:
                 self.exportTabs.tabBar().setFocus()
             else:
@@ -922,7 +922,7 @@ class Export(QDialog):
             return True
 
         index = tab_list.index(current)
-        if next:
+        if forward:
             index = (index + 1) % len(tab_list)
         else:
             index = (index - 1) % len(tab_list)
