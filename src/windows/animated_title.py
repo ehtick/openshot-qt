@@ -95,8 +95,7 @@ class AnimatedTitle(QDialog):
 
     def _apply_tab_order(self):
         """Apply explicit tab order for animated title dialog."""
-        from PyQt5.QtWidgets import QWidget
-        from PyQt5.QtCore import QTimer
+        from qt_api import QWidget, QTimer
 
         def do_tab_order():
             # Force focus policies on buttons (something is resetting Cancel to NoFocus)

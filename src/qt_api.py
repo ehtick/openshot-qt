@@ -1702,6 +1702,20 @@ def __getattr__(name):
             except Exception:
                 pass
         return QState if name == "QState" else QStateMachine
+    if name == "QAbstractItemModelTester":
+        try:
+            if QT_API == "pyqt6":
+                import PyQt6.QtTest as QtTest  # type: ignore
+            elif QT_API == "pyside6":
+                import PySide6.QtTest as QtTest  # type: ignore
+            elif QT_API == "pyqt5":
+                import PyQt5.QtTest as QtTest  # type: ignore
+            else:
+                QtTest = None
+            if QtTest is not None and hasattr(QtTest, "QAbstractItemModelTester"):
+                return QtTest.QAbstractItemModelTester
+        except Exception:
+            pass
     for module in _MODULES:
         if hasattr(module, name):
             return getattr(module, name)

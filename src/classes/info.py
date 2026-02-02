@@ -93,8 +93,8 @@ try:
     EMOJI_PATH = ""
     EMOJI_ICON = ""
 except ImportError:
-    # Fail gracefully if we're running without PyQt5 (e.g. CI tasks)
-    print("Failed to import `PyQt5.QtCore.QSize` (ignoring exception)")
+    # Fail gracefully if we're running without Qt (e.g. CI tasks)
+    print("Failed to import `qt_api.QSize` (ignoring exception)")
 
 # Maintainer details, for packaging
 JT = {"name": "Jonathan Thomas",
@@ -158,8 +158,8 @@ try:
         lang=trpath[trpath.find('_')+1:-3]
         SUPPORTED_LANGUAGES.append(lang)
 except ImportError:
-    # Fail gracefully if we're running without PyQt5 (e.g. CI tasks)
-    print("Failed to import `PyQt5.QtCore.QDir` (ignoring exception)")
+    # Fail gracefully if we're running without Qt (e.g. CI tasks)
+    print("Failed to import `qt_api.QDir` (ignoring exception)")
 
 SETUP = {
     "name": NAME,

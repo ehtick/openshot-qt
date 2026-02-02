@@ -224,7 +224,7 @@ class EmojisModel(QObject):
         if info.MODEL_TEST:
             try:
                 # Create model tester objects
-                from PyQt5.QtTest import QAbstractItemModelTester
+                from qt_api import QAbstractItemModelTester
                 self.model_tests = []
                 for m in [self.proxy_model, self.group_model, self.model]:
                     self.model_tests.append(
