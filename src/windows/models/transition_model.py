@@ -29,9 +29,10 @@ import os
 
 from qt_api import (
     QObject, QMimeData, Qt, pyqtSignal, QLocale,
-    QSortFilterProxyModel, QPersistentModelIndex, QItemSelectionModel,
+    QSortFilterProxyModel, QPersistentModelIndex, QItemSelectionModel, QItemSelection, QModelIndex,
 )
 from qt_api import QIcon, QStandardItemModel, QStandardItem
+from qt_api import QMessageBox
 import openshot  # Python module for libopenshot (required video editing module installed separately)
 
 from classes import info
