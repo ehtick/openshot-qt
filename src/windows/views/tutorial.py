@@ -141,11 +141,14 @@ class TutorialDialog(QWidget):
     def __init__(self, widget_id, text, arrow, manager, *args):
         super().__init__(*args)
 
-        # Ensure frameless, floating behavior
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint)
+        # Ensure frameless, in-window overlay behavior
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.SubWindow)
         self.setAttribute(Qt.WA_NoSystemBackground, True)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WA_DeleteOnClose, True)
+        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
+        if hasattr(Qt, "WA_AlwaysStackOnTop"):
+            self.setAttribute(Qt.WA_AlwaysStackOnTop, True)
 
         # get translations
         app = get_app()
@@ -233,7 +236,6 @@ class TutorialManager(QObject):
         # If a tutorial is already visible, just update it
         if self.current_dialog:
             # Respond to possible dock floats/moves
-            self.dock.raise_()
             self.re_position_dialog()
             return
 
@@ -254,29 +256,21 @@ class TutorialManager(QObject):
             self.offset = QPoint(
                 int(tutorial_details["x"]),
                 int(tutorial_details["y"]))
-            tutorial_dialog = TutorialDialog(tutorial_id, tutorial_details["text"], tutorial_details["arrow"], self)
+            tutorial_dialog = TutorialDialog(tutorial_id, tutorial_details["text"], tutorial_details["arrow"], self, self.win)
             tutorial_dialog.setObjectName("tutorial")
 
             # Connect signals
             tutorial_dialog.btn_next_tip.clicked.connect(functools.partial(self.next_tip, tutorial_id))
             tutorial_dialog.btn_close_tips.clicked.connect(functools.partial(self.hide_tips, tutorial_id, True))
 
-            # Get previous dock contents
-            old_widget = self.dock.widget()
-
-            # Insert into tutorial dock
-            self.dock.setWidget(tutorial_dialog)
             self.current_dialog = tutorial_dialog
 
             # Show dialog
-            self.dock.adjustSize()
-            self.dock.setEnabled(True)
-            self.re_position_dialog()
-            self.dock.show()
-
-            # Delete old widget
-            if old_widget:
-                old_widget.close()
+            self.current_dialog.adjustSize()
+            self.current_dialog.setEnabled(True)
+            self.re_show_dialog()
+            # Delay positioning until after the window is shown
+            QTimer.singleShot(0, self.re_position_dialog)
 
             break
 
@@ -356,8 +350,8 @@ class TutorialManager(QObject):
     def close_dialogs(self):
         """ Close any open tutorial dialogs """
         if self.current_dialog:
-            self.dock.hide()
-            self.dock.setEnabled(False)
+            self.current_dialog.hide()
+            self.current_dialog.setEnabled(False)
             self.current_dialog = None
 
     def exit_manager(self):
@@ -378,14 +372,14 @@ class TutorialManager(QObject):
     def re_show_dialog(self):
         """ Re show an active dialog """
         if self.current_dialog:
-            self.dock.update()
-            self.dock.raise_()
-            self.dock.show()
+            self.current_dialog.update()
+            self.current_dialog.show()
+            self.current_dialog.raise_()
 
     def hide_dialog(self):
         """ Hide an active dialog """
         if self.current_dialog:
-            self.dock.hide()
+            self.current_dialog.hide()
 
     def re_position_dialog(self):
         """ Reposition the tutorial dialog next to self.position_widget. """
@@ -404,21 +398,27 @@ class TutorialManager(QObject):
 
         # Compute both possible positions (arrow on left vs. arrow on right)
         # NOTE: We do this BEFORE we actually move the dialog!
-        position_arrow_left = self.position_widget.mapToGlobal(pos_rect.bottomRight())
-        position_arrow_right = self.position_widget.mapToGlobal(pos_rect.bottomLeft()) - QPoint(
+        position_arrow_left = self.position_widget.mapTo(self.win, pos_rect.bottomRight())
+        position_arrow_right = self.position_widget.mapTo(self.win, pos_rect.bottomLeft()) - QPoint(
             self.current_dialog.width(), 0)
 
         # Decide which side is viable. For example, we can see if arrow-on-left
         # would run off the right side of the screen. If it does, pick arrow-on-right.
-        screen_rect = get_app().primaryScreen().availableGeometry()
-        monitor_width = screen_rect.width()
+        parent_rect = self.win.rect()
+        right_edge = parent_rect.right()
+        left_edge = parent_rect.left()
 
-        # If placing “arrow on left” means we’d exceed monitor width, we must switch to arrow on right
-        would_exceed_right_edge = (position_arrow_left.x() + self.current_dialog.width()) > monitor_width
+        # If placing “arrow on left” means we’d exceed the right edge, switch to arrow on right
+        would_exceed_right_edge = (position_arrow_left.x() + self.current_dialog.width()) > right_edge
         if would_exceed_right_edge:
             final_position = position_arrow_right
             arrow_on_right = True
         else:
+            final_position = position_arrow_left
+            arrow_on_right = False
+
+        # If arrow-on-right would push off the left edge, keep it on the left
+        if arrow_on_right and final_position.x() < left_edge:
             final_position = position_arrow_left
             arrow_on_right = False
 
@@ -432,7 +432,15 @@ class TutorialManager(QObject):
             self.current_dialog.vbox.setContentsMargins(45, 10, 20, 10)
 
         # Move the dock exactly once, and raise it
-        self.dock.move(final_position)
+        final_parent_position = final_position
+        # Clamp within main window client area to avoid cropping
+        parent_rect = self.win.rect()
+        max_x = max(parent_rect.left(), parent_rect.right() - self.current_dialog.width())
+        max_y = max(parent_rect.top(), parent_rect.bottom() - self.current_dialog.height())
+        clamped_x = min(max(final_parent_position.x(), parent_rect.left()), max_x)
+        clamped_y = min(max(final_parent_position.y(), parent_rect.top()), max_y)
+        final_parent_position = QPoint(clamped_x, clamped_y)
+        self.current_dialog.move(final_parent_position)
         self.re_show_dialog()
 
     def process_visibility(self):
@@ -448,7 +456,6 @@ class TutorialManager(QObject):
         self.win = win
         self.dock = win.dockTutorial
         self.current_dialog = None
-        self.dock.setParent(None)
 
         # get translations
         app = get_app()
@@ -531,6 +538,8 @@ class TutorialManager(QObject):
         self.dock.setAttribute(Qt.WA_TranslucentBackground, True)
         self.dock.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint)
         self.dock.setFloating(True)
+        self.dock.hide()
+        self.dock.setEnabled(False)
 
         # Timer for processing new tutorials
         self.tutorial_timer = QTimer(self)
