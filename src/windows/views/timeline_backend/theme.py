@@ -1648,7 +1648,7 @@ def _apply_css(theme: TimelineTheme, css: str, source: str = "css") -> TimelineT
     if not css:
         return theme
 
-    log_miss = True
+    log_miss = False
 
     _css_apply_background(theme, css, source, log_miss)
     _css_apply_clip(theme, css, source, log_miss)
