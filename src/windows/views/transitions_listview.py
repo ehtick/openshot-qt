@@ -116,6 +116,8 @@ class TransitionsListView(QListView):
         self.selectionModel().deleteLater()
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
+        if hasattr(self, "setSelectionRectVisible"):
+            self.setSelectionRectVisible(False)
         self.setSelectionModel(self.transition_model.list_selection_model)
 
         # Setup header columns

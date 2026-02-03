@@ -115,6 +115,8 @@ class EffectsListView(QListView):
         self.selectionModel().deleteLater()
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
+        if hasattr(self, "setSelectionRectVisible"):
+            self.setSelectionRectVisible(False)
         self.setSelectionModel(self.effects_model.list_selection_model)
 
         # Setup header columns

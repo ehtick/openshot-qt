@@ -169,8 +169,10 @@ class EmojisListView(QListView):
         self.setModel(self.model)
 
         # Configure selection behavior
-        self.setSelectionMode(QListView.ExtendedSelection)
+        self.setSelectionMode(QListView.SingleSelection)
         self.setSelectionBehavior(QListView.SelectRows)
+        if hasattr(self, "setSelectionRectVisible"):
+            self.setSelectionRectVisible(False)
 
         # Keep track of mouse press start position to determine when to start drag
         self.setAcceptDrops(True)
