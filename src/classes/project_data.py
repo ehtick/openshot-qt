@@ -1087,8 +1087,12 @@ class ProjectDataStore(JsonDataStore, UpdateInterface):
         log.info("checking project files...")
         prompt_state = {"cancelled": False}
 
-        # Loop through each files (in reverse order)
-        for file in reversed(self._data["files"]):
+        # Loop through each files in natural-sorted filename order
+        files_sorted = sorted(
+            self._data["files"],
+            key=lambda f: os.path.basename(f.get("path", "")).lower()
+        )
+        for file in files_sorted:
             path = file["path"]
             parent_path, file_name_with_ext = os.path.split(path)
 
