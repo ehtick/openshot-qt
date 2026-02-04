@@ -9,6 +9,9 @@ from PyQt5.QtGui import QColor, QPixmap
 from classes.logger import log
 from classes.info import PATH
 
+LOG_THEME_MISS = False
+LOG_THEME_INFO = False
+
 
 def _apply_overrides(obj, overrides: dict, *, allow_unknown: bool = False) -> None:
     """Apply keyword overrides to a theme object, optionally ignoring unknown keys."""
@@ -187,8 +190,8 @@ def _css_prop(
     prop: str,
     source: str,
     *,
-    log_selector: bool = True,
-    log_property: bool = True,
+    log_selector: bool = LOG_THEME_MISS,
+    log_property: bool = LOG_THEME_MISS,
 ) -> Optional[str]:
     """Return property *prop* from the CSS *selector* block.
 
@@ -257,8 +260,8 @@ def _parse_color(
     prop: Union[str, Sequence[str]],
     source: str,
     *,
-    log_miss: bool = True,
-    log_selector: bool = True,
+    log_miss: bool = LOG_THEME_MISS,
+    log_selector: bool = LOG_THEME_MISS,
 ) -> Optional[QColor]:
     props = (prop,) if isinstance(prop, str) else tuple(prop)
     val = None
@@ -313,7 +316,7 @@ def _parse_color(
 
 
 def _parse_gradient(
-    css: str, selector: str, prop: str, source: str, *, log_miss: bool = True
+    css: str, selector: str, prop: str, source: str, *, log_miss: bool = LOG_THEME_MISS
 ):
     """Return up to two colors from a CSS gradient.
 
@@ -371,8 +374,8 @@ def _parse_float(
     prop: Union[str, Sequence[str]],
     source: str,
     *,
-    log_miss: bool = True,
-    log_selector: bool = True,
+    log_miss: bool = LOG_THEME_MISS,
+    log_selector: bool = LOG_THEME_MISS,
 ) -> Optional[float]:
     props = (prop,) if isinstance(prop, str) else tuple(prop)
     val = None
@@ -419,7 +422,7 @@ def _parse_pixmap(
     prop: str,
     source: str,
     *,
-    log_miss: bool = True,
+    log_miss: bool = LOG_THEME_MISS,
 ) -> Optional[QPixmap]:
     val = _css_prop(css, selector, prop, source)
     if not val:
@@ -447,7 +450,7 @@ def _parse_pixmap(
         if os.path.exists(path):
             img = _load_pixmap_with_meta(path)
             if img:
-                if selector in {".playhead-top", ".marker_icon"} and prop == "background-image":
+                if LOG_THEME_INFO and selector in {".playhead-top", ".marker_icon"} and prop == "background-image":
                     log.info(
                         "Theme [%s] %s %s loaded '%s'",
                         source,
@@ -503,7 +506,7 @@ def _parse_box_shadow(
 
 
 def _theme_pixmap(
-    qt_theme, selector: str, prop: str, *, log_miss: bool = True
+    qt_theme, selector: str, prop: str, *, log_miss: bool = LOG_THEME_MISS
 ) -> Optional[QPixmap]:
     if not qt_theme or not hasattr(qt_theme, "style_sheet"):
         return None
@@ -550,7 +553,7 @@ def _theme_pixmap(
         if os.path.exists(path):
             img = _load_pixmap_with_meta(path)
             if img:
-                if selector in {".playhead-top", ".marker_icon"} and prop == "background-image":
+                if LOG_THEME_INFO and selector in {".playhead-top", ".marker_icon"} and prop == "background-image":
                     log.info(
                         "Theme [theme] %s %s loaded '%s'",
                         selector,
@@ -568,7 +571,7 @@ def _theme_get_color(
     selector: str,
     prop: Union[str, Sequence[str]],
     *,
-    log_miss: bool = True,
+    log_miss: bool = LOG_THEME_MISS,
 ):
     if not qt_theme:
         return None
@@ -595,7 +598,7 @@ def _theme_get_int(
     selector: str,
     prop: Union[str, Sequence[str]],
     *,
-    log_miss: bool = True,
+    log_miss: bool = LOG_THEME_MISS,
 ):
     if not qt_theme:
         return None
@@ -669,7 +672,7 @@ def _theme_apply_color(
     selector: str,
     prop: Union[str, Sequence[str]],
     *,
-    log_miss: bool = True,
+    log_miss: bool = LOG_THEME_MISS,
 ) -> None:
     col = _theme_get_color(qt_theme, selector, prop, log_miss=log_miss)
     _assign_color(target, attr, col)
@@ -683,7 +686,7 @@ def _theme_apply_int(
     prop: Union[str, Sequence[str]],
     *,
     transform: Optional[Callable[[Union[int, float]], Union[int, float]]] = None,
-    log_miss: bool = True,
+    log_miss: bool = LOG_THEME_MISS,
 ) -> None:
     val = _theme_get_int(qt_theme, selector, prop, log_miss=log_miss)
     _assign_value(target, attr, val, transform=transform)
@@ -716,8 +719,8 @@ def _apply_css_color_value(
     prop: Union[str, Sequence[str]],
     source: str,
     *,
-    log_miss: bool = True,
-    log_selector: bool = True,
+    log_miss: bool = LOG_THEME_MISS,
+    log_selector: bool = LOG_THEME_MISS,
 ) -> None:
     col = _parse_color(
         css,
@@ -738,8 +741,8 @@ def _apply_css_float_value(
     prop: Union[str, Sequence[str]],
     source: str,
     *,
-    log_miss: bool = True,
-    log_selector: bool = True,
+    log_miss: bool = LOG_THEME_MISS,
+    log_selector: bool = LOG_THEME_MISS,
     transform: Optional[Callable[[float], Union[int, float]]] = None,
 ) -> None:
     val = _parse_float(
@@ -991,8 +994,12 @@ def _theme_apply_ruler(theme: TimelineTheme, qt_theme, css_sheet: str) -> None:
         "background2",
         lambda: _ruler_gradient(css_sheet, "theme"),
         lambda: _ruler_theme_background(qt_theme),
-        miss_log=lambda: log.info(
-            "Theme MISS [theme] selector '#scrolling_ruler' property 'background'"
+        miss_log=(
+            (lambda: log.info(
+                "Theme MISS [theme] selector '#scrolling_ruler' property 'background'"
+            ))
+            if LOG_THEME_MISS
+            else None
         ),
     )
     _apply_gradient_with_fallback(
@@ -1432,9 +1439,13 @@ def _css_apply_ruler(theme: TimelineTheme, css: str, source: str, log_miss: bool
         "background2",
         lambda: _ruler_gradient(css, source),
         lambda: _ruler_css_background(css, source),
-        miss_log=lambda: log.info(
-            "Theme MISS [%s] selector '#scrolling_ruler' property 'background'",
-            source,
+        miss_log=(
+            (lambda: log.info(
+                "Theme MISS [%s] selector '#scrolling_ruler' property 'background'",
+                source,
+            ))
+            if LOG_THEME_MISS and log_miss
+            else None
         ),
     )
     _apply_gradient_with_fallback(
@@ -1648,7 +1659,7 @@ def _apply_css(theme: TimelineTheme, css: str, source: str = "css") -> TimelineT
     if not css:
         return theme
 
-    log_miss = True
+    log_miss = False
 
     _css_apply_background(theme, css, source, log_miss)
     _css_apply_clip(theme, css, source, log_miss)
@@ -1690,10 +1701,11 @@ def apply_theme(widget, css: str = "") -> bool:
         default_path = os.path.normpath(os.path.join(base, "../images/playhead.svg"))
         if os.path.exists(default_path):
             t.playhead_icon = QPixmap(default_path)
-            log.info(
-                "Theme [default] .playhead-top background-image loaded '%s'",
-                default_path,
-            )
+            if LOG_THEME_INFO:
+                log.info(
+                    "Theme [default] .playhead-top background-image loaded '%s'",
+                    default_path,
+                )
 
     def _load_fallback_icon(*parts):
         path = os.path.normpath(os.path.join(PATH, *parts))
@@ -1702,7 +1714,8 @@ def apply_theme(widget, css: str = "") -> bool:
         pix = _load_pixmap_with_meta(path)
         if not pix:
             return None
-        log.info("Theme [default] fallback icon loaded '%s'", path)
+        if LOG_THEME_INFO:
+            log.info("Theme [default] fallback icon loaded '%s'", path)
         return pix
 
     def _ensure_icon(attr, parts):
