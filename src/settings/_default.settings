@@ -314,7 +314,7 @@
     "min": 0.0,
     "max": 1.0,
     "step": 0.1,
-    "value": 0.7,
+    "value": 0.5,
     "title": "Cache Ahead (Percent)",
     "type": "spinner",
     "category": "Cache",
@@ -323,7 +323,7 @@
   {
     "min": 0,
     "max": 1024,
-    "value": 600,
+    "value": 900,
     "title": "Cache Max Frames",
     "type": "spinner-int",
     "category": "Cache",
@@ -332,7 +332,7 @@
   {
     "min": 0,
     "max": 9999999,
-    "value": 512,
+    "value": 768,
     "title": "Cache Limit (MB)",
     "type": "spinner-int",
     "category": "Cache",

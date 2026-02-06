@@ -517,6 +517,11 @@ App.directive("tlClip", function ($timeout) {
           scope.setDragging(true);
           resize_disabled = false;
 
+          if (scope.Qt) {
+            timeline.DisableCacheThread();
+            timeline.TrimPreviewMode();
+          }
+
           if (scope.enable_timing) {
             timing_original_start = scope.clip.start;
             timing_original_end = scope.clip.end;
@@ -559,6 +564,10 @@ App.directive("tlClip", function ($timeout) {
         },
         stop: function (e, ui) {
           scope.setDragging(false);
+          if (scope.Qt) {
+            timeline.EnableCacheThread();
+            timeline.TimelinePreviewMode();
+          }
 
           // Stop showing hidden keyframes after drag is done
           stopKeyframePreview();
@@ -651,7 +660,11 @@ App.directive("tlClip", function ($timeout) {
               scope.resizeTimeline();
             });
             if (scope.Qt) {
+              timeline.BeginTrimRefresh();
               timeline.RetimeClip(scope.clip.id, scope.clip.end, scope.clip.position);
+            }
+            if (scope.Qt) {
+              timeline.RefreshTrimmedTimelineItem(JSON.stringify(scope.clip), dragLoc);
             }
             if (timing_original_audio && timing_original_duration > 0) {
               var newDuration = Math.max(scope.clip.end - scope.clip.start, 0);
@@ -687,7 +700,11 @@ App.directive("tlClip", function ($timeout) {
 
             // update clip in Qt (very important =)
             if (scope.Qt) {
+              timeline.BeginTrimRefresh();
               timeline.update_clip_data(JSON.stringify(scope.clip), true, true, false, null);
+            }
+            if (scope.Qt) {
+              timeline.RefreshTrimmedTimelineItem(JSON.stringify(scope.clip), dragLoc);
             }
             updateMaxResizeWidth();
           }

@@ -104,6 +104,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
     PauseSignal = pyqtSignal()
     StopSignal = pyqtSignal()
     SeekSignal = pyqtSignal(int)
+    LoadTimelineAndSeekSignal = pyqtSignal(int)
     SpeedSignal = pyqtSignal(float)
     SeekPreviousFrame = pyqtSignal()
     SeekNextFrame = pyqtSignal()
@@ -125,6 +126,8 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
     TimelineResize = pyqtSignal()  # Timeline length changed signal from timeline
     TimelineScroll = pyqtSignal(float)   # Signal to force scroll timeline to specific point
     TimelineCenter = pyqtSignal()        # Signal to force center scroll on playhead
+    TrimPreviewMode = pyqtSignal()
+    TimelinePreviewMode = pyqtSignal()
     SelectionAdded = pyqtSignal(str, str, bool)  # Signal to add a selection
     SelectionRemoved = pyqtSignal(str, str)      # Signal to remove a selection
     SelectionChanged = pyqtSignal()      # Signal after selections have been changed (added/removed)
@@ -1930,7 +1933,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             self.SeekSignal.emit(adjusted_frame)
 
             # Refresh frame (since size of preview might have changed)
-            QTimer.singleShot(500, self.refreshFrameSignal.emit)
+            QTimer.singleShot(500, lambda: self.refreshFrameSignal.emit())
             QTimer.singleShot(500, functools.partial(self.MaxSizeChanged.emit,
                                                      self.videoPreview.size()))
 
@@ -3839,6 +3842,9 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             openshot.Settings.Instance().ENABLE_PLAYBACK_CACHING = True
 
         if not ignore:
+            if getattr(self, "_trim_refresh_pending", False):
+                self.ignore_updates = ignore
+                return
             self.refreshFrameSignal.emit()
             self.propertyTableView.select_frame(self.preview_thread.player.Position())
 
@@ -4228,7 +4234,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         QTimer.singleShot(0, self._apply_saved_timeline_height)
 
         # Refresh frame
-        QTimer.singleShot(100, self.refreshFrameSignal.emit)
+        QTimer.singleShot(100, lambda: self.refreshFrameSignal.emit())
 
         # Main window is initialized
         self.initialized = True

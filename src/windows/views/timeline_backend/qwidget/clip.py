@@ -25,8 +25,9 @@
  along with OpenShot Library.  If not, see <http://www.gnu.org/licenses/>.
  """
 
+import json
 import uuid
-from PyQt5.QtCore import Qt, QRectF
+from PyQt5.QtCore import Qt, QRectF, QTimer
 from PyQt5.QtWidgets import QApplication
 from classes.app import get_app
 from classes.query import Clip, Transition
@@ -580,6 +581,8 @@ class ClipInteractionMixin:
 
     def _startResize(self):
         if self._press_hit == "clip-edge" and self._resizing_item:
+            if hasattr(self.win, "TrimPreviewMode"):
+                self.win.TrimPreviewMode.emit()
             self._startItemResize()
         elif self._press_hit == "timeline-handle":
             self._startProjectResize()
@@ -600,6 +603,8 @@ class ClipInteractionMixin:
     def _finishResize(self):
         if self._press_hit == "clip-edge" and self._resizing_item:
             self._finishItemResize()
+            if hasattr(self.win, "TimelinePreviewMode"):
+                self.win.TimelinePreviewMode.emit()
         elif self._press_hit == "timeline-handle":
             self._finishProjectResize()
         else:
@@ -864,10 +869,16 @@ class ClipInteractionMixin:
         item = self._resizing_item
         if not item:
             return
+        if not hasattr(self, "_resize_new_start"):
+            self._resizing_item = None
+            self._snap_keyframe_seconds = []
+            self.snap.reset()
+            return
         start = self._resize_new_start
         end = self._resize_new_end
         position = self._resize_new_position
         if isinstance(item, Clip):
+            setattr(self.win, "_trim_refresh_pending", True)
             if self.enable_timing:
                 duration = end - start
                 item.data["start"] = self._timing_original_start
@@ -880,11 +891,17 @@ class ClipInteractionMixin:
                 item.data["position"] = self._snap_time(position)
                 self.update_clip_data(item.data, only_basic_props=True, ignore_reader=True)
         else:
+            setattr(self.win, "_trim_refresh_pending", True)
             item.data["position"] = self._snap_time(position)
             item.data["start"] = 0.0
             item.data["end"] = self._snap_time(end)
             item.data["duration"] = self._snap_time(end)
             self.update_transition_data(item.data, only_basic_props=True)
+
+        if isinstance(item, (Clip, Transition)):
+            refresh_trim = getattr(self, "RefreshTrimmedTimelineItem", None)
+            if refresh_trim:
+                refresh_trim(json.dumps(item.data), self._resize_edge)
 
         self._resizing_item = None
         self._snap_keyframe_seconds = []
