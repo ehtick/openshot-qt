@@ -187,8 +187,8 @@ windows-code-sign:
     - $PSVersionTable
     - $env:Path = $env:Path + ";C:\msys64\usr\local\bin;C:\msys64\usr\bin"
     - if (-not (Get-ChildItem -Path "build\*.exe" -ErrorAction SilentlyContinue)) { throw "No Windows installers found in build\\*.exe" }
-    - python3 -u installer/build_server.py "$SLACK_TOKEN" "$GITHUB_USER" "$GITHUB_PASS" "False" "$CI_COMMIT_REF_NAME" "$MAC_PASSWORD" "sign-upload-only"
-    - python3 -u installer/build_server.py "$SLACK_TOKEN" "$GITHUB_USER" "$GITHUB_PASS" "True" "$CI_COMMIT_REF_NAME" "$MAC_PASSWORD" "sign-upload-only"
+    - py -3 -u installer/build_server.py "$SLACK_TOKEN" "$GITHUB_USER" "$GITHUB_PASS" "False" "$CI_COMMIT_REF_NAME" "$MAC_PASSWORD" "sign-upload-only"
+    - py -3 -u installer/build_server.py "$SLACK_TOKEN" "$GITHUB_USER" "$GITHUB_PASS" "True" "$CI_COMMIT_REF_NAME" "$MAC_PASSWORD" "sign-upload-only"
   when: always
   except:
   - tags
