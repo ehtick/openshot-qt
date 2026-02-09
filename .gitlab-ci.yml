@@ -216,6 +216,10 @@ win-sign-x86:
 re-init-builders:
   stage: deploy
   when: manual
+  except:
+    - tags
+  only:
+    - /^release.*$/
   tags:
     - gitlab
   script:
