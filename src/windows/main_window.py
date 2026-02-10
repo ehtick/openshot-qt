@@ -104,6 +104,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
     PauseSignal = pyqtSignal()
     StopSignal = pyqtSignal()
     SeekSignal = pyqtSignal(int)
+    LoadTimelineAndSeekSignal = pyqtSignal(int)
     SpeedSignal = pyqtSignal(float)
     SeekPreviousFrame = pyqtSignal()
     SeekNextFrame = pyqtSignal()
@@ -125,12 +126,16 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
     TimelineResize = pyqtSignal()  # Timeline length changed signal from timeline
     TimelineScroll = pyqtSignal(float)   # Signal to force scroll timeline to specific point
     TimelineCenter = pyqtSignal()        # Signal to force center scroll on playhead
+    TrimPreviewMode = pyqtSignal()
+    TimelinePreviewMode = pyqtSignal()
     SelectionAdded = pyqtSignal(str, str, bool)  # Signal to add a selection
     SelectionRemoved = pyqtSignal(str, str)      # Signal to remove a selection
     SelectionChanged = pyqtSignal()      # Signal after selections have been changed (added/removed)
     SetKeyframeFilter = pyqtSignal(str)     # Signal to only show keyframes for the selected property
     IgnoreUpdates = pyqtSignal(bool, bool)     # Signal to let widgets know to ignore updates (i.e. batch updates)
     ThemeChangedSignal = pyqtSignal(object)     # Signal when theme is changed
+    ProjectSaved = pyqtSignal(str)
+    ProjectSaveFailed = pyqtSignal(str, str)
 
     # Docks are closable, movable and floatable
     docks_frozen = False
@@ -513,17 +518,24 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
                 # Save project to file
                 app.project.save(file_path)
 
-                # Set Window title
-                self.SetWindowTitle()
-
-                # Load recent projects again
-                self.load_recent_menu()
-
                 log.info("Saved project %s", file_path)
+                self.ProjectSaved.emit(file_path)
 
             except Exception as ex:
                 log.error("Couldn't save project %s", file_path, exc_info=1)
-                QMessageBox.warning(self, _("Error Saving Project"), str(ex))
+                self.ProjectSaveFailed.emit(file_path, str(ex))
+
+    @pyqtSlot(str)
+    def _on_project_saved(self, file_path):
+        """Update UI after a project save completes."""
+        self.SetWindowTitle()
+        self.load_recent_menu()
+
+    @pyqtSlot(str, str)
+    def _on_project_save_failed(self, file_path, error_message):
+        """Show save errors on the UI thread."""
+        _ = get_app()._tr
+        QMessageBox.warning(self, _("Error Saving Project"), error_message)
 
     def save_recovery(self, file_path):
         """Saves the project and manages recovery files based on configured limits."""
@@ -1939,7 +1951,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             self.SeekSignal.emit(adjusted_frame)
 
             # Refresh frame (since size of preview might have changed)
-            QTimer.singleShot(500, self.refreshFrameSignal.emit)
+            QTimer.singleShot(500, lambda: self.refreshFrameSignal.emit())
             QTimer.singleShot(500, functools.partial(self.MaxSizeChanged.emit,
                                                      self.videoPreview.size()))
 
@@ -3851,6 +3863,9 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             openshot.Settings.Instance().ENABLE_PLAYBACK_CACHING = True
 
         if not ignore:
+            if getattr(self, "_trim_refresh_pending", False):
+                self.ignore_updates = ignore
+                return
             self.refreshFrameSignal.emit()
             self.propertyTableView.select_frame(self.preview_thread.player.Position())
 
@@ -4213,6 +4228,8 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
 
         # Connect theme changed signal
         self.ThemeChangedSignal.connect(self.style_dock_widgets)
+        self.ProjectSaved.connect(self._on_project_saved, Qt.QueuedConnection)
+        self.ProjectSaveFailed.connect(self._on_project_save_failed, Qt.QueuedConnection)
 
         # Connect the signals for each dock widget from self.getDocks()
         for dock_widget in self.getDocks():
@@ -4240,7 +4257,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         QTimer.singleShot(0, self._apply_saved_timeline_height)
 
         # Refresh frame
-        QTimer.singleShot(100, self.refreshFrameSignal.emit)
+        QTimer.singleShot(100, lambda: self.refreshFrameSignal.emit())
 
         # Main window is initialized
         self.initialized = True
