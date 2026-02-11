@@ -587,6 +587,8 @@ class KeyframeMixin:
             for marker in markers:
                 if id(marker) in marker_updates:
                     continue
+                if not self._panel_drag_owner_matches_marker(panel_drag, marker):
+                    continue
                 marker_paths = self._marker_paths_tuples(marker)
                 if not marker_paths:
                     continue
@@ -746,7 +748,19 @@ class KeyframeMixin:
         if not markers or not isinstance(entry, dict):
             return None
         owner_markers = [m for m in markers if self._panel_drag_owner_matches_marker(drag, m)]
-        candidates = owner_markers if owner_markers else list(markers)
+        strict_owner = False
+        if isinstance(drag, dict):
+            strict_owner = bool(
+                drag.get("object_id")
+                or drag.get("clip") is not None
+                or drag.get("transition") is not None
+            )
+        if strict_owner:
+            if not owner_markers:
+                return None
+            candidates = owner_markers
+        else:
+            candidates = owner_markers if owner_markers else list(markers)
 
         entry_path = self._entry_path_tuple(entry)
         if entry_path:
@@ -1162,6 +1176,343 @@ class KeyframeMixin:
         co["X"] = new_frame
         return True
 
+    def _remove_keyframe_at_path(self, data, path):
+        if not path:
+            return False
+        try:
+            path_tuple = tuple(path)
+        except TypeError:
+            return False
+        if not path_tuple:
+            return False
+        parent_path = path_tuple[:-1]
+        last = path_tuple[-1]
+        if not isinstance(last, tuple) or len(last) != 2:
+            return False
+        parent = self._resolve_data_path(data, parent_path)
+        kind, key = last
+        if kind == "list":
+            if not isinstance(parent, list):
+                return False
+            try:
+                index = int(key)
+            except (TypeError, ValueError):
+                return False
+            if index < 0 or index >= len(parent):
+                return False
+            parent.pop(index)
+            return True
+        if kind == "dict":
+            if not isinstance(parent, dict) or key not in parent:
+                return False
+            parent.pop(key, None)
+            return True
+        return False
+
+    def _remove_keyframes_by_paths(self, data, paths):
+        if not isinstance(data, (dict, list)):
+            return False
+        grouped = {}
+        for path in paths or ():
+            try:
+                path_tuple = tuple(path)
+            except TypeError:
+                continue
+            if not path_tuple:
+                continue
+            parent_path = path_tuple[:-1]
+            last = path_tuple[-1]
+            if not isinstance(last, tuple) or len(last) != 2:
+                continue
+            grouped.setdefault(parent_path, []).append(last)
+        changed = False
+        for parent_path, tails in grouped.items():
+            parent = self._resolve_data_path(data, parent_path)
+            list_indexes = []
+            dict_keys = []
+            for tail in tails:
+                kind, key = tail
+                if kind == "list":
+                    try:
+                        list_indexes.append(int(key))
+                    except (TypeError, ValueError):
+                        continue
+                elif kind == "dict":
+                    dict_keys.append(key)
+            if isinstance(parent, list) and list_indexes:
+                for index in sorted(set(list_indexes), reverse=True):
+                    if 0 <= index < len(parent):
+                        parent.pop(index)
+                        changed = True
+            if isinstance(parent, dict) and dict_keys:
+                for key in set(dict_keys):
+                    if key in parent:
+                        parent.pop(key, None)
+                        changed = True
+        return changed
+
+    def _remove_keyframes_in_object(self, obj, target_frame):
+        changed = False
+        if isinstance(obj, dict):
+            points = obj.get("Points")
+            if isinstance(points, list):
+                kept = []
+                for point in points:
+                    if not isinstance(point, dict):
+                        kept.append(point)
+                        continue
+                    co = point.get("co") if isinstance(point.get("co"), dict) else {}
+                    try:
+                        frame = int(round(float(co.get("X"))))
+                    except (TypeError, ValueError):
+                        kept.append(point)
+                        continue
+                    if frame == target_frame:
+                        changed = True
+                        continue
+                    kept.append(point)
+                if changed and len(kept) != len(points):
+                    points[:] = kept
+            for channel in ("red", "green", "blue"):
+                channel_obj = obj.get(channel)
+                if isinstance(channel_obj, (dict, list)):
+                    if self._remove_keyframes_in_object(channel_obj, target_frame):
+                        changed = True
+            for key, value in obj.items():
+                if key in ("ui", "red", "green", "blue"):
+                    continue
+                if isinstance(value, (dict, list)):
+                    if self._remove_keyframes_in_object(value, target_frame):
+                        changed = True
+        elif isinstance(obj, list):
+            for item in obj:
+                if isinstance(item, (dict, list)):
+                    if self._remove_keyframes_in_object(item, target_frame):
+                        changed = True
+        return changed
+
+    def _panel_selected_keyframe_targets(self):
+        targets = {}
+        panel_selection = getattr(self, "_panel_selected_keyframes", {}) or {}
+        panel_properties = getattr(self, "_panel_properties", {}) or {}
+        for track_num, prop_selection in panel_selection.items():
+            info = panel_properties.get(track_num)
+            if not isinstance(info, dict):
+                continue
+            track_context = info.get("context")
+            for prop in info.get("properties") or []:
+                if not isinstance(prop, dict):
+                    continue
+                prop_key = prop.get("key")
+                if not prop_key:
+                    continue
+                selector = prop_selection.get(prop_key)
+                if not selector:
+                    continue
+                prop_context = self._panel_property_context(prop, track_context)
+                for point in prop.get("points") or []:
+                    frame_val = point.get("frame")
+                    if not self._panel_selection_contains(
+                        selector,
+                        frame_val,
+                        point=point,
+                        fallback_context=prop_context,
+                    ):
+                        continue
+                    path = point.get("path")
+                    if not path:
+                        continue
+                    owner = self._panel_resolve_owner(prop, prop_context, point=point)
+                    owner_type = owner.get("owner_type") or "clip"
+                    object_id = str(owner.get("object_id") or "")
+                    clip_obj = owner.get("clip")
+                    transition_obj = owner.get("transition")
+                    if owner_type == "transition":
+                        if not object_id and transition_obj is not None:
+                            object_id = str(getattr(transition_obj, "id", "") or "")
+                    else:
+                        if not object_id and clip_obj is not None:
+                            object_id = str(getattr(clip_obj, "id", "") or "")
+                    if not object_id:
+                        continue
+                    key = (owner_type, object_id)
+                    target = targets.get(key)
+                    if target is None:
+                        target = {
+                            "owner_type": owner_type,
+                            "object_id": object_id,
+                            "clip": clip_obj,
+                            "transition": transition_obj,
+                            "paths": set(),
+                        }
+                        targets[key] = target
+                    try:
+                        target["paths"].add(tuple(path))
+                    except TypeError:
+                        continue
+        return list(targets.values())
+
+    def _delete_keyframe_marker_target(self, marker):
+        if not isinstance(marker, dict):
+            return False
+        marker_type = marker.get("type")
+        if marker_type not in ("clip", "effect", "transition"):
+            return False
+        timeline = getattr(self.win, "timeline", None)
+        if not timeline:
+            return False
+
+        if marker_type == "transition":
+            transition = marker.get("transition")
+            if not transition:
+                transition = Transition.get(id=marker.get("object_id"))
+            if not transition or not isinstance(getattr(transition, "data", None), (dict, list)):
+                return False
+            data_copy = json.loads(json.dumps(transition.data))
+            paths = tuple(marker.get("data_paths") or ())
+            changed = False
+            if paths:
+                changed = self._remove_keyframes_by_paths(data_copy, paths)
+                if changed:
+                    self._remove_keyframes_by_paths(transition.data, paths)
+            if not changed:
+                frame_val = marker.get("display_frame", marker.get("frame"))
+                try:
+                    frame_int = int(frame_val)
+                except (TypeError, ValueError):
+                    return False
+                changed = self._remove_keyframes_in_object(data_copy, frame_int)
+                if changed:
+                    self._remove_keyframes_in_object(transition.data, frame_int)
+            if not changed:
+                return False
+            timeline.update_transition_data(
+                data_copy,
+                only_basic_props=False,
+                ignore_refresh=False,
+            )
+            return True
+
+        clip = marker.get("clip")
+        if not clip:
+            clip = Clip.get(id=marker.get("object_id"))
+        if not clip or not isinstance(getattr(clip, "data", None), (dict, list)):
+            return False
+        data_copy = json.loads(json.dumps(clip.data))
+        paths = tuple(marker.get("data_paths") or ())
+        changed = False
+        if paths:
+            changed = self._remove_keyframes_by_paths(data_copy, paths)
+            if changed:
+                self._remove_keyframes_by_paths(clip.data, paths)
+        if not changed:
+            frame_val = marker.get("display_frame", marker.get("frame"))
+            try:
+                frame_int = int(frame_val)
+            except (TypeError, ValueError):
+                return False
+            if marker_type == "effect":
+                effect_id = str(marker.get("owner_id") or marker.get("effect_id") or "")
+                effect_copy = None
+                effect_live = None
+                for eff in data_copy.get("effects", []) if isinstance(data_copy, dict) else []:
+                    if str(eff.get("id")) == effect_id:
+                        effect_copy = eff
+                        break
+                for eff in clip.data.get("effects", []) if isinstance(clip.data, dict) else []:
+                    if str(eff.get("id")) == effect_id:
+                        effect_live = eff
+                        break
+                if effect_copy is None:
+                    return False
+                changed = self._remove_keyframes_in_object(effect_copy, frame_int)
+                if changed and effect_live is not None:
+                    self._remove_keyframes_in_object(effect_live, frame_int)
+            else:
+                changed = self._remove_keyframes_in_object(data_copy, frame_int)
+                if changed:
+                    self._remove_keyframes_in_object(clip.data, frame_int)
+        if not changed:
+            return False
+        timeline.update_clip_data(
+            data_copy,
+            only_basic_props=False,
+            ignore_reader=True,
+            ignore_refresh=False,
+        )
+        return True
+
+    def delete_selected_keyframes(self):
+        timeline = getattr(self.win, "timeline", None)
+        if not timeline:
+            return False
+
+        changed = False
+        targets = self._panel_selected_keyframe_targets()
+        for target in targets:
+            owner_type = target.get("owner_type")
+            object_id = target.get("object_id")
+            if not owner_type or not object_id:
+                continue
+            paths = tuple(target.get("paths") or ())
+            if not paths:
+                continue
+            if owner_type == "transition":
+                transition = target.get("transition") or Transition.get(id=object_id)
+                if not transition or not isinstance(getattr(transition, "data", None), (dict, list)):
+                    continue
+                data_copy = json.loads(json.dumps(transition.data))
+                if not self._remove_keyframes_by_paths(data_copy, paths):
+                    continue
+                self._remove_keyframes_by_paths(transition.data, paths)
+                timeline.update_transition_data(
+                    data_copy,
+                    only_basic_props=False,
+                    ignore_refresh=False,
+                )
+                changed = True
+                continue
+
+            clip = target.get("clip") or Clip.get(id=object_id)
+            if not clip or not isinstance(getattr(clip, "data", None), (dict, list)):
+                continue
+            data_copy = json.loads(json.dumps(clip.data))
+            if not self._remove_keyframes_by_paths(data_copy, paths):
+                continue
+            self._remove_keyframes_by_paths(clip.data, paths)
+            timeline.update_clip_data(
+                data_copy,
+                only_basic_props=False,
+                ignore_reader=True,
+                ignore_refresh=False,
+            )
+            changed = True
+
+        if not changed:
+            marker = getattr(self, "_active_keyframe_marker", None)
+            if not marker:
+                marker = getattr(self, "_press_keyframe", None)
+            if not marker and isinstance(getattr(self, "_dragging_keyframe", None), dict):
+                marker = self._dragging_keyframe.get("marker")
+            changed = self._delete_keyframe_marker_target(marker)
+
+        if not changed:
+            return False
+
+        self._active_keyframe_marker = None
+        self._press_keyframe = None
+        self._dragging_keyframe = None
+        self._dragging_panel_keyframes = None
+        self._clear_panel_selection(None)
+        self._snap_keyframe_seconds = []
+        self._update_track_panel_properties()
+        self.geometry.mark_dirty()
+        self._keyframes_dirty = True
+        self.update()
+        if hasattr(self.win, "show_property_timeout"):
+            QTimer.singleShot(0, self.win.show_property_timeout)
+        return True
+
     def _begin_keyframe_transaction(self):
         if not self._dragging_keyframe or self._dragging_keyframe.get("transaction_started"):
             return
@@ -1185,6 +1536,8 @@ class KeyframeMixin:
         self._press_keyframe = None
         if not marker:
             return
+        if marker.get("type") == "clip":
+            self._panel_select_points_for_clip_marker(marker)
         self.mouse_dragging = True
         self._dragging_keyframe = {
             "marker": marker,
@@ -1243,7 +1596,13 @@ class KeyframeMixin:
             new_frame = drag.get("current_frame")
         drag["pending_frame"] = new_frame
         absolute_seconds = self._keyframe_base_position(marker) + relative_seconds
-        self._panel_preview_marker(marker, drag.get("current_frame"), new_frame, absolute_seconds)
+        self._panel_preview_marker(
+            marker,
+            drag.get("current_frame"),
+            new_frame,
+            absolute_seconds,
+            drag_paths=drag.get("data_paths"),
+        )
         if new_frame != drag.get("current_frame"):
             self._begin_keyframe_transaction()
             if drag.get("transaction_started") and new_frame is not None:
@@ -1338,7 +1697,13 @@ class KeyframeMixin:
         if pending_seconds is None and self.fps_float:
             pending_seconds = max(0.0, ((new_frame - 1.0) / self.fps_float) - drag.get("clip_start", 0.0))
         absolute_seconds = base_position + (pending_seconds or 0.0)
-        self._panel_preview_marker(marker, old_frame, new_frame, absolute_seconds)
+        self._panel_preview_marker(
+            marker,
+            old_frame,
+            new_frame,
+            absolute_seconds,
+            drag_paths=drag.get("data_paths"),
+        )
 
         drag["current_frame"] = new_frame
         marker["frame"] = new_frame
@@ -1402,6 +1767,7 @@ class KeyframeMixin:
     def _handle_keyframe_click(self, marker, clear_existing=True):
         if not marker:
             return
+        self._active_keyframe_marker = marker
         self._select_marker_owner(marker, seek=True, clear_existing=clear_existing)
 
     def _seek_to_marker_frame(self, marker, frame):
@@ -1451,6 +1817,7 @@ class KeyframeMixin:
             clear_existing = drag.get("clear_existing", True)
             self._handle_keyframe_click(marker, clear_existing=clear_existing)
 
+        self._active_keyframe_marker = marker
         self._dragging_keyframe = None
         self.mouse_dragging = False
         self._keyframes_dirty = True

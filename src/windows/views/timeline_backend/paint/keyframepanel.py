@@ -252,13 +252,9 @@ class KeyframePanelPainter(BasePainter):
         add_rect = QRectF()
         can_add = isinstance(prop, dict) and not prop.get("placeholder")
         if can_add:
-            cached = prop.get("_panel_add_rect") if isinstance(prop, dict) else None
-            if isinstance(cached, QRectF) and not cached.isNull():
-                add_rect = cached
-            else:
-                add_rect = self.w._panel_add_icon_rect(label_rect)
-                if isinstance(prop, dict):
-                    prop["_panel_add_rect"] = add_rect
+            # Compute per paint. Caching this rect can leave stale icon positions
+            # when panel rows move between tracks during drag.
+            add_rect = self.w._panel_add_icon_rect(label_rect)
 
         if draw_labels:
             painter.setPen(self.text_pen)
@@ -288,22 +284,57 @@ class KeyframePanelPainter(BasePainter):
                 min(lane_rect.bottom() - lane_padding, baseline),
             )
 
-        range_start = context.get("range_start_seconds") if isinstance(context, dict) else None
-        range_end = context.get("range_end_seconds") if isinstance(context, dict) else None
-        start_x = lane_rect.left() + lane_padding
-        end_x = lane_rect.right() - lane_padding
-        if range_start is not None and range_end is not None:
-            start_x = self._seconds_to_x(range_start)
-            end_x = self._seconds_to_x(range_end)
-        if end_x < start_x:
-            start_x, end_x = end_x, start_x
-        start_x = max(start_x, lane_clip.left())
-        end_x = min(end_x, lane_clip.right())
+        segments = []
+        seen_segments = set()
+        for point in prop.get("points") or []:
+            point_context = point.get("_panel_context") if isinstance(point, dict) else None
+            if not isinstance(point_context, dict):
+                continue
+            seg_start = point_context.get("range_start_seconds")
+            seg_end = point_context.get("range_end_seconds")
+            try:
+                seg_start = float(seg_start) if seg_start is not None else None
+                seg_end = float(seg_end) if seg_end is not None else None
+            except (TypeError, ValueError):
+                continue
+            if seg_start is None or seg_end is None:
+                continue
+            if seg_end < seg_start:
+                seg_start, seg_end = seg_end, seg_start
+            key = (round(seg_start, 6), round(seg_end, 6))
+            if key in seen_segments:
+                continue
+            seen_segments.add(key)
+            segments.append((seg_start, seg_end))
+
+        if not segments:
+            range_start = context.get("range_start_seconds") if isinstance(context, dict) else None
+            range_end = context.get("range_end_seconds") if isinstance(context, dict) else None
+            start_x = lane_rect.left() + lane_padding
+            end_x = lane_rect.right() - lane_padding
+            if range_start is not None and range_end is not None:
+                start_x = self._seconds_to_x(range_start)
+                end_x = self._seconds_to_x(range_end)
+            if end_x < start_x:
+                start_x, end_x = end_x, start_x
+            segments = [(start_x, end_x)]
+        else:
+            segments = [
+                (self._seconds_to_x(seg_start), self._seconds_to_x(seg_end))
+                for seg_start, seg_end in segments
+            ]
 
         painter.save()
         painter.setClipRect(lane_clip)
         painter.setPen(self.curve_pen)
-        painter.drawLine(QPointF(start_x, baseline), QPointF(end_x, baseline))
+        for start_x, end_x in segments:
+            if end_x < start_x:
+                start_x, end_x = end_x, start_x
+            start_x = max(start_x, lane_clip.left())
+            end_x = min(end_x, lane_clip.right())
+            if end_x <= start_x:
+                continue
+            painter.drawLine(QPointF(start_x, baseline), QPointF(end_x, baseline))
 
         inactive = 0.72
         for point in prop.get("points") or []:

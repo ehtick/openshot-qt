@@ -307,6 +307,7 @@ class TimelineWidgetBase(QWidget):
         self._keyframes_dirty = True
         self._dragging_keyframe = None
         self._press_keyframe = None
+        self._active_keyframe_marker = None
         self._press_keyframe_clear = True
         self._press_effect_icon = None
         self._pending_clip_overrides = {}
@@ -753,7 +754,7 @@ class TimelineWidgetBase(QWidget):
 
         # Skip panel property rebuild during an active keyframe drag
         # to prevent stale point references.
-        if not self._dragging_panel_keyframes:
+        if not self._dragging_panel_keyframes and not self._dragging_keyframe:
             self._update_track_panel_properties()
         self.geometry.ensure()
         self._keyframes_dirty = True
@@ -791,7 +792,7 @@ class TimelineWidgetBase(QWidget):
             # Skip panel property rebuild during an active keyframe drag
             # to prevent stale point references (the drag writes
             # pending_seconds directly to the cached point dicts).
-            if not self._dragging_panel_keyframes:
+            if not self._dragging_panel_keyframes and not self._dragging_keyframe:
                 signature = self._panel_current_signature()
                 if signature != self._panel_refresh_signature:
                     self._panel_refresh_signature = signature
@@ -801,6 +802,7 @@ class TimelineWidgetBase(QWidget):
             self.geometry.ensure()
             self._ensure_keyframe_markers()
             self._apply_panel_drag_marker_override()
+            self._apply_keyframe_drag_panel_override()
 
             self.bg_painter.paint(painter, event.rect())
             self.track_painter.paint_background(painter)
@@ -1882,6 +1884,7 @@ class TimelineWidgetBase(QWidget):
     def clear_all_selections(self):
         """Clear all timeline selections and keyframe highlights."""
         self.win.clearSelections()
+        self._active_keyframe_marker = None
         if hasattr(self, "_clear_panel_selection"):
             self._clear_panel_selection(None)
         self.clip_painter.clear_cache()
@@ -2254,10 +2257,34 @@ class TimelineWidgetBase(QWidget):
         if marker:
             self._press_hit = "keyframe"
             self._press_keyframe = marker
-            self._press_keyframe_clear = not ctrl
+            self._active_keyframe_marker = marker
+            clear_existing = not ctrl
+            # Preserve multi-item clip/transition selection when dragging a
+            # keyframe from an already-selected owner.
+            if clear_existing:
+                selected_clip_ids = {
+                    str(item_id) for item_id in (getattr(self.win, "selected_clips", []) or [])
+                }
+                selected_transition_ids = {
+                    str(item_id) for item_id in (getattr(self.win, "selected_transitions", []) or [])
+                }
+                selected_item_count = len(selected_clip_ids) + len(selected_transition_ids)
+                marker_type = marker.get("type")
+                if marker_type == "transition":
+                    transition_obj = marker.get("transition")
+                    owner_id = str(getattr(transition_obj, "id", "") if transition_obj else "")
+                    owner_selected = owner_id in selected_transition_ids
+                else:
+                    clip_obj = marker.get("clip")
+                    owner_id = str(getattr(clip_obj, "id", "") if clip_obj else "")
+                    owner_selected = owner_id in selected_clip_ids
+                if owner_selected and selected_item_count > 1:
+                    clear_existing = False
+            self._press_keyframe_clear = clear_existing
             self._select_marker_owner(marker, clear_existing=self._press_keyframe_clear)
             return
         self._press_keyframe = None
+        self._active_keyframe_marker = None
         self._press_keyframe_clear = True
         add_button = self._panel_add_button_at(pos)
         if add_button:
@@ -2445,10 +2472,23 @@ class TimelineWidgetBase(QWidget):
                 except (TypeError, ValueError):
                     frame_int = None
                 if frame_int is not None:
+                    point_context = point.get("_panel_context") if isinstance(point, dict) else None
+                    context_signature = None
+                    if isinstance(point_context, dict):
+                        context_signature = self._panel_context_signature(point_context)
                     if additive:
-                        self._panel_toggle_frames(track_num, prop_key, {frame_int})
+                        self._panel_toggle_frames(
+                            track_num,
+                            prop_key,
+                            {frame_int},
+                            context_signature=context_signature,
+                        )
                     else:
-                        self._panel_set_selection_map(track_num, {prop_key: {frame_int}})
+                        selector = self._panel_selection_selector(
+                            {frame_int},
+                            context_signature=context_signature,
+                        )
+                        self._panel_set_selection_map(track_num, {prop_key: selector})
             if point:
                 self._panel_seek_to_point(info, point)
             self._press_hit = None
@@ -2504,6 +2544,8 @@ class TimelineWidgetBase(QWidget):
             return False
         info = self._panel_properties.get(key)
         if not isinstance(info, dict):
+            return False
+        if info.get("item_type") == "multi":
             return False
         available = info.get("available_properties") or []
         if not available:
@@ -2567,6 +2609,8 @@ class TimelineWidgetBase(QWidget):
             return False
         info = self._panel_properties.get(key)
         if not isinstance(info, dict):
+            return False
+        if info.get("item_type") == "multi":
             return False
         available = info.get("available_properties") or []
         available_map = {

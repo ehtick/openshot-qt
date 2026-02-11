@@ -498,9 +498,21 @@ class ClipInteractionMixin:
             # Update cached rect
             rect = self.geometry.calc_item_rect(itm)
             self.geometry.update_item_rect(itm, rect)
-            frame_delta = frame_offset if frame_offset is not None else 0
-            if delta_sec or frame_delta:
-                self._panel_shift_item(itm, delta_sec, frame_delta)
+            # Use the actual applied movement (after per-item clamping/snap-to-frame),
+            # otherwise panel points can lag at the snap threshold while clip visuals
+            # already snapped to the final frame-aligned position.
+            applied_delta_sec = new_pos_sec - start_pos_sec
+            if fps > 0.0:
+                start_frame_for_item = info.get("position_frames")
+                if start_frame_for_item is None:
+                    start_frame_for_item = int(round(start_pos_sec * fps))
+                new_frame_for_item = int(round(new_pos_sec * fps))
+                applied_frame_delta = new_frame_for_item - start_frame_for_item
+            else:
+                applied_frame_delta = 0
+            # Always apply panel shift, even for 0 delta. When snapping returns to
+            # drag origin, skipping this leaves stale panel points until mouse-up.
+            self._panel_shift_item(itm, applied_delta_sec, applied_frame_delta)
 
         # Immediate visual feedback
         self._keyframes_dirty = True
@@ -1032,12 +1044,21 @@ class ClipInteractionMixin:
                     lane_rect = lane.get("lane_rect", QRectF())
                     lane_padding = lane.get("lane_padding", self._panel_lane_padding())
                     selected_frames = set()
+                    selected_context = None
                     for point in points:
                         seconds = point.get("seconds")
                         if seconds is None:
                             continue
                         marker_rect = self._panel_marker_rect(lane_rect, lane_padding, seconds)
                         if marker_rect.intersects(selection_rect):
+                            point_context = None
+                            if hasattr(self, "_panel_property_context"):
+                                point_context = self._panel_property_context(
+                                    {"context": point.get("_panel_context")},
+                                    lane.get("context"),
+                                )
+                            if selected_context is None and point_context:
+                                selected_context = self._panel_context_signature(point_context)
                             frame_val = point.get("frame")
                             if frame_val is not None:
                                 try:
@@ -1045,7 +1066,11 @@ class ClipInteractionMixin:
                                 except (TypeError, ValueError):
                                     continue
                     if selected_frames:
-                        frames_by_prop[prop.get("key")] = selected_frames
+                        selector = self._panel_selection_selector(
+                            selected_frames,
+                            context_signature=selected_context,
+                        )
+                        frames_by_prop[prop.get("key")] = selector
             if ctrl_down:
                 if frames_by_prop:
                     self._panel_merge_selection_map(track_num, frames_by_prop)

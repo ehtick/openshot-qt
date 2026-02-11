@@ -3469,6 +3469,17 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             if self.filesView.hasFocus():
                 self.actionRemove_from_Project_trigger()
             else:
+                # Prioritize deleting selected keyframes before deleting clips.
+                keyframes_deleted = False
+                timeline_widget = getattr(self, "timeline", None)
+                if timeline_widget and hasattr(timeline_widget, "delete_selected_keyframes"):
+                    try:
+                        keyframes_deleted = bool(timeline_widget.delete_selected_keyframes())
+                    except Exception:
+                        keyframes_deleted = False
+                if keyframes_deleted:
+                    self.refreshFrameSignal.emit()
+                    return
                 # Otherwise, proceed with the normal timeline delete behavior
                 self.actionRemoveClip_trigger(refresh=False)
                 self.actionRemoveTransition_trigger(refresh=False)
