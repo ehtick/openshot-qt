@@ -675,6 +675,109 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             key=lambda p: p.get("co", {}).get("X", 0)
         )
 
+    def _infer_transition_drop_side(self, transition_data):
+        """Return 'left' or 'right' based on which side of a clip the transition overlaps."""
+        if not isinstance(transition_data, dict):
+            return None
+
+        try:
+            layer = int(transition_data.get("layer", 0))
+            position = float(transition_data.get("position", 0.0))
+            start = float(transition_data.get("start", 0.0))
+            end = float(transition_data.get("end", 0.0))
+        except (TypeError, ValueError):
+            return None
+
+        duration = max(0.0, end - start)
+        if duration <= 0.0:
+            return None
+
+        tran_left = position
+        tran_right = position + duration
+        tran_mid = (tran_left + tran_right) / 2.0
+
+        best_match = None
+        for clip in Clip.filter(layer=layer):
+            clip_data = clip.data if isinstance(clip.data, dict) else {}
+            try:
+                clip_left = float(clip_data.get("position", 0.0))
+                clip_start = float(clip_data.get("start", 0.0))
+                clip_end = float(clip_data.get("end", 0.0))
+            except (TypeError, ValueError):
+                continue
+
+            clip_duration = max(0.0, clip_end - clip_start)
+            if clip_duration <= 0.0:
+                continue
+
+            clip_right = clip_left + clip_duration
+            overlap = min(tran_right, clip_right) - max(tran_left, clip_left)
+            if overlap <= 0.0:
+                continue
+
+            clip_mid = (clip_left + clip_right) / 2.0
+            side = "left" if tran_mid <= clip_mid else "right"
+            edge_dist = abs(tran_mid - (clip_left if side == "left" else clip_right))
+            score = (-overlap, edge_dist)
+            if best_match is None or score < best_match[0]:
+                best_match = (score, side)
+
+        return best_match[1] if best_match else None
+
+    def _auto_orient_transition_keyframes(self, transition_data):
+        """Apply fade-in orientation on left-edge drops (right edge keeps default orientation)."""
+        target_side = self._infer_transition_drop_side(transition_data)
+        if target_side not in ("left", "right"):
+            return
+
+        fps = get_app().project.get("fps")
+        fps_float = float(fps["num"]) / float(fps["den"])
+        try:
+            duration = float(transition_data.get("end", 0.0)) - float(transition_data.get("start", 0.0))
+        except (TypeError, ValueError):
+            duration = 0.0
+        total_frames = max(1, round(max(0.0, duration) * fps_float))
+
+        # Infer current direction from brightness keyframe values when possible.
+        current_side = None
+        brightness = transition_data.get("brightness")
+        if isinstance(brightness, dict):
+            points = brightness.get("Points", [])
+            keyed = []
+            for point in points:
+                co = point.get("co") if isinstance(point, dict) else None
+                if not isinstance(co, dict):
+                    continue
+                x = co.get("X")
+                y = co.get("Y")
+                if x is None or y is None:
+                    continue
+                try:
+                    keyed.append((float(x), float(y)))
+                except (TypeError, ValueError):
+                    continue
+            if len(keyed) >= 2:
+                keyed.sort(key=lambda k: k[0])
+                first_y = keyed[0][1]
+                last_y = keyed[-1][1]
+                if first_y < last_y:
+                    current_side = "right"
+                elif first_y > last_y:
+                    current_side = "left"
+
+        # Only auto-flip when the current direction is clearly inferable.
+        # This avoids rewriting customized/non-monotonic transition curves.
+        if current_side is None:
+            return
+
+        if current_side == target_side:
+            return
+
+        for prop in ("brightness", "contrast"):
+            keyframe = transition_data.get(prop)
+            if isinstance(keyframe, dict):
+                self._reverse_keyframes(keyframe, total_frames)
+
     # Javascript callable function to update the project data when a transition changes
     @pyqtSlot(str, bool, bool, str)
     def update_transition_data(self, transition_json, only_basic_props=True, ignore_refresh=False, transaction_id=None):
@@ -686,6 +789,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             transition_data = json.loads(transition_json)
         else:
             transition_data = transition_json
+        auto_direction = bool(transition_data.pop("_auto_direction", False))
 
         # Search for matching transition in project data (if any)
         existing_item = Transition.get(id=transition_data["id"])
@@ -716,6 +820,9 @@ class TimelineView(updates.UpdateInterface, ViewClass):
                 for prop in ("brightness", "contrast"):
                     if prop in existing_item.data:
                         self._scale_keyframes(existing_item.data[prop], scale)
+
+        if auto_direction:
+            self._auto_orient_transition_keyframes(existing_item.data)
 
         # Only include the basic properties (performance boost)
         if only_basic_props and not old_data:
@@ -3939,6 +4046,9 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             "reader": json.loads(transition_reader.Json()),
             "replace_image": False
         }
+
+        # Default transition to fade-in on clip left edge, fade-out on right edge.
+        self._auto_orient_transition_keyframes(transition_data)
 
         # Send to update manager
         self.update_transition_data(transition_data, only_basic_props=False, ignore_refresh=ignore_refresh)

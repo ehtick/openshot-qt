@@ -901,7 +901,10 @@ function updateDraggables(scope, ui, itemType) {
 
     transition_updates.forEach(function(item_data, index) {
         var needs_refresh = (index === transition_updates.length - 1);
-        timeline.update_transition_data(JSON.stringify(item_data), true, !needs_refresh, tid);
+        var transitionPayload = Object.assign({}, item_data, {
+            _auto_direction: true
+        });
+        timeline.update_transition_data(JSON.stringify(transitionPayload), true, !needs_refresh, tid);
     });
 
     // Add missing transitions (if any)

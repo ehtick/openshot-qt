@@ -1364,8 +1364,10 @@ class TimelineWidgetBase(QWidget):
                 continue
             ignore_refresh = idx < total - 1
             if isinstance(model, Transition):
+                data = dict(model.data) if isinstance(model.data, dict) else {}
+                data["_auto_direction"] = True
                 self.update_transition_data(
-                    model.data,
+                    data,
                     only_basic_props=False,
                     ignore_refresh=ignore_refresh,
                 )

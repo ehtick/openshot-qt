@@ -530,12 +530,15 @@ class ClipInteractionMixin:
             for idx, itm in enumerate(items):
                 ignore_refresh = idx < total - 1
                 if isinstance(itm, Transition):
+                    transition_data = json.loads(json.dumps(itm.data))
+                    transition_data["_auto_direction"] = True
                     self.update_transition_data(
-                        itm.data,
+                        transition_data,
                         only_basic_props=True,
                         ignore_refresh=ignore_refresh,
                         transaction_id=transaction_id,
                     )
+                    itm.data = transition_data
                 else:
                     self.update_clip_data(
                         itm.data,
@@ -951,11 +954,17 @@ class ClipInteractionMixin:
                 self.update_clip_data(item.data, only_basic_props=True, ignore_reader=True)
         else:
             setattr(self.win, "_trim_refresh_pending", True)
-            item.data["position"] = self._snap_time(position)
-            item.data["start"] = 0.0
-            item.data["end"] = self._snap_time(end)
-            item.data["duration"] = self._snap_time(end)
-            self.update_transition_data(item.data, only_basic_props=True)
+            # Use a copied payload so update_transition_data() can compare
+            # existing transition timing against the new timing and scale
+            # keyframes correctly during trim/resize.
+            transition_data = json.loads(json.dumps(item.data))
+            transition_data["position"] = self._snap_time(position)
+            transition_data["start"] = 0.0
+            transition_data["end"] = self._snap_time(end)
+            transition_data["duration"] = self._snap_time(end)
+            transition_data["_auto_direction"] = True
+            self.update_transition_data(transition_data, only_basic_props=True)
+            item.data = transition_data
 
         if isinstance(item, (Clip, Transition)):
             if hasattr(self, "RefreshTrimmedTimelineItem"):

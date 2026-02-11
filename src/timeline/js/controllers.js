@@ -1457,7 +1457,10 @@ $scope.updateRecentItemJSON = function (item_type, item_ids, tid) {
     if (item_type === "clip") {
       timeline.update_clip_data(JSON.stringify(item_object), true, true, false, tid);
     } else if (item_type === "transition") {
-      timeline.update_transition_data(JSON.stringify(item_object), true, false, tid);
+      var transitionPayload = Object.assign({}, item_object, {
+        _auto_direction: true
+      });
+      timeline.update_transition_data(JSON.stringify(transitionPayload), true, false, tid);
     }
 
     // Resize timeline if it's too small to contain all clips
