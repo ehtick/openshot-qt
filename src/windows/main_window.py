@@ -1120,7 +1120,11 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
     def actionPlay_trigger(self):
         """Toggle play/pause on video preview"""
         player = self.preview_thread.player
-        if player.Mode() == openshot.PLAYBACK_PAUSED:
+        is_actively_playing = (
+            player.Mode() == openshot.PLAYBACK_PLAY and
+            player.Speed() != 0
+        )
+        if not is_actively_playing:
             # Start playback
             if self.should_play():
                 self.PlaySignal.emit()
@@ -1164,7 +1168,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             # If paused, fast forward starting at faster than normal playback speed
             requested_speed = 2
 
-        if player.Mode() == openshot.PLAYBACK_PAUSED:
+        if player.Mode() != openshot.PLAYBACK_PLAY:
             self.actionPlay_trigger()
 
         if self.should_play(requested_speed):
@@ -1179,7 +1183,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             requested_speed = -1
 
         if self.should_play(requested_speed):
-            if player.Mode() == openshot.PLAYBACK_PAUSED:
+            if player.Mode() != openshot.PLAYBACK_PLAY:
                 self.actionPlay_trigger()
             self.SpeedSignal.emit(requested_speed)
 
