@@ -4093,16 +4093,41 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         get_app().updates.update_untracked(["duration"], new_duration)
         get_app().window.TimelineResize.emit()
 
+    def _get_transition_reader_json(self, file_path, create=True):
+        """Return cached transition reader JSON, creating it when requested."""
+        reader_cache = getattr(self, "_transition_reader_json_cache", None)
+        if reader_cache is None:
+            reader_cache = {}
+            self._transition_reader_json_cache = reader_cache
+
+        cache_key = os.path.abspath(file_path) if isinstance(file_path, str) else str(file_path)
+        reader_json = reader_cache.get(cache_key)
+        if reader_json is None and create:
+            transition_reader = openshot.QtImageReader(file_path)
+            reader_json = json.loads(transition_reader.Json())
+            reader_cache[cache_key] = deepcopy(reader_json)
+        return deepcopy(reader_json) if isinstance(reader_json, dict) else None
+
     # Add Transition
-    def addTransition(self, file_path, position, track, ignore_refresh=False, call_manual_move=True):
+    def addTransition(
+        self,
+        file_path,
+        position,
+        track,
+        ignore_refresh=False,
+        call_manual_move=True,
+        defer_reader=False,
+    ):
         # Get FPS from project
         fps = get_app().project.get("fps")
         fps_float = float(fps["num"]) / float(fps["den"])
         snap_to_grid = lambda t: round(t * fps_float) / fps_float
         duration = snap_to_grid(get_app().get_settings().get("default-transition-length"))
 
-        # Open up QtImageReader for transition Image
-        transition_reader = openshot.QtImageReader(file_path)
+        # Defer expensive SVG raster reader creation during drag-preview.
+        reader_json = self._get_transition_reader_json(file_path, create=not defer_reader)
+        if not isinstance(reader_json, dict):
+            reader_json = {"path": file_path}
 
         # Create Keyframes for brightness and contrast
         brightness = openshot.Keyframe()
@@ -4120,9 +4145,10 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             "position": snap_to_grid(position.x()),
             "start": 0,
             "end": duration,
+            "resource": file_path,
             "brightness": json.loads(brightness.Json()),
             "contrast": json.loads(contrast.Json()),
-            "reader": json.loads(transition_reader.Json()),
+            "reader": deepcopy(reader_json),
             "replace_image": False
         }
 
