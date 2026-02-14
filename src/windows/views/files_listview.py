@@ -28,7 +28,7 @@
 
 import uuid
 
-from qt_api import QSize, Qt, QPoint, QRegExp
+from qt_api import QSize, Qt, QPoint
 from qt_api import clear_override_cursor
 from qt_api import modifiers_has
 from qt_api import QDrag, QCursor, QPixmap, QPainter, QIcon
