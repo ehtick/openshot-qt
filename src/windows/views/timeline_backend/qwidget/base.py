@@ -922,15 +922,8 @@ class TimelineWidgetBase(QWidget):
     def dragEnterEvent(self, event):
         self._drag_payload = None
         mime = event.mimeData()
-
-        if mime.hasUrls():
-            event.accept()
-            self.new_item = True
-            self.item_type = "os_drop"
-            self._drag_payload = {"type": "os_drop", "urls": mime.urls()}
-            return
-
         mime_html = mime.html()
+
         if mime_html:
             if mime_html in ("clip", "transition"):
                 try:
@@ -943,12 +936,20 @@ class TimelineWidgetBase(QWidget):
                 self.item_type = mime_html
                 self.new_item = True
                 event.accept()
+                return
             elif mime_html == "effect":
+                self._drag_payload = {"type": "effect"}
                 event.accept()
-            else:
-                event.ignore()
-        else:
-            event.ignore()
+                return
+
+        if mime.hasUrls():
+            event.accept()
+            self.new_item = True
+            self.item_type = "os_drop"
+            self._drag_payload = {"type": "os_drop", "urls": mime.urls()}
+            return
+
+        event.ignore()
 
     def dragMoveEvent(self, event):
         event.accept()
@@ -981,13 +982,7 @@ class TimelineWidgetBase(QWidget):
         effect_names = []
         mime = event.mimeData()
         mime_html = mime.html()
-        if mime.hasUrls():
-            urls = mime.urls()
-            self.win.files_model.process_urls(urls, import_quietly=True, prevent_image_seq=True)
-            for uri in urls:
-                for f in File.filter(path=uri.toLocalFile()):
-                    file_ids.append(f.id)
-        elif mime_html == "clip":
+        if mime_html == "clip":
             try:
                 ids = json.loads(mime.text())
             except Exception:
@@ -1011,6 +1006,12 @@ class TimelineWidgetBase(QWidget):
             if not isinstance(names, list):
                 names = [names]
             effect_names.extend(names)
+        elif mime.hasUrls():
+            urls = mime.urls()
+            self.win.files_model.process_urls(urls, import_quietly=True, prevent_image_seq=True)
+            for uri in urls:
+                for f in File.filter(path=uri.toLocalFile()):
+                    file_ids.append(f.id)
 
         if not file_ids and not effect_names:
             self._reset_drag_preview()
@@ -1063,9 +1064,6 @@ class TimelineWidgetBase(QWidget):
         if self._drag_payload:
             return self._drag_payload
         mime = event.mimeData()
-        if mime.hasUrls():
-            self._drag_payload = {"type": "os_drop", "urls": mime.urls()}
-            return self._drag_payload
         mime_html = mime.html()
         if mime_html in {"clip", "transition"}:
             try:
@@ -1079,6 +1077,8 @@ class TimelineWidgetBase(QWidget):
             self.new_item = True
         elif mime_html == "effect":
             self._drag_payload = {"type": "effect"}
+        elif mime.hasUrls():
+            self._drag_payload = {"type": "os_drop", "urls": mime.urls()}
         return self._drag_payload
 
     def _viewport_offsets(self):
