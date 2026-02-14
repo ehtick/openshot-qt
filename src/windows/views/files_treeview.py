@@ -28,6 +28,7 @@
  """
 
 import os
+import uuid
 
 from qt_api import QSize, Qt, QPoint
 from qt_api import clear_override_cursor
@@ -184,12 +185,19 @@ class FilesTreeView(QTreeView):
         # Set the hot spot to the center of the composite pixmap
         drag.setHotSpot(composite_pixmap.rect().center())
 
+        # Start a transaction so all clips are grouped for a single undo
+        tid = str(uuid.uuid4())
+        get_app().updates.transaction_id = tid
+
         # Execute the drag operation
         exec_fn = getattr(drag, "exec", None) or getattr(drag, "exec_", None)
         if exec_fn is None:
             raise AttributeError("QDrag has no exec_/exec method")
         exec_fn(supportedActions)
         clear_override_cursor()
+
+        # End transaction
+        get_app().updates.transaction_id = None
 
     # Without defining this method, the 'copy' action doesn't show with cursor
     def dragMoveEvent(self, event):

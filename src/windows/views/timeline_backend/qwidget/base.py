@@ -31,7 +31,7 @@ from functools import partial
 from qt_api import Qt, QRectF, QSize, QTimer, QPointF, QByteArray, pyqtSignal, QObject, QMetaMethod
 from qt_api import QT_API
 from qt_api import QtCore
-from qt_api import QtCore
+from qt_api import QtCore, QSignalTransition, pyqtSlot, QObject, QMetaMethod
 from qt_api import (
     QPainter,
     QCursor,
@@ -270,6 +270,7 @@ class TimelineWidgetBase(QWidget):
         # Thumbnail helpers
         self.thumbnail_style = self._load_thumbnail_style()
         self.thumbnail_generation = 0
+        self._suspend_thumbnail_requests = False
         self.thumbnail_manager = TimelineThumbnailManager(self)
         self._viewport_thumbnail_reset_timer = QTimer(self)
         self._viewport_thumbnail_reset_timer.setSingleShot(True)
@@ -292,7 +293,8 @@ class TimelineWidgetBase(QWidget):
         self.selection_painter = SelectionPainter(self)
         self.scrollbar_painter = ScrollbarPainter(self)
         self.thumbnail_manager.thumbnail_ready.connect(
-            self.clip_painter.handle_thumbnail_ready
+            self._handle_thumbnail_ready,
+            type=Qt.QueuedConnection,
         )
 
         # Keyframe helpers
@@ -301,6 +303,7 @@ class TimelineWidgetBase(QWidget):
         self._keyframes_dirty = True
         self._dragging_keyframe = None
         self._press_keyframe = None
+        self._active_keyframe_marker = None
         self._press_keyframe_clear = True
         self._press_effect_icon = None
         self._pending_clip_overrides = {}
@@ -412,6 +415,17 @@ class TimelineWidgetBase(QWidget):
         if hasattr(self, "clip_painter"):
             self.clip_painter.expire_thumbnail_requests(self.thumbnail_generation)
 
+    @pyqtSlot(str, int, str, int)
+    def _handle_thumbnail_ready(self, clip_id, frame, thumb_path, generation):
+        """Forward thumbnail ready events to the clip painter on the GUI thread."""
+        if hasattr(self, "clip_painter"):
+            self.clip_painter.handle_thumbnail_ready(
+                clip_id,
+                frame,
+                thumb_path,
+                generation,
+            )
+
     def _buildStateMachine(self):
         sm = TimelineStateMachine(self)
 
@@ -432,6 +446,13 @@ class TimelineWidgetBase(QWidget):
         boxsel.exited.connect(self._finishBoxSelect)
         keydrag.entered.connect(self._startKeyframeDrag)
         keydrag.exited.connect(self._finishKeyframeDrag)
+
+        resize.entered.connect(self._disable_playback_caching)
+        resize.exited.connect(self._enable_playback_caching)
+        playhead.entered.connect(self._disable_playback_caching)
+        playhead.exited.connect(self._enable_playback_caching)
+        keydrag.entered.connect(self._disable_playback_caching)
+        keydrag.exited.connect(self._enable_playback_caching)
 
         sender, pressed_signal = self._event_signal("pressed")
 
@@ -482,6 +503,12 @@ class TimelineWidgetBase(QWidget):
         sm.setInitialState(idle)
         sm.start()
         self._sm = sm
+
+    def _disable_playback_caching(self):
+        openshot.Settings.Instance().ENABLE_PLAYBACK_CACHING = False
+
+    def _enable_playback_caching(self):
+        openshot.Settings.Instance().ENABLE_PLAYBACK_CACHING = True
 
     def _event_signal(self, name):
         return self.events, self._event_signal_bytes(name)
@@ -713,7 +740,13 @@ class TimelineWidgetBase(QWidget):
         self.fps_float = float(fps_info.get("num", 24)) / float(fps_info.get("den", 1) or 1)
 
         # Invalidate caches and geometry
-        self.clip_painter.clear_cache()
+        win = getattr(self, "win", None)
+        if getattr(win, "_trim_refresh_pending", False):
+            # Keep thumbnail/fallback caches during trim commit to avoid a blank flicker
+            # while new thumbnails are still being generated.
+            self.clip_painter.clip_cache.clear()
+        else:
+            self.clip_painter.clear_cache()
         self.transition_painter.clear_cache()
         self.geometry.mark_dirty()
 
@@ -724,7 +757,10 @@ class TimelineWidgetBase(QWidget):
             self._pending_clip_overrides.clear()
             self._pending_transition_overrides.clear()
 
-        self._update_track_panel_properties()
+        # Skip panel property rebuild during an active keyframe drag
+        # to prevent stale point references.
+        if not self._dragging_panel_keyframes and not self._dragging_keyframe:
+            self._update_track_panel_properties()
         self.geometry.ensure()
         self._keyframes_dirty = True
         self._snap_keyframe_seconds = []
@@ -758,14 +794,20 @@ class TimelineWidgetBase(QWidget):
             if not get_app().window.timeline:
                 return
 
-            signature = self._panel_current_signature()
-            if signature != self._panel_refresh_signature:
-                self._panel_refresh_signature = signature
-                if self._update_track_panel_properties():
-                    self.geometry.mark_dirty()
+            # Skip panel property rebuild during an active keyframe drag
+            # to prevent stale point references (the drag writes
+            # pending_seconds directly to the cached point dicts).
+            if not self._dragging_panel_keyframes and not self._dragging_keyframe:
+                signature = self._panel_current_signature()
+                if signature != self._panel_refresh_signature:
+                    self._panel_refresh_signature = signature
+                    if self._update_track_panel_properties():
+                        self.geometry.mark_dirty()
 
             self.geometry.ensure()
             self._ensure_keyframe_markers()
+            self._apply_panel_drag_marker_override()
+            self._apply_keyframe_drag_panel_override()
 
             self.bg_painter.paint(painter, event.rect())
             self.track_painter.paint_background(painter)
@@ -977,6 +1019,10 @@ class TimelineWidgetBase(QWidget):
         if coords is None:
             coords = (0.0, self.track_list[0].data.get("number") if self.track_list else 0, 0)
         pos_seconds, track_num, _ = coords
+        track_num = self._nearest_unlocked_track_number(track_num)
+        if track_num is None:
+            self._reset_drag_preview()
+            return
         pos = QPointF(pos_seconds, 0)
 
         if effect_names:
@@ -1054,7 +1100,9 @@ class TimelineWidgetBase(QWidget):
 
     def _event_seconds_track(self, event):
         pos = _event_posf(event)
-        if pos.x() < self.track_name_width or pos.y() < self.ruler_height:
+        if pos.y() < self.ruler_height:
+            return None
+        if not self.rect().contains(pos):
             return None
         if not self.track_list:
             return None
@@ -1065,13 +1113,86 @@ class TimelineWidgetBase(QWidget):
         if vertical_factor <= 0.0:
             return None
         h_offset, v_offset = self._viewport_offsets()
-        pos_seconds = (pos.x() - self.track_name_width + h_offset) / pixels_per_second
+        x_pos = max(0.0, min(float(pos.x()), float(self.width())))
+        pos_seconds = (x_pos - self.track_name_width + h_offset) / pixels_per_second
         pos_seconds = max(0.0, pos_seconds)
         track_idx = int((pos.y() - self.ruler_height + v_offset) / vertical_factor)
         if track_idx < 0 or track_idx >= len(self.track_list):
             return None
+        track_idx = self._nearest_unlocked_track_index(track_idx)
+        if track_idx is None:
+            return None
         track_num = self.track_list[track_idx].data.get("number")
         return pos_seconds, track_num, track_idx
+
+    def _is_track_locked(self, track_num):
+        normalized = self.normalize_track_number(track_num)
+        for track in self.track_list:
+            data = track.data if isinstance(track.data, dict) else {}
+            if self.normalize_track_number(data.get("number")) == normalized:
+                return bool(data.get("lock"))
+        return False
+
+    def _nearest_unlocked_track_index(self, preferred_idx):
+        try:
+            idx = int(preferred_idx)
+        except (TypeError, ValueError):
+            return None
+        if idx < 0 or idx >= len(self.track_list):
+            return None
+        if not self._is_track_locked(self.track_list[idx].data.get("number")):
+            return idx
+
+        max_radius = len(self.track_list)
+        for radius in range(1, max_radius + 1):
+            up = idx - radius
+            if up >= 0 and not self._is_track_locked(self.track_list[up].data.get("number")):
+                return up
+            down = idx + radius
+            if down < len(self.track_list) and not self._is_track_locked(self.track_list[down].data.get("number")):
+                return down
+        return None
+
+    def _nearest_unlocked_track_number(self, preferred_track_num):
+        normalized = self.normalize_track_number(preferred_track_num)
+        preferred_idx = None
+        for idx, track in enumerate(self.track_list):
+            data = track.data if isinstance(track.data, dict) else {}
+            if self.normalize_track_number(data.get("number")) == normalized:
+                preferred_idx = idx
+                break
+        if preferred_idx is None:
+            preferred_idx = 0
+        unlocked_idx = self._nearest_unlocked_track_index(preferred_idx)
+        if unlocked_idx is None:
+            return None
+        data = self.track_list[unlocked_idx].data if isinstance(self.track_list[unlocked_idx].data, dict) else {}
+        return data.get("number")
+
+    def _selection_overlaps_locked_tracks(self, items):
+        if not items:
+            return False
+        track_indices = []
+        for item in items:
+            data = item.data if hasattr(item, "data") and isinstance(item.data, dict) else {}
+            layer = data.get("layer")
+            normalized = self.normalize_track_number(layer)
+            for idx, track in enumerate(self.track_list):
+                track_num = self.normalize_track_number((track.data if isinstance(track.data, dict) else {}).get("number"))
+                if track_num == normalized:
+                    track_indices.append(idx)
+                    break
+
+        if not track_indices:
+            return False
+        top_idx = min(track_indices)
+        bottom_idx = max(track_indices)
+        for idx in range(top_idx, bottom_idx + 1):
+            track = self.track_list[idx]
+            data = track.data if isinstance(track.data, dict) else {}
+            if bool(data.get("lock")):
+                return True
+        return False
 
     def _snap_new_item_start(self, seconds, duration):
         seconds = max(0.0, seconds)
@@ -1118,6 +1239,9 @@ class TimelineWidgetBase(QWidget):
         if not hasattr(self, "item_ids"):
             self.item_ids = []
         self.item_ids.clear()
+        if track_num is None:
+            return False
+        track_num = self._nearest_unlocked_track_number(track_num)
         if track_num is None:
             return False
         preview_items = []
@@ -1170,6 +1294,9 @@ class TimelineWidgetBase(QWidget):
 
     def _update_drag_preview_position(self, pos_seconds, track_num):
         if not self._drag_preview_items:
+            return
+        track_num = self._nearest_unlocked_track_number(track_num)
+        if track_num is None:
             return
         min_offset = min(entry.get("offset", 0.0) for entry in self._drag_preview_items)
         max_end = max(
@@ -1245,14 +1372,19 @@ class TimelineWidgetBase(QWidget):
                 continue
             ignore_refresh = idx < total - 1
             if isinstance(model, Transition):
+                data = dict(model.data) if isinstance(model.data, dict) else {}
+                data["_auto_direction"] = True
                 self.update_transition_data(
-                    model.data,
+                    data,
                     only_basic_props=False,
                     ignore_refresh=ignore_refresh,
                 )
             else:
+                data = dict(model.data) if isinstance(model.data, dict) else {}
+                if total == 1:
+                    data["_auto_transition"] = True
                 self.update_clip_data(
-                    model.data,
+                    data,
                     only_basic_props=False,
                     ignore_reader=True,
                     ignore_refresh=ignore_refresh,
@@ -1765,6 +1897,7 @@ class TimelineWidgetBase(QWidget):
     def clear_all_selections(self):
         """Clear all timeline selections and keyframe highlights."""
         self.win.clearSelections()
+        self._active_keyframe_marker = None
         if hasattr(self, "_clear_panel_selection"):
             self._clear_panel_selection(None)
         self.clip_painter.clear_cache()
@@ -1981,6 +2114,11 @@ class TimelineWidgetBase(QWidget):
             self.setCursor(self.cursors.get("resize_x", Qt.SizeHorCursor))
             return
 
+        panel_marker = self._panel_marker_at(pos)
+        if panel_marker:
+            self.setCursor(self.cursors.get("resize_x", Qt.SizeHorCursor))
+            return
+
         # Clip menu icons
         for rect, _clip, _selected in self.geometry.iter_clips(reverse=True):
             if self._clip_menu_rect(rect).contains(pos):
@@ -2100,6 +2238,7 @@ class TimelineWidgetBase(QWidget):
     def _trigger_clip_menu_icon(self, pos):
         for rect, clip, _selected in self.geometry.iter_clips(reverse=True):
             if self._clip_menu_rect(rect).contains(pos) and hasattr(self.win, "timeline"):
+                self._select_timeline_item(clip.id, "clip", True)
                 self.win.timeline.ShowClipMenu(clip.id)
                 return True
         return False
@@ -2133,10 +2272,34 @@ class TimelineWidgetBase(QWidget):
         if marker:
             self._press_hit = "keyframe"
             self._press_keyframe = marker
-            self._press_keyframe_clear = not ctrl
+            self._active_keyframe_marker = marker
+            clear_existing = not ctrl
+            # Preserve multi-item clip/transition selection when dragging a
+            # keyframe from an already-selected owner.
+            if clear_existing:
+                selected_clip_ids = {
+                    str(item_id) for item_id in (getattr(self.win, "selected_clips", []) or [])
+                }
+                selected_transition_ids = {
+                    str(item_id) for item_id in (getattr(self.win, "selected_transitions", []) or [])
+                }
+                selected_item_count = len(selected_clip_ids) + len(selected_transition_ids)
+                marker_type = marker.get("type")
+                if marker_type == "transition":
+                    transition_obj = marker.get("transition")
+                    owner_id = str(getattr(transition_obj, "id", "") if transition_obj else "")
+                    owner_selected = owner_id in selected_transition_ids
+                else:
+                    clip_obj = marker.get("clip")
+                    owner_id = str(getattr(clip_obj, "id", "") if clip_obj else "")
+                    owner_selected = owner_id in selected_clip_ids
+                if owner_selected and selected_item_count > 1:
+                    clear_existing = False
+            self._press_keyframe_clear = clear_existing
             self._select_marker_owner(marker, clear_existing=self._press_keyframe_clear)
             return
         self._press_keyframe = None
+        self._active_keyframe_marker = None
         self._press_keyframe_clear = True
         add_button = self._panel_add_button_at(pos)
         if add_button:
@@ -2155,6 +2318,11 @@ class TimelineWidgetBase(QWidget):
         if panel_lane:
             self._press_hit = "panel"
             self._panel_press_info = {"lane": panel_lane}
+            return
+        panel_track = self._panel_track_at_pos(pos)
+        if panel_track is not None:
+            self._press_hit = "panel"
+            self._panel_press_info = {"track": panel_track}
             return
         icon_entry = self._effect_icon_at(pos)
         if icon_entry:
@@ -2179,6 +2347,16 @@ class TimelineWidgetBase(QWidget):
         self._resizing_item = None
         self._resize_edge = None
         self._press_hit = self._hitTest(pos)
+
+    def _panel_track_at_pos(self, pos):
+        """Return track number when *pos* lies within any keyframe panel area."""
+        self.geometry.ensure()
+        for _track_rect, track, _name_rect in self.geometry.iter_tracks():
+            track_num = self.normalize_track_number(track.data.get("number"))
+            bounds = self._panel_bounds_for_track(track_num)
+            if isinstance(bounds, QRectF) and not bounds.isNull() and bounds.contains(pos):
+                return track_num
+        return None
 
     def _start_scroll_drag_if_needed(self, pos):
         if self._press_hit == "h-scroll":
@@ -2310,10 +2488,23 @@ class TimelineWidgetBase(QWidget):
                 except (TypeError, ValueError):
                     frame_int = None
                 if frame_int is not None:
+                    point_context = point.get("_panel_context") if isinstance(point, dict) else None
+                    context_signature = None
+                    if isinstance(point_context, dict):
+                        context_signature = self._panel_context_signature(point_context)
                     if additive:
-                        self._panel_toggle_frames(track_num, prop_key, {frame_int})
+                        self._panel_toggle_frames(
+                            track_num,
+                            prop_key,
+                            {frame_int},
+                            context_signature=context_signature,
+                        )
                     else:
-                        self._panel_set_selection_map(track_num, {prop_key: {frame_int}})
+                        selector = self._panel_selection_selector(
+                            {frame_int},
+                            context_signature=context_signature,
+                        )
+                        self._panel_set_selection_map(track_num, {prop_key: selector})
             if point:
                 self._panel_seek_to_point(info, point)
             self._press_hit = None
@@ -2370,6 +2561,8 @@ class TimelineWidgetBase(QWidget):
             return False
         info = self._panel_properties.get(key)
         if not isinstance(info, dict):
+            return False
+        if info.get("item_type") == "multi":
             return False
         available = info.get("available_properties") or []
         if not available:
@@ -2433,6 +2626,8 @@ class TimelineWidgetBase(QWidget):
             return False
         info = self._panel_properties.get(key)
         if not isinstance(info, dict):
+            return False
+        if info.get("item_type") == "multi":
             return False
         available = info.get("available_properties") or []
         available_map = {
@@ -2559,16 +2754,14 @@ class TimelineWidgetBase(QWidget):
         # Transition context menu (prioritized over clips)
         for rect, tran, _selected in self.geometry.iter_transitions(reverse=True):
             if rect.contains(pos) and hasattr(self.win, "timeline"):
-                if tran.id not in getattr(self.win, "selected_transitions", []):
-                    self._select_timeline_item(tran.id, "transition", True)
+                self._select_timeline_item(tran.id, "transition", True)
                 self.win.timeline.ShowTransitionMenu(tran.id)
                 return True
 
         # Clip context menu
         for rect, clip, _selected in self.geometry.iter_clips(reverse=True):
             if rect.contains(pos) and hasattr(self.win, "timeline"):
-                if clip.id not in getattr(self.win, "selected_clips", []):
-                    self._select_timeline_item(clip.id, "clip", True)
+                self._select_timeline_item(clip.id, "clip", True)
                 self.win.timeline.ShowClipMenu(clip.id)
                 return True
 

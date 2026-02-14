@@ -104,6 +104,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
     PauseSignal = pyqtSignal()
     StopSignal = pyqtSignal()
     SeekSignal = pyqtSignal(int)
+    LoadTimelineAndSeekSignal = pyqtSignal(int)
     SpeedSignal = pyqtSignal(float)
     SeekPreviousFrame = pyqtSignal()
     SeekNextFrame = pyqtSignal()
@@ -125,12 +126,16 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
     TimelineResize = pyqtSignal()  # Timeline length changed signal from timeline
     TimelineScroll = pyqtSignal(float)   # Signal to force scroll timeline to specific point
     TimelineCenter = pyqtSignal()        # Signal to force center scroll on playhead
+    TrimPreviewMode = pyqtSignal()
+    TimelinePreviewMode = pyqtSignal()
     SelectionAdded = pyqtSignal(str, str, bool)  # Signal to add a selection
     SelectionRemoved = pyqtSignal(str, str)      # Signal to remove a selection
     SelectionChanged = pyqtSignal()      # Signal after selections have been changed (added/removed)
     SetKeyframeFilter = pyqtSignal(str)     # Signal to only show keyframes for the selected property
     IgnoreUpdates = pyqtSignal(bool, bool)     # Signal to let widgets know to ignore updates (i.e. batch updates)
     ThemeChangedSignal = pyqtSignal(object)     # Signal when theme is changed
+    ProjectSaved = pyqtSignal(str)
+    ProjectSaveFailed = pyqtSignal(str, str)
 
     # Docks are closable, movable and floatable
     docks_frozen = False
@@ -203,6 +208,10 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         timeline_widget = getattr(self, "timeline", None)
         from qt_api import isdeleted
         if timeline_widget and getattr(timeline_widget, "thumbnail_manager", None):
+            log.info(
+                "Shutdown timeline thumbnail thread running=%s",
+                timeline_widget.thumbnail_manager._thread.isRunning(),
+            )
             if not isdeleted(timeline_widget.thumbnail_manager):
                 timeline_widget.thumbnail_manager.shutdown()
 
@@ -219,6 +228,11 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
 
         # Stop preview thread (and wait for it to end)
         if self.preview_thread:
+            if self.preview_parent and getattr(self.preview_parent, "background", None):
+                log.info(
+                    "Shutdown preview thread running=%s",
+                    self.preview_parent.background.isRunning(),
+                )
             self.preview_thread.player.CloseAudioDevice()
             self.preview_thread.kill()
             from qt_api import isdeleted
@@ -515,17 +529,24 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
                 # Save project to file
                 app.project.save(file_path)
 
-                # Set Window title
-                self.SetWindowTitle()
-
-                # Load recent projects again
-                self.load_recent_menu()
-
                 log.info("Saved project %s", file_path)
+                self.ProjectSaved.emit(file_path)
 
             except Exception as ex:
                 log.error("Couldn't save project %s", file_path, exc_info=1)
-                QMessageBox.warning(self, _("Error Saving Project"), str(ex))
+                self.ProjectSaveFailed.emit(file_path, str(ex))
+
+    @pyqtSlot(str)
+    def _on_project_saved(self, file_path):
+        """Update UI after a project save completes."""
+        self.SetWindowTitle()
+        self.load_recent_menu()
+
+    @pyqtSlot(str, str)
+    def _on_project_save_failed(self, file_path, error_message):
+        """Show save errors on the UI thread."""
+        _ = get_app()._tr
+        QMessageBox.warning(self, _("Error Saving Project"), error_message)
 
     def save_recovery(self, file_path):
         """Saves the project and manages recovery files based on configured limits."""
@@ -1110,7 +1131,11 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
     def actionPlay_trigger(self):
         """Toggle play/pause on video preview"""
         player = self.preview_thread.player
-        if player.Mode() == openshot.PLAYBACK_PAUSED:
+        is_actively_playing = (
+            player.Mode() == openshot.PLAYBACK_PLAY and
+            player.Speed() != 0
+        )
+        if not is_actively_playing:
             # Start playback
             if self.should_play():
                 self.PlaySignal.emit()
@@ -1154,7 +1179,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             # If paused, fast forward starting at faster than normal playback speed
             requested_speed = 2
 
-        if player.Mode() == openshot.PLAYBACK_PAUSED:
+        if player.Mode() != openshot.PLAYBACK_PLAY:
             self.actionPlay_trigger()
 
         if self.should_play(requested_speed):
@@ -1169,7 +1194,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             requested_speed = -1
 
         if self.should_play(requested_speed):
-            if player.Mode() == openshot.PLAYBACK_PAUSED:
+            if player.Mode() != openshot.PLAYBACK_PLAY:
                 self.actionPlay_trigger()
             self.SpeedSignal.emit(requested_speed)
 
@@ -1941,7 +1966,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             self.SeekSignal.emit(adjusted_frame)
 
             # Refresh frame (since size of preview might have changed)
-            QTimer.singleShot(500, self.refreshFrameSignal.emit)
+            QTimer.singleShot(500, lambda: self.refreshFrameSignal.emit())
             QTimer.singleShot(500, functools.partial(self.MaxSizeChanged.emit,
                                                      self.videoPreview.size()))
 
@@ -2001,7 +2026,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         # Refresh preview
         get_app().window.refreshFrameSignal.emit()
 
-    def actionRemoveClip_trigger(self):
+    def actionRemoveClip_trigger(self, checked=True, refresh=True):
         log.debug('actionRemoveClip_trigger')
 
         locked_tracks = [l.get("number") for l in get_app().project.get('layers') if l.get("lock", False)]
@@ -2021,7 +2046,8 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
                 c.delete()
 
         # Refresh preview
-        get_app().window.refreshFrameSignal.emit()
+        if refresh:
+            get_app().window.refreshFrameSignal.emit()
 
     def actionRippleDelete(self):
         log.debug('actionRippleDelete_trigger')
@@ -2147,7 +2173,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         # Refresh preview
         self.refreshFrameSignal.emit()
 
-    def actionRemoveTransition_trigger(self):
+    def actionRemoveTransition_trigger(self, checked=True, refresh=True):
         log.debug('actionRemoveTransition_trigger')
 
         locked_tracks = [l.get("number")
@@ -2169,7 +2195,8 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
                 t.delete()
 
         # Refresh preview
-        self.refreshFrameSignal.emit()
+        if refresh:
+            self.refreshFrameSignal.emit()
 
     def actionRemoveTrack_trigger(self):
         log.debug('actionRemoveTrack_trigger')
@@ -3464,9 +3491,21 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             if self.filesView.hasFocus():
                 self.actionRemove_from_Project_trigger()
             else:
+                # Prioritize deleting selected keyframes before deleting clips.
+                keyframes_deleted = False
+                timeline_widget = getattr(self, "timeline", None)
+                if timeline_widget and hasattr(timeline_widget, "delete_selected_keyframes"):
+                    try:
+                        keyframes_deleted = bool(timeline_widget.delete_selected_keyframes())
+                    except Exception:
+                        keyframes_deleted = False
+                if keyframes_deleted:
+                    self.refreshFrameSignal.emit()
+                    return
                 # Otherwise, proceed with the normal timeline delete behavior
-                self.actionRemoveClip_trigger()
-                self.actionRemoveTransition_trigger()
+                self.actionRemoveClip_trigger(refresh=False)
+                self.actionRemoveTransition_trigger(refresh=False)
+                self.refreshFrameSignal.emit()
         finally:
             get_app().updates.transaction_id = None
 
@@ -3867,6 +3906,9 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             openshot.Settings.Instance().ENABLE_PLAYBACK_CACHING = True
 
         if not ignore:
+            if getattr(self, "_trim_refresh_pending", False):
+                self.ignore_updates = ignore
+                return
             self.refreshFrameSignal.emit()
             self.propertyTableView.select_frame(self.preview_thread.player.Position())
 
@@ -4233,6 +4275,8 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
 
         # Connect theme changed signal
         self.ThemeChangedSignal.connect(self.style_dock_widgets)
+        self.ProjectSaved.connect(self._on_project_saved, Qt.QueuedConnection)
+        self.ProjectSaveFailed.connect(self._on_project_save_failed, Qt.QueuedConnection)
 
         # Connect the signals for each dock widget from self.getDocks()
         for dock_widget in self.getDocks():
@@ -4260,7 +4304,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         QTimer.singleShot(0, self._apply_saved_timeline_height)
 
         # Refresh frame
-        QTimer.singleShot(100, self.refreshFrameSignal.emit)
+        QTimer.singleShot(100, lambda: self.refreshFrameSignal.emit())
 
         # Main window is initialized
         self.initialized = True

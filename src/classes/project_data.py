@@ -941,28 +941,33 @@ class ProjectDataStore(JsonDataStore, UpdateInterface):
             reader_paths = {}
 
             # Copy all thumbnail files (if not found in target asset folder)
-            for thumb_path in os.listdir(info.THUMBNAIL_PATH):
-                working_thumb_path = os.path.join(info.THUMBNAIL_PATH, thumb_path)
-                target_thumb_filepath = os.path.join(target_thumb_path, thumb_path)
-                if not os.path.exists(target_thumb_filepath):
-                    shutil.copy2(working_thumb_path, target_thumb_filepath)
+            if os.path.abspath(info.THUMBNAIL_PATH) != os.path.abspath(target_thumb_path):
+                for thumb_path in os.listdir(info.THUMBNAIL_PATH):
+                    working_thumb_path = os.path.join(info.THUMBNAIL_PATH, thumb_path)
+                    target_thumb_filepath = os.path.join(target_thumb_path, thumb_path)
+                    if not os.path.exists(target_thumb_filepath):
+                        shutil.copy2(working_thumb_path, target_thumb_filepath)
 
             # Copy all title files (if not found in target asset folder)
-            for title_path in os.listdir(info.TITLE_PATH):
-                working_title_path = os.path.join(info.TITLE_PATH, title_path)
-                target_title_filepath = os.path.join(target_title_path, title_path)
-                if not os.path.exists(target_title_filepath):
-                    shutil.copy2(working_title_path, target_title_filepath)
+            if os.path.abspath(info.TITLE_PATH) != os.path.abspath(target_title_path):
+                for title_path in os.listdir(info.TITLE_PATH):
+                    working_title_path = os.path.join(info.TITLE_PATH, title_path)
+                    target_title_filepath = os.path.join(target_title_path, title_path)
+                    if not os.path.exists(target_title_filepath):
+                        shutil.copy2(working_title_path, target_title_filepath)
 
             # Copy all blender folders (if not found in target asset folder)
-            for blender_path in os.listdir(info.BLENDER_PATH):
-                working_blender_path = os.path.join(info.BLENDER_PATH, blender_path)
-                target_blender_filepath = os.path.join(target_blender_path, blender_path)
-                if os.path.isdir(working_blender_path) and not os.path.exists(target_blender_filepath):
-                    shutil.copytree(working_blender_path, target_blender_filepath)
+            if os.path.abspath(info.BLENDER_PATH) != os.path.abspath(target_blender_path):
+                for blender_path in os.listdir(info.BLENDER_PATH):
+                    working_blender_path = os.path.join(info.BLENDER_PATH, blender_path)
+                    target_blender_filepath = os.path.join(target_blender_path, blender_path)
+                    if os.path.isdir(working_blender_path) and not os.path.exists(target_blender_filepath):
+                        shutil.copytree(working_blender_path, target_blender_filepath)
 
             # Copy all clipboard files (if not found in target asset folder)
-            if os.path.exists(info.CLIPBOARD_PATH):
+            if os.path.exists(info.CLIPBOARD_PATH) and (
+                os.path.abspath(info.CLIPBOARD_PATH) != os.path.abspath(target_clipboard_path)
+            ):
                 for clipboard_path in os.listdir(info.CLIPBOARD_PATH):
                     working_clipboard_path = os.path.join(info.CLIPBOARD_PATH, clipboard_path)
                     target_clipboard_filepath = os.path.join(target_clipboard_path, clipboard_path)
@@ -970,11 +975,12 @@ class ProjectDataStore(JsonDataStore, UpdateInterface):
                         shutil.copy2(working_clipboard_path, target_clipboard_filepath)
 
             # Copy all protobuf files (if not found in target asset folder)
-            for protobuf_path in os.listdir(info.PROTOBUF_DATA_PATH):
-                working_protobuf_path = os.path.join(info.PROTOBUF_DATA_PATH, protobuf_path)
-                target_protobuf_filepath = os.path.join(target_protobuf_path, protobuf_path)
-                if not os.path.exists(target_protobuf_filepath):
-                    shutil.copy2(working_protobuf_path, target_protobuf_filepath)
+            if os.path.abspath(info.PROTOBUF_DATA_PATH) != os.path.abspath(target_protobuf_path):
+                for protobuf_path in os.listdir(info.PROTOBUF_DATA_PATH):
+                    working_protobuf_path = os.path.join(info.PROTOBUF_DATA_PATH, protobuf_path)
+                    target_protobuf_filepath = os.path.join(target_protobuf_path, protobuf_path)
+                    if not os.path.exists(target_protobuf_filepath):
+                        shutil.copy2(working_protobuf_path, target_protobuf_filepath)
 
             # Copy any necessary assets for File records
             for file in self._data["files"]:
@@ -988,31 +994,31 @@ class ProjectDataStore(JsonDataStore, UpdateInterface):
                 new_asset_path = None
                 if info.BLENDER_PATH in path:
                     # Copy directory of blender files
-                    log.info("Copying %s", path)
                     old_dir, asset_name = os.path.split(path)
                     if os.path.isdir(old_dir) and old_dir not in copied_assets["blender"]:
                         # Copy dir into new folder
                         old_dir_name = os.path.basename(old_dir)
-                        copied_assets["blender"].add(old_dir)
-                        log.info("Copied dir %s to %s", old_dir_name, target_blender_path)
+                        if os.path.abspath(old_dir) != os.path.abspath(target_blender_path):
+                            copied_assets["blender"].add(old_dir)
+                            log.info("Copied dir %s to %s", old_dir_name, target_blender_path)
                     new_asset_path = os.path.join(target_blender_path, old_dir_name, asset_name)
 
                 if info.TITLE_PATH in path:
                     # Copy title files into assets folder
-                    log.info("Copying %s", path)
                     old_dir, asset_name = os.path.split(path)
                     if asset_name not in copied_assets["title"]:
                         # Copy title into assets title folder
-                        copied_assets["title"].add(asset_name)
-                        log.info("Copied title %s to %s", asset_name, target_title_path)
+                        if os.path.abspath(old_dir) != os.path.abspath(target_title_path):
+                            copied_assets["title"].add(asset_name)
+                            log.info("Copied title %s to %s", asset_name, target_title_path)
                     new_asset_path = os.path.join(target_title_path, asset_name)
 
                 if info.CLIPBOARD_PATH in path:
-                    log.info("Copying %s", path)
                     old_dir, asset_name = os.path.split(path)
                     if asset_name not in copied_assets["clipboard"]:
-                        copied_assets["clipboard"].add(asset_name)
-                        log.info("Copied clipboard %s to %s", asset_name, target_clipboard_path)
+                        if os.path.abspath(old_dir) != os.path.abspath(target_clipboard_path):
+                            copied_assets["clipboard"].add(asset_name)
+                            log.info("Copied clipboard %s to %s", asset_name, target_clipboard_path)
                     new_asset_path = os.path.join(target_clipboard_path, asset_name)
 
                 # Update path in File object to new location
@@ -1085,16 +1091,27 @@ class ProjectDataStore(JsonDataStore, UpdateInterface):
         _ = app._tr
 
         log.info("checking project files...")
+        prompt_state = {"cancelled": False}
 
-        # Loop through each files (in reverse order)
-        for file in reversed(self._data["files"]):
+        # Loop through each files in natural-sorted filename order
+        files_sorted = sorted(
+            self._data["files"],
+            key=lambda f: os.path.basename(f.get("path", "")).lower()
+        )
+        for file in files_sorted:
             path = file["path"]
             parent_path, file_name_with_ext = os.path.split(path)
 
             log.info("checking file %s", path)
             if not os.path.exists(path) and "%" not in path:
                 # File is missing
-                path, is_modified, is_skipped = find_missing_file(path)
+                if prompt_state.get("cancelled"):
+                    # User already cancelled prompts, just remove missing file
+                    log.info('Removed missing file: %s', file_name_with_ext)
+                    self._data["files"].remove(file)
+                    continue
+
+                path, is_modified, is_skipped = find_missing_file(path, prompt_state)
                 if path and is_modified and not is_skipped:
                     # Found file, update path
                     file["path"] = path
@@ -1105,23 +1122,34 @@ class ProjectDataStore(JsonDataStore, UpdateInterface):
                     log.info('Removed missing file: %s', file_name_with_ext)
                     self._data["files"].remove(file)
 
-        # Loop through each clip (in reverse order)
+        # Build a lookup of valid file IDs after any removals/updates
+        file_paths_by_id = {file.get("id"): file.get("path") for file in self._data["files"]}
+
+        # Loop through each clip (in reverse order). Don't prompt for clips.
         for clip in reversed(self._data["clips"]):
+            file_id = clip.get("file_id") or clip.get("reader", {}).get("id")
+            if file_id and file_id in file_paths_by_id:
+                # Keep clip reader path in sync with its File path
+                reader = clip.get("reader")
+                if not isinstance(reader, dict):
+                    reader = {}
+                    clip["reader"] = reader
+                reader["path"] = file_paths_by_id[file_id]
+
             path = clip.get("reader", {}).get("path", "")
 
-            if path and not os.path.exists(path) and "%" not in path:
-                # File is missing
-                path, is_modified, is_skipped = find_missing_file(path)
-                file_name_with_ext = os.path.basename(path)
+            if file_id and file_id not in file_paths_by_id:
+                # Remove clips with invalid/missing files
+                file_name_with_ext = os.path.basename(path) if path else ""
+                log.info('Removed missing clip: %s', file_name_with_ext)
+                self._data["clips"].remove(clip)
+                continue
 
-                if path and is_modified and not is_skipped:
-                    # Found file, update path
-                    clip["reader"]["path"] = path
-                    log.info("Auto-updated missing file: %s", clip["reader"]["path"])
-                elif is_skipped:
-                    # Remove missing file
-                    log.info('Removed missing clip: %s', file_name_with_ext)
-                    self._data["clips"].remove(clip)
+            if path and not os.path.exists(path) and "%" not in path:
+                # Remove missing clip without prompting
+                file_name_with_ext = os.path.basename(path)
+                log.info('Removed missing clip: %s', file_name_with_ext)
+                self._data["clips"].remove(clip)
 
     def changed(self, action):
         """ This method is invoked by the UpdateManager each time a change happens (i.e UpdateInterface) """

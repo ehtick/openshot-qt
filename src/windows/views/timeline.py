@@ -421,6 +421,13 @@ class TimelineView(updates.UpdateInterface, ViewClass):
                 TimelineWidget.changed(self, None)
             return
 
+        if ViewClass == TimelineWidget and self._pending_trim_refresh:
+            pending = self._pending_trim_refresh
+            item_id = pending.get("id")
+            if item_id and action and action.key and action.key[0] in ["clips", "transitions"]:
+                if self._action_contains_item_id(action, item_id):
+                    self._apply_pending_trim_refresh()
+
         try:
             # Duplicate UpdateAction, and remove unused action attribute (old_values)
             action = action.copy()
@@ -543,6 +550,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             # Failed to parse json, do nothing
             log.warning('Failed to parse clip JSON data', exc_info=1)
             return
+        auto_transition = bool(clip_data.pop("_auto_transition", False))
 
         self._apply_effect_colors(clip_data)
 
@@ -588,6 +596,11 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         if transaction_id:
             get_app().updates.transaction_id = None
 
+        if auto_transition:
+            missing_transition = self._find_missing_transition_details(existing_clip.data)
+            if missing_transition is not None:
+                self.add_missing_transition(json.dumps(missing_transition))
+
         # Notify UI to ignore OR not ignore updates
         self.window.IgnoreUpdates.emit(ignore_refresh, self.show_wait_spinner)
 
@@ -604,9 +617,11 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         fps = get_app().project.get("fps")
         fps_float = float(fps["num"]) / float(fps["den"])
 
-        # Open up QtImageReader for transition Image
-        transition_reader = openshot.QtImageReader(
-            os.path.join(info.PATH, "transitions", "common", "fade.svg"))
+        transition_path = os.path.join(info.PATH, "transitions", "common", "fade.svg")
+        reader_data = self._load_transition_reader_data(transition_path)
+        if not reader_data:
+            log.warning("Unable to load default transition image: %s", transition_path)
+            return
 
         # Generate transition object
         transition_object = openshot.Mask()
@@ -628,12 +643,85 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             "end": transition_details["end"],
             "brightness": json.loads(brightness.Json()),
             "contrast": json.loads(contrast.Json()),
-            "reader": json.loads(transition_reader.Json()),
+            "reader": reader_data,
             "replace_image": False
         }
 
         # Send to update manager
         self.update_transition_data(transitions_data, only_basic_props=False)
+
+    def _find_missing_transition_details(self, clip_data):
+        """Return auto-transition details for one overlap on the clip's layer, or None."""
+        if not isinstance(clip_data, dict):
+            return None
+
+        try:
+            clip_layer = int(clip_data.get("layer", 0))
+            original_left = float(clip_data.get("position", 0.0))
+            original_duration = float(clip_data.get("end", 0.0)) - float(clip_data.get("start", 0.0))
+        except (TypeError, ValueError):
+            return None
+        if original_duration <= 0.0:
+            return None
+
+        original_right = original_left + original_duration
+        original_id = clip_data.get("id")
+        transition_size = None
+
+        def _clip_pos(clip_obj):
+            try:
+                return float(((clip_obj.data or {}).get("position", 0.0)))
+            except (TypeError, ValueError):
+                return 0.0
+
+        same_layer_clips = sorted(Clip.filter(layer=clip_layer), key=_clip_pos)
+        for clip in same_layer_clips:
+            data = clip.data if isinstance(clip.data, dict) else {}
+            if data.get("id") == original_id:
+                continue
+            try:
+                clip_left = float(data.get("position", 0.0))
+                clip_right = clip_left + (float(data.get("end", 0.0)) - float(data.get("start", 0.0)))
+            except (TypeError, ValueError):
+                continue
+
+            if original_left < clip_right and original_left > clip_left:
+                transition_size = {
+                    "position": original_left,
+                    "layer": clip_layer,
+                    "start": 0.0,
+                    "end": (clip_right - original_left),
+                }
+            elif original_right > clip_left and original_right < clip_right:
+                transition_size = {
+                    "position": clip_left,
+                    "layer": clip_layer,
+                    "start": 0.0,
+                    "end": (original_right - clip_left),
+                }
+
+            if transition_size is not None and transition_size["end"] >= 0.5:
+                break
+            if transition_size is not None and transition_size["end"] < 0.5:
+                transition_size = None
+
+        if transition_size is None:
+            return None
+
+        new_left = transition_size["position"]
+        new_right = transition_size["position"] + (transition_size["end"] - transition_size["start"])
+        tolerance = 0.01
+        for tran in Transition.filter(layer=clip_layer):
+            tran_data = tran.data if isinstance(tran.data, dict) else {}
+            try:
+                tran_left = float(tran_data.get("position", 0.0))
+                tran_right = tran_left + (float(tran_data.get("end", 0.0)) - float(tran_data.get("start", 0.0)))
+            except (TypeError, ValueError):
+                continue
+            if abs(tran_left - new_left) < tolerance or abs(tran_right - new_right) < tolerance:
+                return None
+
+        return transition_size
 
     def _scale_keyframes(self, keyframe, factor):
         """Scale the X values of keyframe points"""
@@ -680,6 +768,109 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             key=lambda p: p.get("co", {}).get("X", 0)
         )
 
+    def _infer_transition_drop_side(self, transition_data):
+        """Return 'left' or 'right' based on which side of a clip the transition overlaps."""
+        if not isinstance(transition_data, dict):
+            return None
+
+        try:
+            layer = int(transition_data.get("layer", 0))
+            position = float(transition_data.get("position", 0.0))
+            start = float(transition_data.get("start", 0.0))
+            end = float(transition_data.get("end", 0.0))
+        except (TypeError, ValueError):
+            return None
+
+        duration = max(0.0, end - start)
+        if duration <= 0.0:
+            return None
+
+        tran_left = position
+        tran_right = position + duration
+        tran_mid = (tran_left + tran_right) / 2.0
+
+        best_match = None
+        for clip in Clip.filter(layer=layer):
+            clip_data = clip.data if isinstance(clip.data, dict) else {}
+            try:
+                clip_left = float(clip_data.get("position", 0.0))
+                clip_start = float(clip_data.get("start", 0.0))
+                clip_end = float(clip_data.get("end", 0.0))
+            except (TypeError, ValueError):
+                continue
+
+            clip_duration = max(0.0, clip_end - clip_start)
+            if clip_duration <= 0.0:
+                continue
+
+            clip_right = clip_left + clip_duration
+            overlap = min(tran_right, clip_right) - max(tran_left, clip_left)
+            if overlap <= 0.0:
+                continue
+
+            clip_mid = (clip_left + clip_right) / 2.0
+            side = "left" if tran_mid <= clip_mid else "right"
+            edge_dist = abs(tran_mid - (clip_left if side == "left" else clip_right))
+            score = (-overlap, edge_dist)
+            if best_match is None or score < best_match[0]:
+                best_match = (score, side)
+
+        return best_match[1] if best_match else None
+
+    def _auto_orient_transition_keyframes(self, transition_data):
+        """Apply fade-in orientation on left-edge drops (right edge keeps default orientation)."""
+        target_side = self._infer_transition_drop_side(transition_data)
+        if target_side not in ("left", "right"):
+            return
+
+        fps = get_app().project.get("fps")
+        fps_float = float(fps["num"]) / float(fps["den"])
+        try:
+            duration = float(transition_data.get("end", 0.0)) - float(transition_data.get("start", 0.0))
+        except (TypeError, ValueError):
+            duration = 0.0
+        total_frames = max(1, round(max(0.0, duration) * fps_float))
+
+        # Infer current direction from brightness keyframe values when possible.
+        current_side = None
+        brightness = transition_data.get("brightness")
+        if isinstance(brightness, dict):
+            points = brightness.get("Points", [])
+            keyed = []
+            for point in points:
+                co = point.get("co") if isinstance(point, dict) else None
+                if not isinstance(co, dict):
+                    continue
+                x = co.get("X")
+                y = co.get("Y")
+                if x is None or y is None:
+                    continue
+                try:
+                    keyed.append((float(x), float(y)))
+                except (TypeError, ValueError):
+                    continue
+            if len(keyed) >= 2:
+                keyed.sort(key=lambda k: k[0])
+                first_y = keyed[0][1]
+                last_y = keyed[-1][1]
+                if first_y < last_y:
+                    current_side = "right"
+                elif first_y > last_y:
+                    current_side = "left"
+
+        # Only auto-flip when the current direction is clearly inferable.
+        # This avoids rewriting customized/non-monotonic transition curves.
+        if current_side is None:
+            return
+
+        if current_side == target_side:
+            return
+
+        for prop in ("brightness", "contrast"):
+            keyframe = transition_data.get(prop)
+            if isinstance(keyframe, dict):
+                self._reverse_keyframes(keyframe, total_frames)
+
     # Javascript callable function to update the project data when a transition changes
     @pyqtSlot(str, bool, bool, str)
     def update_transition_data(self, transition_json, only_basic_props=True, ignore_refresh=False, transaction_id=None):
@@ -691,6 +882,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             transition_data = json.loads(transition_json)
         else:
             transition_data = transition_json
+        auto_direction = bool(transition_data.pop("_auto_direction", False))
 
         # Search for matching transition in project data (if any)
         existing_item = Transition.get(id=transition_data["id"])
@@ -721,6 +913,9 @@ class TimelineView(updates.UpdateInterface, ViewClass):
                 for prop in ("brightness", "contrast"):
                     if prop in existing_item.data:
                         self._scale_keyframes(existing_item.data[prop], scale)
+
+        if auto_direction:
+            self._auto_orient_transition_keyframes(existing_item.data)
 
         # Only include the basic properties (performance boost)
         if only_basic_props and not old_data:
@@ -3411,7 +3606,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         # Refresh frame to ensure our last frame after scrubbing
         # is the final frame shown. Due to some unknown reason, this
         # is required for an accurate end to srubbing
-        QTimer.singleShot(50, self.window.refreshFrameSignal.emit)
+        QTimer.singleShot(50, lambda: self.window.refreshFrameSignal.emit())
 
     @pyqtSlot()
     def DisableCacheThread(self):
@@ -3419,6 +3614,96 @@ class TimelineView(updates.UpdateInterface, ViewClass):
 
         # Disable video caching
         openshot.Settings.Instance().ENABLE_PLAYBACK_CACHING = False
+
+    @pyqtSlot()
+    def TrimPreviewMode(self):
+        self.window.TrimPreviewMode.emit()
+
+    @pyqtSlot()
+    def TimelinePreviewMode(self):
+        self.window.TimelinePreviewMode.emit()
+
+    @pyqtSlot()
+    def BeginTrimRefresh(self):
+        setattr(self.window, "_trim_refresh_pending", True)
+
+    @pyqtSlot(str, str)
+    def RefreshTrimmedTimelineItem(self, item_json, edge):
+        try:
+            item_data = json.loads(item_json) if not isinstance(item_json, dict) else item_json
+        except Exception:
+            log.debug("Failed to parse trim JSON data", exc_info=True)
+            return
+
+        setattr(self.window, "_trim_refresh_pending", True)
+        if ViewClass == TimelineWidget:
+            item_id = item_data.get("id")
+            self._pending_trim_refresh = {
+                "id": item_id,
+                "edge": edge,
+                "data": item_data,
+            }
+            QTimer.singleShot(0, self._apply_pending_trim_refresh)
+            return
+
+        fps = get_app().project.get("fps")
+        fps_float = float(fps["num"]) / float(fps["den"]) if fps else 0.0
+        if fps_float <= 0.0:
+            return
+
+        position = float(item_data.get("position", 0.0) or 0.0)
+        start = float(item_data.get("start", 0.0) or 0.0)
+        end = float(item_data.get("end", start) or start)
+        duration = max(0.0, end - start)
+        frame_duration = 1.0 / fps_float
+
+        if edge == "left":
+            target_seconds = position
+        else:
+            target_seconds = position + max(0.0, duration - frame_duration)
+
+        target_frame = max(1, int(round(target_seconds * fps_float)) + 1)
+        self.window.LoadTimelineAndSeekSignal.emit(target_frame)
+        QTimer.singleShot(0, lambda: setattr(self.window, "_trim_refresh_pending", False))
+
+    def _action_contains_item_id(self, action, item_id):
+        if not action or not item_id:
+            return False
+        for part in action.key or []:
+            if isinstance(part, dict) and part.get("id") == item_id:
+                return True
+        values = getattr(action, "values", None)
+        if isinstance(values, dict) and values.get("id") == item_id:
+            return True
+        return False
+
+    def _apply_pending_trim_refresh(self):
+        pending = self._pending_trim_refresh
+        if not pending:
+            return
+        self._pending_trim_refresh = None
+        item_data = pending.get("data") or {}
+        edge = pending.get("edge")
+
+        fps = get_app().project.get("fps")
+        fps_float = float(fps["num"]) / float(fps["den"]) if fps else 0.0
+        if fps_float <= 0.0:
+            return
+
+        position = float(item_data.get("position", 0.0) or 0.0)
+        start = float(item_data.get("start", 0.0) or 0.0)
+        end = float(item_data.get("end", start) or start)
+        duration = max(0.0, end - start)
+        frame_duration = 1.0 / fps_float
+
+        if edge == "left":
+            target_seconds = position
+        else:
+            target_seconds = position + max(0.0, duration - frame_duration)
+
+        target_frame = max(1, int(round(target_seconds * fps_float)) + 1)
+        self.window.LoadTimelineAndSeekSignal.emit(target_frame)
+        QTimer.singleShot(0, lambda: setattr(self.window, "_trim_refresh_pending", False))
 
     @pyqtSlot(str, int)
     def PreviewClipFrame(self, clip_id, frame_number):
@@ -3922,8 +4207,10 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         snap_to_grid = lambda t: round(t * fps_float) / fps_float
         duration = snap_to_grid(get_app().get_settings().get("default-transition-length"))
 
-        # Open up QtImageReader for transition Image
-        transition_reader = openshot.QtImageReader(file_path)
+        reader_data = self._load_transition_reader_data(file_path)
+        if not reader_data:
+            log.warning("Unable to add transition, invalid reader path: %s", file_path)
+            return None
 
         # Create Keyframes for brightness and contrast
         brightness = openshot.Keyframe()
@@ -3943,9 +4230,12 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             "end": duration,
             "brightness": json.loads(brightness.Json()),
             "contrast": json.loads(contrast.Json()),
-            "reader": json.loads(transition_reader.Json()),
+            "reader": reader_data,
             "replace_image": False
         }
+
+        # Default transition to fade-in on clip left edge, fade-out on right edge.
+        self._auto_orient_transition_keyframes(transition_data)
 
         # Send to update manager
         self.update_transition_data(transition_data, only_basic_props=False, ignore_refresh=ignore_refresh)
@@ -3957,6 +4247,37 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         if call_manual_move:
             self.run_js(JS_SCOPE_SELECTOR + ".startManualMove('{}','{}');".format(self.item_type, json.dumps(self.item_ids)))
         return transition_data
+
+    def _load_transition_reader_data(self, file_path):
+        """Build transition reader JSON, with a platform-safe fallback path."""
+        if not file_path:
+            return None
+        if not os.path.exists(file_path):
+            log.warning("Transition file does not exist: %s", file_path)
+            return None
+
+        try:
+            transition_reader = openshot.QtImageReader(file_path)
+            return json.loads(transition_reader.Json())
+        except Exception:
+            log.debug("QtImageReader failed for transition: %s", file_path, exc_info=1)
+
+        clip = None
+        try:
+            clip = openshot.Clip(file_path)
+            reader = clip.Reader()
+            if reader:
+                return json.loads(reader.Json())
+        except Exception:
+            log.debug("Clip reader fallback failed for transition: %s", file_path, exc_info=1)
+        finally:
+            if clip:
+                try:
+                    clip.Close()
+                except Exception:
+                    pass
+
+        return None
 
     # Add Effect
     def addEffect(self, effect_names, event_position):
@@ -3982,6 +4303,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
                 ):
                     log.info("Applying effect {} to clip ID {}".format(name, clip.id))
                     log.debug(clip)
+                    original_clip_data = json.loads(json.dumps(clip.data))
 
                     # Handle custom effect dialogs
                     if name in effect_options:
@@ -4030,6 +4352,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
 
                     # Update clip data for project
                     self.update_clip_data(clip.data, only_basic_props=False, ignore_reader=True)
+                    get_app().updates.apply_last_action_to_history(original_clip_data)
 
         # Find position from javascript
         self.run_js(JS_SCOPE_SELECTOR + ".getJavaScriptPosition({}, {});"
@@ -4068,6 +4391,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         if not effect_name:
             return
         log.info("Applying effect %s to clip ID %s", effect_name, clip.id)
+        original_clip_data = json.loads(json.dumps(clip.data))
         if effect_name in effect_options:
             effect_params = effect_options.get(effect_name)
             from windows.process_effect import ProcessEffect
@@ -4096,6 +4420,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             clip.data["effects"] = effects
         effects.append(effect_json)
         self.update_clip_data(clip.data, only_basic_props=False, ignore_reader=True)
+        get_app().updates.apply_last_action_to_history(original_clip_data)
 
     # Without defining this method, the 'copy' action doesn't show with cursor
     def dragMoveEvent(self, event):
@@ -4301,6 +4626,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         self.setAcceptDrops(True)
         self.last_position_frames = None
         self.context_menu_cursor_position = None
+        self._pending_trim_refresh = None
 
         # Get logger
         self.log_fn = log.log

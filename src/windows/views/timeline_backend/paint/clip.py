@@ -97,6 +97,8 @@ class ClipPainter(BasePainter):
         self.clip_pen.setCosmetic(True)
         self.sel_pen = QPen(QBrush(self.w.theme.clip_selected), bw)
         self.sel_pen.setCosmetic(True)
+        self.top_overlay = QColor(self.w.theme.clip.top_overlay)
+        self.top_overlay2 = QColor(self.w.theme.clip.top_overlay2)
         self.menu_pix = None
         if self.w.theme.menu_icon:
             size = self.w.theme.menu_size or self.w.theme.menu_icon.width()
@@ -124,6 +126,49 @@ class ClipPainter(BasePainter):
         self._thumb_missing_logged.clear()
         self._last_thumb_request_time.clear()
         self._slot_fallback_cache.clear()
+
+    def invalidate_clip_thumbnails(
+        self,
+        clip_token,
+        *,
+        drop_cache=True,
+        drop_pending=True,
+        drop_fallback=True,
+        invalidate_render_cache=True,
+    ):
+        """Invalidate thumbnail caches/requests for a single clip."""
+        if not clip_token:
+            return
+        clip_id = str(clip_token).split(":", 1)[0]
+        if drop_cache:
+            cache_keys = [
+                key for key in list(self.thumb_cache.keys())
+                if isinstance(key, tuple) and key and str(key[0]).split(":", 1)[0] == clip_id
+            ]
+            for key in cache_keys:
+                self.thumb_cache.pop(key, None)
+
+        if drop_pending:
+            pending_keys = [
+                key for key in list(self._thumb_pending.keys())
+                if isinstance(key, tuple) and key and str(key[0]).split(":", 1)[0] == clip_id
+            ]
+            for key in pending_keys:
+                self._thumb_pending.pop(key, None)
+                self._thumb_regions.pop(key, None)
+                self._thumb_missing_logged.discard(key)
+
+        if drop_fallback:
+            fallback_keys = [
+                key for key in list(self._slot_fallback_cache.keys())
+                if isinstance(key, tuple) and key and str(key[0]).split(":", 1)[0] == clip_id
+            ]
+            for key in fallback_keys:
+                self._slot_fallback_cache.pop(key, None)
+
+        self._last_thumb_request_time.pop(clip_id, None)
+        if invalidate_render_cache:
+            self._invalidate_clip_cache_for_clip(clip_id)
 
     def _segment_overdraw(self, view_width):
         """Return the horizontal overdraw (extra pixels) to render beyond the view."""
@@ -167,7 +212,14 @@ class ClipPainter(BasePainter):
             )
 
             pen = self.sel_pen if selected else self.clip_pen
+            locked = self.w._is_track_locked((clip.data if isinstance(clip.data, dict) else {}).get("layer"))
+            if locked:
+                pen = self.dimmed_pen(pen)
+                painter.save()
+                painter.setOpacity(0.8)
             self._draw_clip(painter, rect, segment_rect, clip, pen, selected)
+            if locked:
+                painter.restore()
         painter.restore()
 
     @staticmethod
@@ -416,7 +468,7 @@ class ClipPainter(BasePainter):
         icon_entries = []
         pending_thumbs = False
         if not tiny:
-            self._fill_clip_background(painter, inner_rect)
+            self._fill_clip_background(painter, inner_rect, segment_info)
             icon_entries, pending_thumbs = self._draw_clip_contents(
                 painter, clip, inner_rect, segment_info
             )
@@ -471,16 +523,87 @@ class ClipPainter(BasePainter):
         composite.drawImage(0, 0, blurred)
         composite.end()
 
-    def _fill_clip_background(self, painter, inner_rect):
+    def _clip_fill_path(self, rect, includes_start=True, includes_end=True):
+        if rect.width() <= 0.0 or rect.height() <= 0.0:
+            return None
+        radius = 0.0
+        if rect.width() >= 20.0 and rect.height() > 0.0:
+            radius = min(float(self.border_radius or 0.0), min(rect.width(), rect.height()) / 2.0)
+        if radius <= 0.0:
+            return None
+
+        left = rect.left()
+        right = rect.right()
+        top = rect.top()
+        bottom = rect.bottom()
+        path = QPainterPath()
+
+        if includes_start:
+            path.moveTo(left, top + radius)
+            path.quadTo(left, top, left + radius, top)
+        else:
+            path.moveTo(left, top)
+
+        if includes_end:
+            path.lineTo(right - radius, top)
+            path.quadTo(right, top, right, top + radius)
+            path.lineTo(right, bottom - radius)
+            path.quadTo(right, bottom, right - radius, bottom)
+        else:
+            path.lineTo(right, top)
+            path.lineTo(right, bottom)
+
+        if includes_start:
+            path.lineTo(left + radius, bottom)
+            path.quadTo(left, bottom, left, bottom - radius)
+            path.lineTo(left, top + radius)
+        else:
+            path.lineTo(left, bottom)
+            path.lineTo(left, top)
+
+        path.closeSubpath()
+        return path
+
+    def _fill_clip_background(self, painter, inner_rect, segment=None):
+        includes_start = True
+        includes_end = True
+        if isinstance(segment, dict):
+            includes_start = bool(segment.get("includes_start", True))
+            includes_end = bool(segment.get("includes_end", True))
+        shape_path = self._clip_fill_path(inner_rect, includes_start, includes_end)
+
         bg = self.w.theme.clip.background
         bg2 = self.w.theme.clip.background2
         if bg2.isValid() and bg2 != bg:
             grad = QLinearGradient(inner_rect.topLeft(), inner_rect.bottomLeft())
             grad.setColorAt(0, bg)
             grad.setColorAt(1, bg2)
-            painter.fillRect(inner_rect, QBrush(grad))
+            if shape_path:
+                painter.fillPath(shape_path, QBrush(grad))
+            else:
+                painter.fillRect(inner_rect, QBrush(grad))
         elif bg.isValid():
-            painter.fillRect(inner_rect, bg)
+            if shape_path:
+                painter.fillPath(shape_path, bg)
+            else:
+                painter.fillRect(inner_rect, bg)
+
+        # Match JS .clip_top overlay (light-to-transparent).
+        top_overlay = QColor(self.top_overlay)
+        bottom_overlay = QColor(self.top_overlay2)
+        if top_overlay.isValid() or bottom_overlay.isValid():
+            if not top_overlay.isValid() and bottom_overlay.isValid():
+                top_overlay = QColor(bottom_overlay)
+            if not bottom_overlay.isValid() and top_overlay.isValid():
+                bottom_overlay = QColor(top_overlay)
+                bottom_overlay.setAlpha(0)
+            overlay = QLinearGradient(inner_rect.topLeft(), inner_rect.bottomLeft())
+            overlay.setColorAt(0.0, top_overlay)
+            overlay.setColorAt(1.0, bottom_overlay)
+            if shape_path:
+                painter.fillPath(shape_path, QBrush(overlay))
+            else:
+                painter.fillRect(inner_rect, QBrush(overlay))
 
     def _draw_clip_contents(self, painter, clip, inner_rect, segment):
         bw = float(self.border_width or 0.0)
@@ -611,11 +734,24 @@ class ClipPainter(BasePainter):
             return [], None
 
         # Slot dimensions
-        thumb_w = float(self.w.theme.clip.thumb_width or inner.height())
+        theme_thumb_w = float(self.w.theme.clip.thumb_width or inner.height())
+        thumb_w = theme_thumb_w
         thumb_h = float(self.w.theme.clip.thumb_height or inner.height())
-        thumb_w = max(self._min_thumb_slot_width, min(thumb_w, clip_width))
+        # Keep slot width at nominal thumbnail width even for small clips.
+        # This allows the clip bounds to crop thumbnails instead of shrinking them.
+        thumb_w = max(self._min_thumb_slot_width, thumb_w)
         thumb_h = max(self._min_thumb_slot_width, min(thumb_h, inner.height()))
         top = inner.y() + (inner.height() - thumb_h) / 2.0
+        # Keep legacy/default theme behavior while nudging thumbnails downward
+        # on taller tracks so they do not appear vertically centered too high.
+        baseline_clip_height = 48.0
+        if inner.height() > baseline_clip_height:
+            top += (inner.height() - baseline_clip_height) / 2.0
+            top += 3.0
+        max_top = inner.bottom() - thumb_h
+        if max_top < inner.y():
+            max_top = inner.y()
+        top = min(max(top, inner.y()), max_top)
 
         pixels_per_second = float(self.w.pixels_per_second or 0.0)
         if pixels_per_second <= 0.0:
@@ -651,10 +787,20 @@ class ClipPainter(BasePainter):
         media_duration = max(media_duration, clip_duration)
 
         # Slot spacing in time
-        interval_pixels = max(thumb_w, self._min_thumb_slot_width)
+        # Entire style keeps spacing tied to nominal thumb width (not the
+        # shrinking clip width), which prevents end-of-trim slot oscillation.
+        if style == "entire":
+            interval_pixels = max(theme_thumb_w, self._min_thumb_slot_width)
+        else:
+            interval_pixels = max(thumb_w, self._min_thumb_slot_width)
         interval_seconds = interval_pixels / pixels_per_second
         if interval_seconds <= 0.0:
             interval_seconds = 0.01
+        if style == "entire":
+            clip_fps = self._clip_media_fps(clip)
+            if clip_fps > 0.0:
+                interval_frames = max(1, int(round(interval_seconds * clip_fps)))
+                interval_seconds = interval_frames / clip_fps
         half_interval = interval_seconds * 0.5
         slot_duration_seconds = interval_seconds
 
@@ -732,7 +878,12 @@ class ClipPainter(BasePainter):
         elif style == "start-end":
             if includes_start:
                 add_center_world(segment_start_world)
-            if includes_end:
+            # If the visible segment cannot fit two full slots, prioritize the
+            # start slot to avoid the end slot covering it on very short clips.
+            allow_end_slot = True
+            if includes_start and includes_end and segment_duration < (slot_duration_seconds * 2.0):
+                allow_end_slot = False
+            if includes_end and allow_end_slot:
                 # Start slot so its right edge aligns with the clip end
                 clip_end_world = clip_pos + max(0.0, clip_duration - slot_duration_seconds)
                 add_center_world(clip_end_world)
@@ -799,8 +950,7 @@ class ClipPainter(BasePainter):
         pending = False
         generation = getattr(self.w, "thumbnail_generation", 0)
         rounding = self._frame_rounding_increment(clip_fps, interval_seconds)
-        clip_width = float(inner.width())
-        clip_left = inner.x()
+        frame_duration = (1.0 / clip_fps) if clip_fps and clip_fps > 0.0 else 0.0
 
         static_image = self._has_static_image(clip)
         static_frame = 1 if static_image else None
@@ -809,25 +959,43 @@ class ClipPainter(BasePainter):
             slot_start_time = float(time_offset)
             slot_end_time = slot_start_time + slot_duration_seconds
             slot_center_time = slot_start_time + half_slot_duration
-            if slot_center_time < segment_offset:
-                slot_center_time = segment_offset
-            elif slot_center_time > segment_end:
-                slot_center_time = segment_end
+            clamped_center_time = slot_center_time
+            if clamped_center_time < segment_offset:
+                clamped_center_time = segment_offset
+            elif clamped_center_time > segment_end:
+                clamped_center_time = segment_end
 
-            # Correct absolute time in source media
-            clip_time = trim_start + slot_center_time
-            frame = self._frame_for_offset(clip_time, clip_fps)
-            if static_frame:
-                frame = static_frame
             is_edge = (slot_start_time <= segment_offset + edge_epsilon) or (
                 slot_end_time >= segment_end - edge_epsilon
             )
-            if rounding > 1 and not is_edge:
-                frame = max(1, int(round((frame - 1) / rounding) * rounding) + 1)
-            key = (clip_key, frame)
             slot_role = "edge-start" if is_edge and slot_start_time <= segment_offset + edge_epsilon else (
                 "edge-end" if is_edge and slot_end_time >= segment_end - edge_epsilon else "grid"
             )
+
+            # For "start" and "start-end", anchor edge thumbnails to exact trim edges.
+            # Keep strip/entire behavior unchanged (centered sampling).
+            if style in ("start", "start-end") and slot_role == "edge-start":
+                sample_time = segment_offset
+            elif style in ("start", "start-end") and slot_role == "edge-end":
+                if frame_duration > 0.0:
+                    sample_time = max(segment_offset, segment_end - frame_duration)
+                else:
+                    sample_time = segment_end
+            elif style == "entire":
+                # Entire style samples from the first frame in each slot for stable
+                # trim behavior and predictable strip thumbnails.
+                sample_time = slot_start_time
+            else:
+                sample_time = clamped_center_time
+
+            # Correct absolute time in source media
+            clip_time = trim_start + sample_time
+            frame = self._frame_for_offset(clip_time, clip_fps)
+            if static_frame:
+                frame = static_frame
+            if rounding > 1 and (style == "entire" or not is_edge):
+                frame = max(1, int(round((frame - 1) / rounding) * rounding) + 1)
+            key = (clip_key, frame)
             cached = self.thumb_cache.get(key)
             if cached and not cached.isNull():
                 pix = cached
@@ -882,6 +1050,9 @@ class ClipPainter(BasePainter):
             if not pix.isNull():
                 self.thumb_cache[key] = pix
                 return pix
+
+        if getattr(self.w, "_suspend_thumbnail_requests", False):
+            return None
 
         if not allow_request:
             return None
@@ -1266,7 +1437,7 @@ class ClipPainter(BasePainter):
         includes_start = (segment_rect.left() - full_rect.left()) <= 0.5
         includes_end = (full_rect.right() - segment_rect.right()) <= 0.5
 
-        border_pen = self.sel_pen if selected else self.clip_pen
+        border_pen = pen if isinstance(pen, QPen) else (self.sel_pen if selected else self.clip_pen)
         self._stroke_visible_border(
             painter,
             segment_rect,
@@ -1363,9 +1534,10 @@ class ClipPainter(BasePainter):
     def handle_thumbnail_ready(self, clip_id, frame, thumb_path, generation):
         clip_key = str(clip_id or "")
         key = (clip_key, int(frame or 0))
+        pending_generation = self._thumb_pending.get(key)
 
         # Ignore if not from current generation
-        if self._thumb_pending.get(key) != generation:
+        if pending_generation != generation:
             return
 
         self._thumb_pending.pop(key, None)

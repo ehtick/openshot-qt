@@ -35,6 +35,7 @@ from classes.query import File
 from classes.app import get_app
 from classes.logger import log
 import json
+import uuid
 
 
 class EmojisListView(QListView):
@@ -65,10 +66,19 @@ class EmojisListView(QListView):
 
         # Create emoji file before drag starts
         data = json.loads(drag.mimeData().text())
-        file = self.add_file(data[0])
-        if not file:
-            log.warning("Failed to add emoji file for drag: %s", data[0])
-            return
+
+        # Get the translated emoji name from the model item
+        # Map through proxy_model -> group_model -> standard model
+        group_index = self.model.mapToSource(selected[0])
+        source_index = self.group_model.mapToSource(group_index)
+        selected_item = self.emojis_model.model.itemFromIndex(source_index)
+        emoji_name = selected_item.text() if selected_item else None
+
+        # Start a transaction so File + Clip are grouped for undo
+        tid = str(uuid.uuid4())
+        get_app().updates.transaction_id = tid
+
+        file = self.add_file(data[0], emoji_name)
 
         # Update mimedata for emoji
         data = QMimeData()
@@ -89,7 +99,10 @@ class EmojisListView(QListView):
         exec_fn()
         clear_override_cursor()
 
-    def add_file(self, filepath):
+        # End transaction
+        get_app().updates.transaction_id = None
+
+    def add_file(self, filepath, emoji_name=None):
         # Add file into project
 
         app = get_app()
@@ -114,6 +127,10 @@ class EmojisListView(QListView):
 
             # Determine media type
             file_data["media_type"] = "image"
+
+            # Set friendly emoji name (translated)
+            if emoji_name:
+                file_data["name"] = emoji_name
 
             # Save new file to the project data
             file = File()

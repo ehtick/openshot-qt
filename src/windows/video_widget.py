@@ -53,6 +53,13 @@ from classes.query import Clip, Effect
 class VideoWidget(QWidget, updates.UpdateInterface):
     """ A QWidget used on the video display widget """
 
+    def _snap_angle(self, angle_degrees, step_degrees=15.0):
+        """Snap an angle to the nearest increment (degrees)."""
+        step = float(step_degrees) if step_degrees else 0.0
+        if step <= 0.0:
+            return angle_degrees
+        return math.floor((angle_degrees + (step / 2.0)) / step) * step
+
     def _compute_handles_opacity(self, fps_float):
         """
         Opacity based on playhead vs. selected clip(s).
@@ -241,6 +248,7 @@ class VideoWidget(QWidget, updates.UpdateInterface):
         self.originHandle = None
         self.original_effect_data = None
         self.hover_transform_mode = None
+        self.rotation_drag_value = None
         self.hover_cursor = Qt.ArrowCursor
         self.setCursor(Qt.ArrowCursor)
         self.update()
@@ -734,6 +742,7 @@ class VideoWidget(QWidget, updates.UpdateInterface):
         self.mouse_dragging = False
         self.mouse_position = event.pos()
         self.transform_mode = self.hover_transform_mode
+        self.rotation_drag_value = None
         self.setCursor(self.hover_cursor)
 
         # Ignore undo/redo history temporarily (to avoid a huge pile of undo/redo history)
@@ -759,6 +768,7 @@ class VideoWidget(QWidget, updates.UpdateInterface):
         self.mouse_pressed = False
         self.mouse_dragging = False
         self.transform_mode = None
+        self.rotation_drag_value = None
         self.region_mode = None
 
         # Save region image data (as QImage)
@@ -1113,7 +1123,9 @@ class VideoWidget(QWidget, updates.UpdateInterface):
 
                 elif self.transform_mode == 'rotation':
                     # Get current rotation keyframe value
-                    rotation = raw_properties.get('rotation').get('value')
+                    if self.rotation_drag_value is None:
+                        self.rotation_drag_value = raw_properties.get('rotation').get('value')
+                    rotation = self.rotation_drag_value
                     scale_x = max(float(raw_properties.get('scale_x').get('value')), 0.001)
                     scale_y = max(float(raw_properties.get('scale_y').get('value')), 0.001)
 
@@ -1126,6 +1138,10 @@ class VideoWidget(QWidget, updates.UpdateInterface):
 
                     y_adjust = y_motion / ((self.clipBounds.height() * scale_y) / 90)
                     rotation += (y_adjust if is_on_right else -y_adjust)
+
+                    self.rotation_drag_value = rotation
+                    if int(QCoreApplication.instance().keyboardModifiers() & (Qt.ControlModifier | Qt.ShiftModifier)) > 0:
+                        rotation = self._snap_angle(rotation, 15.0)
 
                     # Update keyframe value (or create new one)
                     self.updateClipProperty(
@@ -1319,7 +1335,9 @@ class VideoWidget(QWidget, updates.UpdateInterface):
 
                     elif self.transform_mode == 'rotation':
                         # Get current rotation keyframe value
-                        rotation = raw_properties.get('rotation').get('value')
+                        if self.rotation_drag_value is None:
+                            self.rotation_drag_value = raw_properties.get('rotation').get('value')
+                        rotation = self.rotation_drag_value
                         scale_x = max(float(raw_properties.get('scale_x').get('value')), 0.001)
                         scale_y = max(float(raw_properties.get('scale_y').get('value')), 0.001)
 
@@ -1332,6 +1350,10 @@ class VideoWidget(QWidget, updates.UpdateInterface):
 
                         y_adjust = y_motion / (self.clipBounds.height() * scale_y / 90)
                         rotation += (y_adjust if is_on_right else -y_adjust)
+
+                        self.rotation_drag_value = rotation
+                        if int(QCoreApplication.instance().keyboardModifiers() & (Qt.ControlModifier | Qt.ShiftModifier)) > 0:
+                            rotation = self._snap_angle(rotation, 15.0)
 
                         # Update keyframe value (or create new one)
                         self.updateEffectProperty(
@@ -1717,8 +1739,9 @@ class VideoWidget(QWidget, updates.UpdateInterface):
 
     def _clip_source_dimensions(self, clip, clip_object, frame_number, skip_effect_id=None):
         pixel_adjust = self.pixel_ratio.Reciprocal().ToDouble()
-        width = float(clip.data['reader']['width'])
-        height = float(clip.data['reader']['height']) * pixel_adjust
+        reader = clip.data.get('reader', {})
+        width = float(reader.get('width', self.width()))
+        height = float(reader.get('height', self.height())) * pixel_adjust
 
         for eff in clip_object.Effects():
             if getattr(getattr(eff, 'info', None), 'class_name', '') != 'Crop':
@@ -2014,6 +2037,7 @@ class VideoWidget(QWidget, updates.UpdateInterface):
         self.mouse_position = None
         self.transform_mode = None
         self.hover_transform_mode = None
+        self.rotation_drag_value = None
         self.hover_cursor = Qt.ArrowCursor
         self.original_clip_data = None
         self.original_clip_data_map = {}
