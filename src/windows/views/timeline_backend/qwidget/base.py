@@ -28,6 +28,7 @@
 import json
 from functools import partial
 
+import openshot
 from qt_api import Qt, QRectF, QSize, QTimer, QPointF, QByteArray, pyqtSignal, QObject, QMetaMethod
 from qt_api import QT_API
 from qt_api import QtCore

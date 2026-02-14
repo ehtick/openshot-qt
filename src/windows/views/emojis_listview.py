@@ -25,8 +25,7 @@
  along with OpenShot Library.  If not, see <http://www.gnu.org/licenses/>.
  """
 
-import os
-from qt_api import QMimeData, QSize, QPoint, Qt, QUrl, pyqtSlot, QRegularExpression
+from qt_api import QMimeData, QSize, QPoint, Qt, QUrl, pyqtSlot
 from qt_api import clear_override_cursor
 from qt_api import QDrag, QListView
 import openshot  # Python module for libopenshot (required video editing module installed separately)
@@ -77,30 +76,33 @@ class EmojisListView(QListView):
         # Start a transaction so File + Clip are grouped for undo
         tid = str(uuid.uuid4())
         get_app().updates.transaction_id = tid
-
-        file = self.add_file(data[0], emoji_name)
-
-        # Update mimedata for emoji
-        data = QMimeData()
-        data.setText(json.dumps([file.id]))
-        data.setHtml("clip")
         try:
-            data.setUrls([QUrl.fromLocalFile(file.absolute_path())])
-        except Exception:
-            file_path = file.data.get("path")
-            if file_path:
-                data.setUrls([QUrl.fromLocalFile(file_path)])
-        drag.setMimeData(data)
+            file = self.add_file(data[0], emoji_name)
+            if not file:
+                log.warning("Failed to add emoji file for drag: %s", data[0])
+                return
 
-        # Start drag
-        exec_fn = getattr(drag, "exec", None) or getattr(drag, "exec_", None)
-        if exec_fn is None:
-            raise AttributeError("QDrag has no exec_/exec method")
-        exec_fn()
-        clear_override_cursor()
+            # Update mimedata for emoji
+            data = QMimeData()
+            data.setText(json.dumps([file.id]))
+            data.setHtml("clip")
+            try:
+                data.setUrls([QUrl.fromLocalFile(file.absolute_path())])
+            except Exception:
+                file_path = file.data.get("path")
+                if file_path:
+                    data.setUrls([QUrl.fromLocalFile(file_path)])
+            drag.setMimeData(data)
 
-        # End transaction
-        get_app().updates.transaction_id = None
+            # Start drag
+            exec_fn = getattr(drag, "exec", None) or getattr(drag, "exec_", None)
+            if exec_fn is None:
+                raise AttributeError("QDrag has no exec_/exec method")
+            exec_fn()
+            clear_override_cursor()
+        finally:
+            # End transaction
+            get_app().updates.transaction_id = None
 
     def add_file(self, filepath, emoji_name=None):
         # Add file into project
@@ -149,6 +151,9 @@ class EmojisListView(QListView):
     def group_changed(self, index):
         group_id = self.win.emojiFilterGroup.itemData(index)
         self.emojis_model.set_group_filter(group_id or "")
+        s = get_app().get_settings()
+        if s.get("emoji_group_filter") != group_id:
+            s.set("emoji_group_filter", group_id)
 
     def refresh_view(self):
         """Filter emojis with proxy class"""
@@ -184,6 +189,7 @@ class EmojisListView(QListView):
 
         # Set model (expects a proxy model)
         self.emojis_model = model
+        self.group_model = self.emojis_model.group_model
         self.model = self.emojis_model.proxy_model
         self.setModel(self.model)
 
@@ -211,8 +217,14 @@ class EmojisListView(QListView):
         # Activate filter and group selection
         _ = get_app()._tr
         self.win.emojisFilter.textChanged.connect(self.filter_changed)
+        s = get_app().get_settings()
+        default_group_id = s.get("emoji_group_filter") or "smileys-emotion"
+        dropdown_index = 0
         self.win.emojiFilterGroup.clear()
         self.win.emojiFilterGroup.addItem(_("All"), "")
-        for name, group_id in sorted(self.emojis_model.emoji_groups, key=lambda g: g[0]):
+        for index, (name, group_id) in enumerate(sorted(self.emojis_model.emoji_groups, key=lambda g: g[0])):
             self.win.emojiFilterGroup.addItem(name, group_id)
+            if group_id == default_group_id:
+                dropdown_index = index + 1
         self.win.emojiFilterGroup.currentIndexChanged.connect(self.group_changed)
+        self.win.emojiFilterGroup.setCurrentIndex(dropdown_index)
