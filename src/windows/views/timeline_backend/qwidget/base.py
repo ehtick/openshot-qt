@@ -1567,6 +1567,7 @@ class TimelineWidgetBase(QWidget):
         if not total:
             self._reset_drag_preview()
             return
+        committed_any = False
         for idx, entry in enumerate(self._drag_preview_items):
             source_id = entry.get("source_id")
             if source_id is None:
@@ -1577,16 +1578,20 @@ class TimelineWidgetBase(QWidget):
             position = max(0.0, float(entry.get("position", 0.0) or 0.0))
             ignore_refresh = idx < total - 1
             if entry.get("type") == "transition":
-                self.addTransition(
+                transition = self.addTransition(
                     source_id,
                     QPointF(position, 0),
                     track_num,
                     ignore_refresh=ignore_refresh,
                     call_manual_move=False,
                 )
+                if transition is None:
+                    log.warning("Deferred transition drop failed for path: %s", source_id)
+                    continue
+                committed_any = True
             else:
                 auto_transition = total == 1
-                self.addClip(
+                clip = self.addClip(
                     source_id,
                     QPointF(position, 0),
                     track_num,
@@ -1594,6 +1599,8 @@ class TimelineWidgetBase(QWidget):
                     call_manual_move=False,
                     auto_transition=auto_transition,
                 )
+                if clip is not None:
+                    committed_any = True
         self._update_project_duration()
         self._drag_preview_items = []
         self._drag_payload = None
@@ -1602,7 +1609,8 @@ class TimelineWidgetBase(QWidget):
             self.item_ids = []
         self.new_item = False
         self.item_type = None
-        self.changed(None)
+        if committed_any:
+            self.changed(None)
         self.update()
 
 

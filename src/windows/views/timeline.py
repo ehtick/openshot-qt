@@ -4107,17 +4107,21 @@ class TimelineView(updates.UpdateInterface, ViewClass):
 
     def _get_transition_reader_json(self, file_path, create=True):
         """Return cached transition reader JSON, creating it when requested."""
+        if not file_path:
+            return None
+        normalized_path = os.path.normpath(str(file_path))
+
         reader_cache = getattr(self, "_transition_reader_json_cache", None)
         if reader_cache is None:
             reader_cache = {}
             self._transition_reader_json_cache = reader_cache
 
-        cache_key = os.path.abspath(file_path) if isinstance(file_path, str) else str(file_path)
+        cache_key = os.path.abspath(normalized_path)
         reader_json = reader_cache.get(cache_key)
         if reader_json is None and create:
-            transition_reader = openshot.QtImageReader(file_path)
-            reader_json = json.loads(transition_reader.Json())
-            reader_cache[cache_key] = deepcopy(reader_json)
+            reader_json = self._load_transition_reader_data(normalized_path)
+            if isinstance(reader_json, dict):
+                reader_cache[cache_key] = deepcopy(reader_json)
         return deepcopy(reader_json) if isinstance(reader_json, dict) else None
 
     # Add Transition
@@ -4135,9 +4139,13 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         fps_float = float(fps["num"]) / float(fps["den"])
         snap_to_grid = lambda t: round(t * fps_float) / fps_float
         duration = snap_to_grid(get_app().get_settings().get("default-transition-length"))
+        file_path = os.path.normpath(str(file_path))
 
         # Defer expensive SVG raster reader creation during drag-preview.
         reader_json = self._get_transition_reader_json(file_path, create=not defer_reader)
+        if not defer_reader and not isinstance(reader_json, dict):
+            log.warning("Unable to add transition, invalid reader path: %s", file_path)
+            return None
         if not isinstance(reader_json, dict):
             reader_json = {"path": file_path}
 
