@@ -605,9 +605,11 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         fps = get_app().project.get("fps")
         fps_float = float(fps["num"]) / float(fps["den"])
 
-        # Open up QtImageReader for transition Image
-        transition_reader = openshot.QtImageReader(
-            os.path.join(info.PATH, "transitions", "common", "fade.svg"))
+        transition_path = os.path.join(info.PATH, "transitions", "common", "fade.svg")
+        reader_data = self._load_transition_reader_data(transition_path)
+        if not reader_data:
+            log.warning("Unable to load default transition image: %s", transition_path)
+            return
 
         # Generate transition object
         transition_object = openshot.Mask()
@@ -629,7 +631,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             "end": transition_details["end"],
             "brightness": json.loads(brightness.Json()),
             "contrast": json.loads(contrast.Json()),
-            "reader": json.loads(transition_reader.Json()),
+            "reader": reader_data,
             "replace_image": False
         }
 
@@ -4175,6 +4177,37 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         if call_manual_move:
             self.run_js(JS_SCOPE_SELECTOR + ".startManualMove('{}','{}');".format(self.item_type, json.dumps(self.item_ids)))
         return transition_data
+
+    def _load_transition_reader_data(self, file_path):
+        """Build transition reader JSON, with a platform-safe fallback path."""
+        if not file_path:
+            return None
+        if not os.path.exists(file_path):
+            log.warning("Transition file does not exist: %s", file_path)
+            return None
+
+        try:
+            transition_reader = openshot.QtImageReader(file_path)
+            return json.loads(transition_reader.Json())
+        except Exception:
+            log.debug("QtImageReader failed for transition: %s", file_path, exc_info=1)
+
+        clip = None
+        try:
+            clip = openshot.Clip(file_path)
+            reader = clip.Reader()
+            if reader:
+                return json.loads(reader.Json())
+        except Exception:
+            log.debug("Clip reader fallback failed for transition: %s", file_path, exc_info=1)
+        finally:
+            if clip:
+                try:
+                    clip.Close()
+                except Exception:
+                    pass
+
+        return None
 
     # Add Effect
     def addEffect(self, effect_names, event_position):

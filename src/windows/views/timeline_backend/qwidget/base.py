@@ -1225,7 +1225,9 @@ class TimelineWidgetBase(QWidget):
 
     def _event_seconds_track(self, event):
         pos = event.pos()
-        if pos.x() < self.track_name_width or pos.y() < self.ruler_height:
+        if pos.y() < self.ruler_height:
+            return None
+        if not self.rect().contains(pos):
             return None
         if not self.track_list:
             return None
@@ -2440,6 +2442,7 @@ class TimelineWidgetBase(QWidget):
     def _trigger_clip_menu_icon(self, pos):
         for rect, clip, _selected in self.geometry.iter_clips(reverse=True):
             if self._clip_menu_rect(rect).contains(pos) and hasattr(self.win, "timeline"):
+                self._select_timeline_item(clip.id, "clip", True)
                 self.win.timeline.ShowClipMenu(clip.id)
                 return True
         return False
@@ -2953,16 +2956,14 @@ class TimelineWidgetBase(QWidget):
         # Transition context menu (prioritized over clips)
         for rect, tran, _selected in self.geometry.iter_transitions(reverse=True):
             if rect.contains(pos) and hasattr(self.win, "timeline"):
-                if tran.id not in getattr(self.win, "selected_transitions", []):
-                    self._select_timeline_item(tran.id, "transition", True)
+                self._select_timeline_item(tran.id, "transition", True)
                 self.win.timeline.ShowTransitionMenu(tran.id)
                 return True
 
         # Clip context menu
         for rect, clip, _selected in self.geometry.iter_clips(reverse=True):
             if rect.contains(pos) and hasattr(self.win, "timeline"):
-                if clip.id not in getattr(self.win, "selected_clips", []):
-                    self._select_timeline_item(clip.id, "clip", True)
+                self._select_timeline_item(clip.id, "clip", True)
                 self.win.timeline.ShowClipMenu(clip.id)
                 return True
 
