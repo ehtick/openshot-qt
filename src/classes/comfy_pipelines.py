@@ -345,14 +345,14 @@ def build_workflow(
             "1": {"inputs": {"ckpt_name": svd_checkpoint_name}, "class_type": "ImageOnlyCheckpointLoader"},
             "2": {"inputs": {"ckpt_name": checkpoint_name}, "class_type": "CheckpointLoaderSimple"},
             "3": {"inputs": {"text": prompt_text, "clip": ["2", 1]}, "class_type": "CLIPTextEncode"},
-            "4": {"inputs": {"text": "text, watermark", "clip": ["2", 1]}, "class_type": "CLIPTextEncode"},
+            "4": {"inputs": {"text": "low quality, blurry", "clip": ["2", 1]}, "class_type": "CLIPTextEncode"},
             "5": {"inputs": {"width": 512, "height": 288, "batch_size": 1}, "class_type": "EmptyLatentImage"},
             "6": {
                 "inputs": {
                     "seed": seed,
-                    "steps": 15,
-                    "cfg": 8.0,
-                    "sampler_name": "uni_pc_bh2",
+                    "steps": 8,
+                    "cfg": 6.0,
+                    "sampler_name": "euler",
                     "scheduler": "normal",
                     "denoise": 1.0,
                     "model": ["2", 0],
@@ -372,7 +372,7 @@ def build_workflow(
                     "height": 288,
                     "video_frames": 24,
                     "motion_bucket_id": 127,
-                    "fps": 24,
+                    "fps": 12,
                     "augmentation_level": 0.0,
                 },
                 "class_type": "SVD_img2vid_Conditioning",
@@ -381,7 +381,7 @@ def build_workflow(
             "10": {
                 "inputs": {
                     "seed": seed + 1,
-                    "steps": 20,
+                    "steps": 10,
                     "cfg": 2.5,
                     "sampler_name": "euler",
                     "scheduler": "karras",
@@ -394,7 +394,7 @@ def build_workflow(
                 "class_type": "KSampler",
             },
             "11": {"inputs": {"samples": ["10", 0], "vae": ["1", 2]}, "class_type": "VAEDecode"},
-            "12": {"inputs": {"images": ["11", 0], "fps": 24}, "class_type": "CreateVideo"},
+            "12": {"inputs": {"images": ["11", 0], "fps": 12}, "class_type": "CreateVideo"},
             "13": {"inputs": {"video": ["12", 0], "filename_prefix": "video/{}".format(output_prefix), "format": "auto", "codec": "auto"}, "class_type": "SaveVideo"},
         }
 
@@ -412,11 +412,11 @@ def build_workflow(
                     "clip_vision": ["1", 1],
                     "init_image": ["2", 0],
                     "vae": ["1", 2],
-                    "width": 512,
-                    "height": 288,
-                    "video_frames": 24,
+                    "width": 1024,
+                    "height": 576,
+                    "video_frames": 25,
                     "motion_bucket_id": 127,
-                    "fps": 24,
+                    "fps": 6,
                     "augmentation_level": 0.0,
                 },
                 "class_type": "SVD_img2vid_Conditioning",
@@ -438,7 +438,7 @@ def build_workflow(
                 "class_type": "KSampler",
             },
             "6": {"inputs": {"samples": ["5", 0], "vae": ["1", 2]}, "class_type": "VAEDecode"},
-            "7": {"inputs": {"images": ["6", 0], "fps": 24}, "class_type": "CreateVideo"},
+            "7": {"inputs": {"images": ["6", 0], "fps": 6}, "class_type": "CreateVideo"},
             "8": {"inputs": {"video": ["7", 0], "filename_prefix": "video/{}".format(output_prefix), "format": "auto", "codec": "auto"}, "class_type": "SaveVideo"},
         }
 

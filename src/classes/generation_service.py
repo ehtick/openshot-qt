@@ -236,7 +236,7 @@ class GenerationService:
                     preferred_checkpoint = DEFAULT_SD_CHECKPOINT
                     if pipeline_id == "txt2audio-stable-open":
                         preferred_checkpoint = DEFAULT_STABLE_AUDIO_CHECKPOINT
-                    elif pipeline_id in ("txt2video-svd", "video2video-basic"):
+                    elif pipeline_id == "video2video-basic":
                         preferred_checkpoint = DEFAULT_SD_BASE_CHECKPOINT
                     checkpoint_name = (
                         preferred_checkpoint if preferred_checkpoint in checkpoint_names else checkpoint_names[0]
