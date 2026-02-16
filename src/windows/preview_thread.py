@@ -93,18 +93,19 @@ class PreviewParent(QObject, UpdateInterface):
         # Only JUCE audio errors bubble up here now
         QMessageBox.warning(self.parent, _("Audio Error"), _("Please fix the following error and restart OpenShot\n%s") % error)
 
-    def Stop(self):
+    def Stop(self, wait_for_thread=True):
         """Disconnect preview parent from update manager and stop worker thread"""
         get_app().updates.disconnect_listener(self)
 
-        # Stop preview thread (and wait for it to end)
+        # Stop preview thread
         self.worker.Stop()
         self.worker.kill()
         if self.background.isRunning():
             log.info("Stopping preview thread (running=%s)", self.background.isRunning())
         self.background.quit()
-        if not self.background.wait(5000):
-            log.warning("Preview thread did not stop within 5 seconds")
+        if wait_for_thread:
+            if not self.background.wait(5000):
+                log.warning("Preview thread did not stop within 5 seconds")
 
     @pyqtSlot(object, object)
     def Init(self, parent, timeline, video_widget, max_length=1):

@@ -64,6 +64,8 @@ class Cutting(QDialog):
         self.is_preview_mode = preview
         self._preview_autoplay_active = preview
         self._preview_autoplay_attempts = 0
+        self._shutdown_in_progress = False
+        self._close_after_shutdown = False
 
         # Create dialog class
         QDialog.__init__(self)
@@ -332,7 +334,8 @@ class Cutting(QDialog):
     def _preview_mode_changed(self, mode):
         if not self.is_preview_mode or not self._preview_autoplay_active:
             return
-        if mode == openshot.PLAYBACK_PAUSE:
+        paused_mode = getattr(openshot, "PLAYBACK_PAUSED", getattr(openshot, "PLAYBACK_PAUSE", None))
+        if paused_mode is not None and mode == paused_mode:
             QTimer.singleShot(0, self._start_preview_autoplay)
 
     def sliderVideo_valueChanged(self, new_frame):
@@ -499,17 +502,74 @@ class Cutting(QDialog):
         # Reset form
         self.clearForm()
 
-    def closeEvent(self, event):
-        log.debug('closeEvent')
-
-        # Stop playback
-        get_app().updates.disconnect_listener(self.videoPreview)
-        if self.videoPreview:
+    def _finalize_preview_shutdown(self):
+        if getattr(self, "videoPreview", None):
+            get_app().updates.disconnect_listener(self.videoPreview)
             self.videoPreview.deleteLater()
             self.videoPreview = None
-        self.preview_parent.Stop()
 
-        # Close readers
-        self.r.Close()
-        self.clip.Close()
-        self.r.ClearAllCache()
+        if getattr(self, "r", None):
+            try:
+                self.r.Close()
+                self.r.ClearAllCache()
+            except Exception:
+                pass
+        if getattr(self, "clip", None):
+            try:
+                self.clip.Close()
+            except Exception:
+                pass
+
+        self.preview_parent = None
+        self.preview_thread = None
+
+    def _on_preview_stopped(self):
+        self._finalize_preview_shutdown()
+        self._shutdown_in_progress = False
+        if self._close_after_shutdown:
+            self._close_after_shutdown = False
+            super().reject()
+
+    def _shutdown_preview(self, close_dialog=False):
+        # Stop playback and preview worker safely (used by ESC/reject and close).
+        if close_dialog:
+            self._close_after_shutdown = True
+
+        if self._shutdown_in_progress:
+            return
+        self._shutdown_in_progress = True
+
+        if getattr(self, "preview_thread", None):
+            try:
+                self.initialized = False
+                self.PauseSignal.emit()
+                self.StopSignal.emit()
+            except Exception:
+                pass
+
+        if getattr(self, "preview_parent", None):
+            background = getattr(self.preview_parent, "background", None)
+            if background and background.isRunning():
+                try:
+                    background.finished.disconnect(self._on_preview_stopped)
+                except Exception:
+                    pass
+                background.finished.connect(self._on_preview_stopped)
+                try:
+                    # Non-blocking stop to avoid visible UI lag when closing with ESC.
+                    self.preview_parent.Stop(wait_for_thread=False)
+                    return
+                except Exception:
+                    pass
+
+        self._on_preview_stopped()
+
+    def reject(self):
+        log.debug('reject')
+        self.hide()
+        self._shutdown_preview(close_dialog=True)
+
+    def closeEvent(self, event):
+        log.debug('closeEvent')
+        event.ignore()
+        self.reject()
