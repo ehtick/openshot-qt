@@ -31,13 +31,14 @@ import os
 import uuid
 
 from PyQt5.QtCore import QSize, Qt, QPoint
-from PyQt5.QtGui import QDrag, QCursor, QPixmap, QPainter, QIcon, QColor
+from PyQt5.QtGui import QDrag, QCursor, QPixmap, QPainter, QIcon, QColor, QFontMetrics
 from PyQt5.QtWidgets import QTreeView, QAbstractItemView, QSizePolicy, QHeaderView, QStyledItemDelegate, QStyleOptionViewItem, QStyle
 
 from classes import info
 from classes.app import get_app
 from classes.logger import log
 from classes.query import File
+from .ai_tools_menu import add_ai_tools_menu
 from .menu import StyledContextMenu
 
 
@@ -116,9 +117,21 @@ class FilesTreeProgressDelegate(QStyledItemDelegate):
         painter.setBrush(QColor("#53A0ED"))
         painter.drawRect(fill_rect)
         if status == "queued":
-            text_rect = full_rect.adjusted(0, -14, 0, -4)
-            painter.setPen(QColor("#9EC8F7"))
-            painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, "Queued")
+            label = "Queued"
+            fm = QFontMetrics(painter.font())
+            text_w = fm.horizontalAdvance(label)
+            text_h = fm.height()
+            pad_x = 5
+            pad_y = 2
+            badge_w = text_w + (pad_x * 2)
+            badge_h = text_h + (pad_y * 2)
+            badge_rect = deco_rect.adjusted(3, 3, 0, 0)
+            badge_rect.setWidth(badge_w)
+            badge_rect.setHeight(badge_h)
+            painter.setBrush(QColor(18, 22, 30, 220))
+            painter.drawRoundedRect(badge_rect, 4, 4)
+            painter.setPen(QColor("#EAF5FF"))
+            painter.drawText(badge_rect, Qt.AlignCenter, label)
         painter.restore()
 
 
@@ -142,6 +155,7 @@ class FilesTreeView(QTreeView):
 
         menu.addAction(self.win.actionImportFiles)
 
+        source_file = None
         active_job = None
         file_id = None
         if index.isValid():
@@ -155,9 +169,11 @@ class FilesTreeView(QTreeView):
                     active_job = None
             else:
                 active_job = self.win.active_generation_job_for_file(file_id)
+                source_file = File.get(id=file_id)
+        add_ai_tools_menu(self.win, menu, source_file=source_file)
+
         if not active_job:
             self.win.actionGenerate.setEnabled(self.win.can_open_generate_dialog())
-            menu.addAction(self.win.actionGenerate)
         if active_job:
             cancel_action = menu.addAction(_("Cancel Job"))
             delete_icon_path = os.path.join(info.PATH, "themes", "cosmic", "images", "track-delete-enabled.svg")

@@ -1057,7 +1057,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         if not has_clipboard and not found_gap:
             return
 
-        # Get track object (ignore locked tracks)
+        # Get track object (ignore locked tracks for edit operations)
         track = Track.get(number=layer_number)
         if not track:
             return
@@ -1067,6 +1067,8 @@ class TimelineView(updates.UpdateInterface, ViewClass):
 
         # New context menu
         menu = StyledContextMenu(parent=self)
+
+        has_edit_actions = False
 
         if found_gap:
             # Add 'Remove Gap' Menu
@@ -1079,8 +1081,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             self.window.actionRemoveGap.triggered.connect(
                 partial(self.RemoveGap_Triggered, found_start, found_end, int(layer_number))
             )
-        if has_clipboard and found_gap:
-            menu.addSeparator()
+            has_edit_actions = True
         if has_clipboard:
             # Add 'Paste' Menu
             Paste_Clip = menu.addAction(_("Paste"))
@@ -1088,6 +1089,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             Paste_Clip.triggered.connect(
                 partial(self.Paste_Triggered, MenuCopy.PASTE, [], [])
             )
+            has_edit_actions = True
 
         # Show context menu
         self.context_menu_cursor_position = QCursor.pos()

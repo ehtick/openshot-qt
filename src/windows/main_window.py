@@ -1146,8 +1146,13 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         """ Preview the selected media file """
         log.info('actionPreview_File_trigger')
 
-        # Loop through selected files (set 1 selected file if more than 1)
+        # Prefer current file, but fall back to selected real files when a generation
+        # placeholder row has focus.
         f = self.files_model.current_file()
+        if not f:
+            selected_files = self.files_model.selected_files()
+            if selected_files:
+                f = selected_files[0]
 
         # Bail out if no file selected
         if not f:

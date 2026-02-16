@@ -156,8 +156,16 @@ class GenerationService:
                 return num / den
         return None
 
-    def action_generate_trigger(self, checked=True):
-        selected_files = self.win.selected_files()
+    def _default_generation_name(self, source_file):
+        default_name = "generation"
+        if source_file:
+            path = source_file.data.get("path", "")
+            if path:
+                default_name = "{}_gen".format(os.path.splitext(os.path.basename(path))[0])
+        return default_name
+
+    def action_generate_trigger(self, checked=True, source_file=None, template_id=None, open_dialog=True):
+        selected_files = [source_file] if source_file else self.win.selected_files()
         if len(selected_files) > 1:
             return
 
@@ -173,11 +181,36 @@ class GenerationService:
 
         source_file = selected_files[0] if selected_files else None
         templates = available_pipelines(source_file=source_file)
-        win = GenerateMediaDialog(source_file=source_file, templates=templates, parent=self.win)
-        if win.exec_() != QDialog.Accepted:
-            return
+        available_template_ids = {str(t.get("id", "")).strip() for t in templates}
+        if open_dialog:
+            dialog_title = "Enhance with AI" if source_file else "Create with AI"
+            win = GenerateMediaDialog(
+                source_file=source_file,
+                templates=templates,
+                preselected_template_id=template_id,
+                dialog_title=dialog_title,
+                parent=self.win,
+            )
+            if win.exec_() != QDialog.Accepted:
+                return
+            payload = win.get_payload()
+        else:
+            selected_template_id = str(template_id or "").strip()
+            if not selected_template_id:
+                return
+            if selected_template_id not in available_template_ids:
+                QMessageBox.information(
+                    self.win,
+                    "Invalid Input",
+                    "The selected AI action is not available for this source type.",
+                )
+                return
+            payload = {
+                "name": self._default_generation_name(source_file),
+                "template_id": selected_template_id,
+                "prompt": "",
+            }
 
-        payload = win.get_payload()
         payload_name = self._next_generation_name(payload.get("name"))
         source_file_id = source_file.id if source_file else None
         try:

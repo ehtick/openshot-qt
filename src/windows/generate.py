@@ -44,12 +44,20 @@ class GenerateMediaDialog(QDialog):
     PREVIEW_WIDTH = 180
     PREVIEW_HEIGHT = 128
 
-    def __init__(self, source_file=None, templates=None, parent=None):
+    def __init__(
+        self,
+        source_file=None,
+        templates=None,
+        preselected_template_id=None,
+        dialog_title=None,
+        parent=None,
+    ):
         super().__init__(parent)
         self.source_file = source_file
         self.templates = templates or []
+        self.preselected_template_id = str(preselected_template_id or "").strip()
         self.setObjectName("generateDialog")
-        self.setWindowTitle("Generate")
+        self.setWindowTitle(str(dialog_title or "AI Tools"))
         self.setMinimumWidth(620)
         self.setMinimumHeight(460)
 
@@ -118,6 +126,10 @@ class GenerateMediaDialog(QDialog):
                 self.template_combo.addItem(template.get("name", ""), template.get("id", ""))
         else:
             self.template_combo.addItem("Basic Text to Image", "txt2img-basic")
+        if self.preselected_template_id:
+            index = self.template_combo.findData(self.preselected_template_id)
+            if index >= 0:
+                self.template_combo.setCurrentIndex(index)
         setup_form.addRow("Template", self.template_combo)
 
         if self.source_file:
