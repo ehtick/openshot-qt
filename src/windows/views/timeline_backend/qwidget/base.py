@@ -26,6 +26,7 @@
 """
 
 import json
+import uuid
 from functools import partial
 from types import SimpleNamespace
 
@@ -1096,11 +1097,19 @@ class TimelineWidgetBase(QWidget):
 
         file_ids = []
         effect_names = []
+        os_drop_tid = None
         mime = event.mimeData()
         mime_html = mime.html()
         if mime.hasUrls():
             urls = mime.urls()
-            self.win.files_model.process_urls(urls, import_quietly=True, prevent_image_seq=True)
+            # Wrap file import + clip creation + auto-transitions in a single
+            # transaction so a single Undo reverts everything.
+            os_drop_tid = str(uuid.uuid4())
+            self.win.files_model.process_urls(
+                urls, import_quietly=True, prevent_image_seq=True,
+                transaction_id=os_drop_tid,
+            )
+            # process_urls preserves our transaction when given a transaction_id
             for uri in urls:
                 for f in File.filter(path=uri.toLocalFile()):
                     file_ids.append(f.id)
@@ -1130,6 +1139,8 @@ class TimelineWidgetBase(QWidget):
             effect_names.extend(names)
 
         if not file_ids and not effect_names:
+            if os_drop_tid:
+                get_app().updates.transaction_id = None
             self._reset_drag_preview()
             return
 
@@ -1139,6 +1150,8 @@ class TimelineWidgetBase(QWidget):
         pos_seconds, track_num, _ = coords
         track_num = self._nearest_unlocked_track_number(track_num)
         if track_num is None:
+            if os_drop_tid:
+                get_app().updates.transaction_id = None
             self._reset_drag_preview()
             return
         pos = QPointF(pos_seconds, 0)
@@ -1177,6 +1190,14 @@ class TimelineWidgetBase(QWidget):
                 )
                 if clip:
                     pos.setX(pos.x() + (clip.get("end", 0.0) - clip.get("start", 0.0)))
+
+        # Close the OS-drop transaction (file import + clip + auto-transition)
+        if os_drop_tid:
+            get_app().updates.transaction_id = None
+
+        # Auto-select newly added clips/transitions
+        self._select_added_items("transition" if mime_html == "transition" else "clip")
+
         self._reset_drag_preview()
 
     def dragLeaveEvent(self, event):
@@ -1551,6 +1572,16 @@ class TimelineWidgetBase(QWidget):
             bbox = bbox.united(rect)
         return bbox
 
+    def _select_added_items(self, item_type):
+        """Auto-select items just added via drag-and-drop."""
+        if not getattr(self, "item_ids", None):
+            return
+        for idx, item_id in enumerate(self.item_ids):
+            self.win.addSelection(str(item_id), item_type, clear_existing=(idx == 0))
+        # Geometry was already rebuilt by changed() before the selection was
+        # set, so mark it dirty so the next repaint reflects the new state.
+        self.geometry.mark_dirty()
+
     def _reset_drag_preview(self):
         self._set_drag_preview_thumbnail_suspension(False)
         self._drag_preview_items = []
@@ -1601,6 +1632,13 @@ class TimelineWidgetBase(QWidget):
                 )
                 if clip is not None:
                     committed_any = True
+
+        # Auto-select newly added clips/transitions
+        preview_type = "clip"
+        if self._drag_preview_items and self._drag_preview_items[0].get("type") == "transition":
+            preview_type = "transition"
+        self._select_added_items(preview_type)
+
         self._update_project_duration()
         self._drag_preview_items = []
         self._drag_payload = None
