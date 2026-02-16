@@ -619,13 +619,25 @@ class FilesModel(QObject, updates.UpdateInterface):
 
     def current_file_id(self):
         """ Get the file ID of the current files-view item, or the first selection """
+        # Prefer selected rows first, since currentIndex can become stale when
+        # switching between details/list views with separate selection models.
+        selected_rows = self.selection_model.selectedRows(5)
+        if selected_rows:
+            current = self.selection_model.currentIndex()
+            if current and current.isValid():
+                current_id = current.sibling(current.row(), 5).data()
+                if current_id:
+                    return current_id
+            for row_index in selected_rows:
+                file_id = row_index.data()
+                if file_id:
+                    return file_id
+
         cur = self.selection_model.currentIndex()
-
-        if not cur or not cur.isValid() and self.selection_model.hasSelection():
-            cur = self.selection_model.selectedIndexes()[0]
-
         if cur and cur.isValid():
-            return cur.sibling(cur.row(), 5).data()
+            file_id = cur.sibling(cur.row(), 5).data()
+            if file_id:
+                return file_id
 
     def current_file(self):
         """ Get the File object for the current files-view item, or the first selection """
@@ -654,14 +666,19 @@ class FilesModel(QObject, updates.UpdateInterface):
         try:
             # Map selected indexes from proxy_model to list_proxy_model
             list_selection = QItemSelection()
+            first_list_index = QModelIndex()
             for index in self.selection_model.selectedRows(0):
                 list_index = self.list_proxy_model.mapFromSource(index)
                 if list_index.isValid():
                     list_selection.select(list_index, list_index)
+                    if not first_list_index.isValid():
+                        first_list_index = list_index
             self.list_selection_model.select(
                 list_selection,
                 QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows
             )
+            if first_list_index.isValid():
+                self.list_selection_model.setCurrentIndex(first_list_index, QItemSelectionModel.NoUpdate)
         finally:
             self._syncing_selection = False
 
@@ -673,14 +690,19 @@ class FilesModel(QObject, updates.UpdateInterface):
         try:
             # Map selected indexes from list_proxy_model to proxy_model
             tree_selection = QItemSelection()
+            first_tree_index = QModelIndex()
             for index in self.list_selection_model.selectedRows(0):
                 tree_index = self.list_proxy_model.mapToSource(index)
                 if tree_index.isValid():
                     tree_selection.select(tree_index, tree_index)
+                    if not first_tree_index.isValid():
+                        first_tree_index = tree_index
             self.selection_model.select(
                 tree_selection,
                 QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows
             )
+            if first_tree_index.isValid():
+                self.selection_model.setCurrentIndex(first_tree_index, QItemSelectionModel.NoUpdate)
         finally:
             self._syncing_selection = False
 
