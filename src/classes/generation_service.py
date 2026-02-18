@@ -327,7 +327,9 @@ class GenerationService:
                     continue
             return points
 
-        def _select_bind_nodes(node_ids, path_key, preferred_upload=None):
+        def _select_bind_nodes(node_ids, path_keys, preferred_upload=None):
+            if isinstance(path_keys, str):
+                path_keys = [path_keys]
             explicit = []
             candidates = []
             for node_id in node_ids:
@@ -335,7 +337,12 @@ class GenerationService:
                 inputs = node.get("inputs", {}) if isinstance(node, dict) else {}
                 if not isinstance(inputs, dict):
                     continue
-                path_value = str(inputs.get(path_key, "")).strip()
+                path_value = ""
+                for path_key in path_keys:
+                    candidate_value = str(inputs.get(path_key, "")).strip()
+                    if candidate_value:
+                        path_value = candidate_value
+                        break
                 upload_value = str(inputs.get("upload", "")).strip().lower()
                 if _is_placeholder_value(path_value):
                     explicit.append(node_id)
@@ -353,9 +360,9 @@ class GenerationService:
                 return {node_ids[0]}
             return set()
 
-        image_bind_nodes = _select_bind_nodes(loadimage_node_ids, "image", preferred_upload="image")
-        video_bind_nodes = _select_bind_nodes(loadvideo_node_ids, "file")
-        audio_bind_nodes = _select_bind_nodes(loadaudio_node_ids, "audio")
+        image_bind_nodes = _select_bind_nodes(loadimage_node_ids, ["image"], preferred_upload="image")
+        video_bind_nodes = _select_bind_nodes(loadvideo_node_ids, ["file", "video"])
+        audio_bind_nodes = _select_bind_nodes(loadaudio_node_ids, ["audio", "file"])
 
         for node_id, node in workflow.items():
             if not isinstance(node, dict):

@@ -178,6 +178,9 @@ class _GenerationWorker(QObject):
             accepted_progress_started = False
             ws_retry_delay_s = 2.0
             ws_next_retry_at = start_time
+            ws_last_progress_time = start_time
+            ws_stale_reconnect_s = 60.0
+            ws_stale_reconnect_max_s = 300.0
             prompt_key = str(prompt_id)
 
             while True:
@@ -302,6 +305,7 @@ class _GenerationWorker(QObject):
 
                 # Query ComfyUI's live progress values when available.
                 try:
+                    ws_progress_emitted = False
                     now = monotonic()
                     if ws_client is None and now >= ws_next_retry_at:
                         try:
@@ -392,8 +396,34 @@ class _GenerationWorker(QObject):
                                     progress,
                                 )
                                 self.progress_changed.emit(job_id, progress)
+                                ws_progress_emitted = True
+                                ws_last_progress_time = monotonic()
+                                ws_stale_reconnect_s = 60.0
                                 last_contact_time = monotonic()
-                    if ws_client is None:
+                    if ws_client is not None and not ws_progress_emitted:
+                        stale_for = now - ws_last_progress_time
+                        if stale_for >= ws_stale_reconnect_s:
+                            try:
+                                ws_client.close()
+                            except Exception:
+                                pass
+                            ws_client = None
+                            ws_next_retry_at = now + ws_retry_delay_s
+                            ws_retry_delay_s = min(60.0, ws_retry_delay_s * 1.5)
+                            next_stale_reconnect_s = min(
+                                ws_stale_reconnect_max_s,
+                                max(60.0, ws_stale_reconnect_s * 1.5),
+                            )
+                            log.debug(
+                                "Comfy websocket stalled for job=%s prompt=%s (%.1fs >= %.1fs); forcing reconnect, next stall timeout %.1fs",
+                                job_id,
+                                prompt_key,
+                                stale_for,
+                                ws_stale_reconnect_s,
+                                next_stale_reconnect_s,
+                            )
+                            ws_stale_reconnect_s = next_stale_reconnect_s
+                    if ws_client is None or not ws_progress_emitted:
                         progress_data = client.progress()
                         if progress_data is None:
                             if not progress_endpoint_unavailable:
