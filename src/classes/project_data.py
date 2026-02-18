@@ -1093,6 +1093,54 @@ class ProjectDataStore(JsonDataStore, UpdateInterface):
         log.info("checking project files...")
         prompt_state = {"cancelled": False}
 
+        def _path_is_missing(path):
+            return bool(path) and "%" not in path and not os.path.exists(path)
+
+        def _reader_path(item):
+            if not isinstance(item, dict):
+                return ""
+            reader = item.get("reader")
+            if isinstance(reader, dict):
+                return reader.get("path", "")
+            return ""
+
+        def _resolve_missing_path(path):
+            """Prompt to locate a missing path, returning resolved path or empty when skipped."""
+            if not _path_is_missing(path):
+                return path, False
+            found_path, is_modified, is_skipped = find_missing_file(path, prompt_state)
+            if found_path and is_modified and not is_skipped:
+                settings.setDefaultPath(settings.actionType.IMPORT, found_path)
+                return found_path, False
+            return "", True
+
+        def _repair_effect_paths(effect):
+            """Prompt for missing reader/resource paths on an effect-like dict."""
+            if not isinstance(effect, dict):
+                return False
+
+            reader = effect.get("reader")
+            reader_path = reader.get("path", "") if isinstance(reader, dict) else ""
+            resource_path = effect.get("resource", "")
+
+            # Process unique missing paths in stable order.
+            missing_paths = []
+            if _path_is_missing(reader_path):
+                missing_paths.append(reader_path)
+            if _path_is_missing(resource_path) and resource_path not in missing_paths:
+                missing_paths.append(resource_path)
+
+            for missing_path in missing_paths:
+                resolved_path, should_remove = _resolve_missing_path(missing_path)
+                if should_remove:
+                    return False
+                if isinstance(effect.get("reader"), dict) and effect["reader"].get("path") == missing_path:
+                    effect["reader"]["path"] = resolved_path
+                if effect.get("resource", "") == missing_path:
+                    effect["resource"] = resolved_path
+
+            return True
+
         # Loop through each files in natural-sorted filename order
         files_sorted = sorted(
             self._data["files"],
@@ -1150,6 +1198,30 @@ class ProjectDataStore(JsonDataStore, UpdateInterface):
                 file_name_with_ext = os.path.basename(path)
                 log.info('Removed missing clip: %s', file_name_with_ext)
                 self._data["clips"].remove(clip)
+
+        # Loop through top-level effects/transitions and prompt for missing reader/resource paths.
+        for effect in reversed(self._data["effects"]):
+            if not _repair_effect_paths(effect):
+                reader_path = _reader_path(effect)
+                resource_path = effect.get("resource", "") if isinstance(effect, dict) else ""
+                missing_path = reader_path if _path_is_missing(reader_path) else resource_path
+                effect_name = os.path.basename(missing_path) if missing_path else effect.get("id", "")
+                log.info("Removed missing effect: %s", effect_name)
+                self._data["effects"].remove(effect)
+
+        # Some clip effects can also carry reader/resource paths (e.g. mask/image-driven effects).
+        for clip in self._data["clips"]:
+            effects = clip.get("effects")
+            if not isinstance(effects, list):
+                continue
+            for effect in reversed(effects):
+                if not _repair_effect_paths(effect):
+                    reader_path = _reader_path(effect)
+                    resource_path = effect.get("resource", "") if isinstance(effect, dict) else ""
+                    missing_path = reader_path if _path_is_missing(reader_path) else resource_path
+                    effect_name = os.path.basename(missing_path) if missing_path else effect.get("id", "")
+                    log.info("Removed missing clip effect on %s: %s", clip.get("id", ""), effect_name)
+                    effects.remove(effect)
 
     def changed(self, action):
         """ This method is invoked by the UpdateManager each time a change happens (i.e UpdateInterface) """
