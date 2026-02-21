@@ -481,15 +481,16 @@ class GenerateMediaDialog(QDialog):
         rects_pos = list(seed_data.get("positive_rects", []) or [])
         rects_neg = list(seed_data.get("negative_rects", []) or [])
 
-        if (not points_pos) and (not rects_pos):
+        has_any_selection = bool(points_pos or points_neg or rects_pos or rects_neg)
+        if not has_any_selection:
             QMessageBox.warning(
                 self,
                 "No Selections Found",
-                "No positive points or rectangles were captured.",
+                "No points or rectangles were captured.",
             )
             return
 
-        points_pos_text = json.dumps(points_pos)
+        points_pos_text = json.dumps(points_pos) if points_pos else ""
         points_neg_text = json.dumps(points_neg) if points_neg else ""
         rects_pos_text = json.dumps(rects_pos) if rects_pos else ""
         rects_neg_text = json.dumps(rects_neg) if rects_neg else ""

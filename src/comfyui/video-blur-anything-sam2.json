@@ -47,6 +47,7 @@
         ],
         "frame_index": 0,
         "object_index": 0,
+        "video_path": "__openshot_input__",
         "windowed_mode": true,
         "offload_video_to_cpu": false,
         "offload_state_to_cpu": false,
@@ -61,6 +62,11 @@
         "dino_box_threshold": 0.35,
         "dino_text_threshold": 0.25,
         "dino_device": "auto"
+        ,
+        "meta_batch": [
+          "9",
+          0
+        ]
       }
     },
     "5": {
