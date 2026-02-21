@@ -41,8 +41,10 @@ AUDIO_OUTPUT_TYPES = {
 KNOWN_NODE_TYPES = {
     # Input
     "checkpointloadersimple",
+    "unetloader",
     "cliptextencode",
     "cliploader",
+    "vaeloader",
     "loadimage",
     "loadvideo",
     "vhs_loadvideo",
@@ -62,7 +64,10 @@ KNOWN_NODE_TYPES = {
     "saveaudio",
     "save srt",
     "emptylatentimage",
+    "emptyhunyuanlatentvideo",
+    "wan22imagetovideolatent",
     "imageonlycheckpointloader",
+    "modelsamplingsd3",
     "svd_img2vid_conditioning",
     "videolinearcfgguidance",
     "emptylatentaudio",

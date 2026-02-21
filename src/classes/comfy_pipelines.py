@@ -75,7 +75,7 @@ def available_pipelines(source_file=None):
     if _supports_img2img(source_file):
         pipelines.insert(0, {"id": "img2img-basic", "name": "Basic Image Variation"})
         pipelines.insert(1, {"id": "upscale-realesrgan-x4", "name": "Upscale Image (RealESRGAN x4)"})
-        pipelines.insert(2, {"id": "img2video-svd", "name": "Image to Video (img_to_video)"})
+        pipelines.insert(2, {"id": "img2video-svd", "name": "Image to Video (WAN 2.2 TI2V)"})
     if _supports_video_upscale(source_file):
         pipelines.append({"id": "video-segment-scenes-transnet", "name": "Segment Scenes (TransNetV2)"})
         pipelines.append({"id": "video-frame-interpolation-rife2x", "name": "Frame Interpolation (RIFE 2x FPS)"})

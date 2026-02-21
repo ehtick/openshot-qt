@@ -66,12 +66,9 @@ class GenerationService:
     """Encapsulates generation-specific UI + workflow behavior."""
 
     LEGACY_PIPELINE_IDS = {
-        "txt2img-basic",
-        "txt2video-svd",
         "txt2audio-stable-open",
         "img2img-basic",
         "upscale-realesrgan-x4",
-        "img2video-svd",
         "video-segment-scenes-transnet",
         "video-frame-interpolation-rife2x",
         "video-upscale-gan",

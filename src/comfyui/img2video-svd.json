@@ -1,12 +1,19 @@
 {
   "action_icon": "ai-action-create-video.svg",
-  "menu_category": "create",
-  "menu_order": 20,
-  "name": "Video...",
+  "menu_category": "enhance",
+  "menu_order": 21,
+  "name": "Image to Video...",
   "open_dialog": true,
   "output_type": "video",
-  "template_id": "txt2video-svd",
+  "template_id": "img2video-svd",
   "workflow": {
+    "2": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "__openshot_input__",
+        "upload": "image"
+      }
+    },
     "3": {
       "class_type": "KSampler",
       "inputs": {
@@ -70,7 +77,7 @@
     "37": {
       "class_type": "UNETLoader",
       "inputs": {
-        "unet_name": "split_files/diffusion_models/wan2.1_t2v_1.3B_fp16.safetensors",
+        "unet_name": "split_files/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors",
         "weight_dtype": "default"
       }
     },
@@ -85,12 +92,20 @@
     "39": {
       "class_type": "VAELoader",
       "inputs": {
-        "vae_name": "wan_2.1_vae.safetensors"
+        "vae_name": "wan2.2_vae.safetensors"
       }
     },
     "40": {
-      "class_type": "EmptyHunyuanLatentVideo",
+      "class_type": "Wan22ImageToVideoLatent",
       "inputs": {
+        "start_image": [
+          "2",
+          0
+        ],
+        "vae": [
+          "39",
+          0
+        ],
         "width": 832,
         "height": 480,
         "length": 64,
