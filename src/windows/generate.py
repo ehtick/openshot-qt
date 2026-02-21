@@ -61,6 +61,10 @@ class GenerateMediaDialog(QDialog):
         self.preselected_template_id = str(preselected_template_id or "").strip()
         self._coordinates_positive_text = ""
         self._coordinates_negative_text = ""
+        self._rectangles_positive_text = ""
+        self._rectangles_negative_text = ""
+        self._auto_mode = False
+        self._tracking_selection_payload = {}
         self.setObjectName("generateDialog")
         self.setWindowTitle(str(dialog_title or "AI Tools"))
         self.setMinimumWidth(620)
@@ -95,6 +99,10 @@ class GenerateMediaDialog(QDialog):
     def _current_coordinates_text(self):
         coordinates_positive = str(self._coordinates_positive_text or "").strip()
         coordinates_negative = str(self._coordinates_negative_text or "").strip()
+        rects_positive = str(self._rectangles_positive_text or "").strip()
+        rects_negative = str(self._rectangles_negative_text or "").strip()
+        auto_mode = bool(self._auto_mode)
+        tracking_payload = dict(self._tracking_selection_payload or {})
         if not coordinates_positive and hasattr(self, "points_preview"):
             preview_text = self.points_preview.toPlainText().strip()
             if preview_text.startswith("{"):
@@ -102,22 +110,31 @@ class GenerateMediaDialog(QDialog):
                     payload = json.loads(preview_text.replace("'", "\""))
                     coordinates_positive = str(payload.get("positive", "")).strip() or coordinates_positive
                     coordinates_negative = str(payload.get("negative", "")).strip() or coordinates_negative
+                    rects_positive = str(payload.get("positive_rects", "")).strip() or rects_positive
+                    rects_negative = str(payload.get("negative_rects", "")).strip() or rects_negative
+                    auto_mode = bool(payload.get("auto_mode", auto_mode))
+                    if isinstance(payload.get("tracking_selection"), dict):
+                        tracking_payload = payload.get("tracking_selection")
                 except Exception:
                     pass
         prompt_text = self.prompt_edit.toPlainText().strip()
         # Backward-compatible fallback: if prompt itself contains point JSON, treat it as coordinates.
         if (not coordinates_positive) and prompt_text.startswith("[") and ("\"x\"" in prompt_text or "'x'" in prompt_text):
             coordinates_positive = prompt_text
-        return coordinates_positive, coordinates_negative, prompt_text
+        return coordinates_positive, coordinates_negative, rects_positive, rects_negative, auto_mode, tracking_payload, prompt_text
 
     def get_payload(self):
-        coordinates_positive, coordinates_negative, prompt_text = self._current_coordinates_text()
+        coordinates_positive, coordinates_negative, rects_positive, rects_negative, auto_mode, tracking_payload, prompt_text = self._current_coordinates_text()
         return {
             "name": self.name_edit.text().strip(),
             "template_id": self.template_combo.currentData() or self.template_combo.currentText(),
             "prompt": prompt_text,
             "coordinates_positive": coordinates_positive,
             "coordinates_negative": coordinates_negative,
+            "rectangles_positive": rects_positive,
+            "rectangles_negative": rects_negative,
+            "auto_mode": bool(auto_mode),
+            "tracking_selection": tracking_payload,
         }
 
     def _build_top_block(self):
@@ -188,15 +205,15 @@ class GenerateMediaDialog(QDialog):
         layout = QVBoxLayout(tab)
         layout.setContentsMargins(8, 8, 8, 8)
         self.mask_hint = QLabel(
-            "Select one or more tracking points on the source frame."
+            "Open tracking selection tools to choose object regions across frames."
         )
         self.mask_hint.setWordWrap(True)
         layout.addWidget(self.mask_hint)
 
         controls = QHBoxLayout()
-        self.pick_points_button = QPushButton("Pick Point(s) on Source")
+        self.pick_points_button = QPushButton("Choose object(s) for tracking")
         self.clear_points_button = QPushButton("Clear")
-        self.pick_points_button.clicked.connect(self._pick_points_clicked)
+        self.pick_points_button.clicked.connect(self._choose_tracking_clicked)
         self.clear_points_button.clicked.connect(self._clear_points_clicked)
         controls.addWidget(self.pick_points_button)
         controls.addWidget(self.clear_points_button)
@@ -235,12 +252,12 @@ class GenerateMediaDialog(QDialog):
             self.name_edit.setFocus(Qt.TabFocusReason)
             return
         if self._is_sam2_point_template():
-            coordinates_positive, _coordinates_negative, _prompt_text = self._current_coordinates_text()
-            if not coordinates_positive:
+            coordinates_positive, _coordinates_negative, rects_positive, _rects_negative, auto_mode, _tracking_payload, _prompt_text = self._current_coordinates_text()
+            if (not auto_mode) and (not coordinates_positive) and (not rects_positive):
                 QMessageBox.warning(
                     self,
-                    "Missing Points",
-                    "No SAM2 points were provided. Use the Points tab and click Pick Point(s) on Source.",
+                    "Missing Selection",
+                    "No SAM2 seed was provided. Click 'Choose object(s) for tracking' in the Points tab.",
                 )
                 self.tabs.setCurrentWidget(self.page_points)
                 return
@@ -259,8 +276,9 @@ class GenerateMediaDialog(QDialog):
         self.clear_points_button.setEnabled(is_point_template)
         if is_point_template:
             self.mask_hint.setText(
-                "Select one or more tracking points on the source frame."
+                "Use tracking tools to choose positive/negative points or rectangles on any frame."
             )
+            self.pick_points_button.setText("Choose object(s) for tracking")
             self.tabs.setCurrentWidget(self.page_points)
         else:
             self.mask_hint.setText(
@@ -268,23 +286,15 @@ class GenerateMediaDialog(QDialog):
             )
             self.tabs.setCurrentWidget(self.page_prompt)
 
-    def _pick_points_clicked(self):
+    def _choose_tracking_clicked(self):
         if not self.source_file:
             return
 
-        win = SelectRegion(file=self.source_file, clip=None, selection_mode="point")
+        win = SelectRegion(file=self.source_file, clip=None, selection_mode="annotate")
         if win.exec_() != QDialog.Accepted:
             return
 
-        raw_points_pos = win.selected_points()
-        raw_points_neg = win.selected_points_negative()
-        log.info(
-            "Generate dialog captured raw SAM2 points positive=%s negative=%s",
-            len(raw_points_pos or []),
-            len(raw_points_neg or []),
-        )
-        points_pos = []
-        points_neg = []
+        selection_payload = win.selection_payload()
         frame_size = win.videoPreview.curr_frame_size
         if not frame_size:
             frame_w = float(max(win.viewport_rect.width(), 1))
@@ -292,44 +302,122 @@ class GenerateMediaDialog(QDialog):
         else:
             frame_w = float(max(frame_size.width(), 1))
             frame_h = float(max(frame_size.height(), 1))
-        for point in raw_points_pos:
-            x_norm = max(min(float(point["x"]), float(max(frame_w - 1.0, 0.0))), 0.0)
-            y_norm = max(min(float(point["y"]), float(max(frame_h - 1.0, 0.0))), 0.0)
-            x_abs = int(round((x_norm / frame_w) * float(win.width)))
-            y_abs = int(round((y_norm / frame_h) * float(win.height)))
-            points_pos.append({"x": x_abs, "y": y_abs})
-        for point in raw_points_neg:
-            x_norm = max(min(float(point["x"]), float(max(frame_w - 1.0, 0.0))), 0.0)
-            y_norm = max(min(float(point["y"]), float(max(frame_h - 1.0, 0.0))), 0.0)
-            x_abs = int(round((x_norm / frame_w) * float(win.width)))
-            y_abs = int(round((y_norm / frame_h) * float(win.height)))
-            points_neg.append({"x": x_abs, "y": y_abs})
+        src_w = float(max(getattr(win, "width", 1), 1))
+        src_h = float(max(getattr(win, "height", 1), 1))
 
-        if not points_pos:
+        def _scale_point_dict(p):
+            if not isinstance(p, dict):
+                return None
+            try:
+                x_in = float(p.get("x", 0.0))
+                y_in = float(p.get("y", 0.0))
+            except Exception:
+                return None
+            x_norm = max(min(x_in, float(max(frame_w - 1.0, 0.0))), 0.0)
+            y_norm = max(min(y_in, float(max(frame_h - 1.0, 0.0))), 0.0)
+            x_abs = int(round((x_norm / frame_w) * src_w))
+            y_abs = int(round((y_norm / frame_h) * src_h))
+            return {"x": x_abs, "y": y_abs}
+
+        def _scale_rect_dict(r):
+            if not isinstance(r, dict):
+                return None
+            try:
+                x1_in = float(r.get("x1", 0.0))
+                y1_in = float(r.get("y1", 0.0))
+                x2_in = float(r.get("x2", 0.0))
+                y2_in = float(r.get("y2", 0.0))
+            except Exception:
+                return None
+            x1 = max(min(x1_in, float(max(frame_w - 1.0, 0.0))), 0.0)
+            y1 = max(min(y1_in, float(max(frame_h - 1.0, 0.0))), 0.0)
+            x2 = max(min(x2_in, float(max(frame_w - 1.0, 0.0))), 0.0)
+            y2 = max(min(y2_in, float(max(frame_h - 1.0, 0.0))), 0.0)
+            if x2 < x1:
+                x1, x2 = x2, x1
+            if y2 < y1:
+                y1, y2 = y2, y1
+            sx1 = int(round((x1 / frame_w) * src_w))
+            sy1 = int(round((y1 / frame_h) * src_h))
+            sx2 = int(round((x2 / frame_w) * src_w))
+            sy2 = int(round((y2 / frame_h) * src_h))
+            return {"x1": sx1, "y1": sy1, "x2": sx2, "y2": sy2}
+
+        # Normalize all frame annotations to source frame coordinates.
+        if isinstance(selection_payload, dict) and isinstance(selection_payload.get("frames"), dict):
+            normalized_frames = {}
+            for frame_key, frame_data in selection_payload.get("frames", {}).items():
+                if not isinstance(frame_data, dict):
+                    continue
+                pos_pts = [_scale_point_dict(p) for p in (frame_data.get("positive_points") or [])]
+                neg_pts = [_scale_point_dict(p) for p in (frame_data.get("negative_points") or [])]
+                pos_rects = [_scale_rect_dict(r) for r in (frame_data.get("positive_rects") or [])]
+                neg_rects = [_scale_rect_dict(r) for r in (frame_data.get("negative_rects") or [])]
+                normalized_frames[str(frame_key)] = {
+                    "positive_points": [p for p in pos_pts if p is not None],
+                    "negative_points": [p for p in neg_pts if p is not None],
+                    "positive_rects": [r for r in pos_rects if r is not None],
+                    "negative_rects": [r for r in neg_rects if r is not None],
+                }
+            selection_payload["frames"] = normalized_frames
+
+        frames = selection_payload.get("frames", {}) if isinstance(selection_payload, dict) else {}
+        seed_frame = int(selection_payload.get("seed_frame", 1)) if isinstance(selection_payload, dict) else 1
+        seed_data = frames.get(str(seed_frame), {}) if isinstance(frames, dict) else {}
+        points_pos = list(seed_data.get("positive_points", []) or [])
+        points_neg = list(seed_data.get("negative_points", []) or [])
+        rects_pos = list(seed_data.get("positive_rects", []) or [])
+        rects_neg = list(seed_data.get("negative_rects", []) or [])
+
+        if (not points_pos) and (not rects_pos):
             QMessageBox.warning(
                 self,
-                "No Points Found",
-                "No positive points were captured. Use Shift+Click to add positive points.",
+                "No Selections Found",
+                "No positive points or rectangles were captured.",
             )
             return
 
         points_pos_text = json.dumps(points_pos)
         points_neg_text = json.dumps(points_neg) if points_neg else ""
+        rects_pos_text = json.dumps(rects_pos) if rects_pos else ""
+        rects_neg_text = json.dumps(rects_neg) if rects_neg else ""
         log.info(
-            "Generate dialog normalized SAM2 points positive=%s negative=%s",
+            "Generate dialog captured SAM2 seed frame=%s points_pos=%s points_neg=%s rects_pos=%s rects_neg=%s",
+            seed_frame,
             len(points_pos),
             len(points_neg),
+            len(rects_pos),
+            len(rects_neg),
         )
         self._coordinates_positive_text = points_pos_text
         self._coordinates_negative_text = points_neg_text
+        self._rectangles_positive_text = rects_pos_text
+        self._rectangles_negative_text = rects_neg_text
+        self._auto_mode = False
+        self._tracking_selection_payload = selection_payload if isinstance(selection_payload, dict) else {}
         self.points_preview.setPlainText(
-            json.dumps({"positive": points_pos_text, "negative": points_neg_text}, indent=2)
+            json.dumps(
+                {
+                    "seed_frame": seed_frame,
+                    "auto_mode": False,
+                    "positive": points_pos_text,
+                    "negative": points_neg_text,
+                    "positive_rects": rects_pos_text,
+                    "negative_rects": rects_neg_text,
+                    "tracking_selection": self._tracking_selection_payload,
+                },
+                indent=2,
+            )
         )
         self.tabs.setCurrentWidget(self.page_points)
 
     def _clear_points_clicked(self):
         self._coordinates_positive_text = ""
         self._coordinates_negative_text = ""
+        self._rectangles_positive_text = ""
+        self._rectangles_negative_text = ""
+        self._auto_mode = False
+        self._tracking_selection_payload = {}
         self.points_preview.clear()
 
     def _set_tab_visible(self, index, visible):

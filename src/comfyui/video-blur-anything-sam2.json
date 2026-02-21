@@ -44,12 +44,17 @@
           "3",
           0
         ],
-        "coordinates_positive": "",
         "frame_index": 0,
         "object_index": 0,
         "windowed_mode": true,
         "offload_video_to_cpu": false,
-        "offload_state_to_cpu": false
+        "offload_state_to_cpu": false,
+        "auto_mode": false,
+        "positive_points_json": "",
+        "negative_points_json": "",
+        "positive_rects_json": "",
+        "negative_rects_json": "",
+        "tracking_selection_json": "{}"
       }
     },
     "5": {

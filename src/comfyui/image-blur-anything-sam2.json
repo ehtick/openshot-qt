@@ -34,7 +34,11 @@
           "1",
           0
         ],
-        "coordinates_positive": "",
+        "auto_mode": false,
+        "positive_points_json": "",
+        "negative_points_json": "",
+        "positive_rects_json": "",
+        "negative_rects_json": "",
         "keep_model_loaded": false
       }
     },

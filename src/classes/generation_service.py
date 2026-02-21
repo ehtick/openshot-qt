@@ -222,6 +222,10 @@ class GenerationService:
         source_path,
         coordinates_positive_text="",
         coordinates_negative_text="",
+        rectangles_positive_text="",
+        rectangles_negative_text="",
+        auto_mode=False,
+        tracking_selection=None,
     ):
         workflow = self.template_registry.get_workflow_copy(template.get("id"))
         if not workflow:
@@ -249,6 +253,10 @@ class GenerationService:
         prompt_text = str(prompt_text or "").strip()
         coordinates_positive_text = str(coordinates_positive_text or "").strip()
         coordinates_negative_text = str(coordinates_negative_text or "").strip()
+        rectangles_positive_text = str(rectangles_positive_text or "").strip()
+        rectangles_negative_text = str(rectangles_negative_text or "").strip()
+        auto_mode = bool(auto_mode)
+        tracking_selection = tracking_selection if isinstance(tracking_selection, dict) else {}
         media_type = str(source_file.data.get("media_type", "")).strip().lower() if source_file else ""
         applied_prompt = False
         loadimage_node_ids = []
@@ -404,22 +412,52 @@ class GenerationService:
                     inputs["prompt"] = prompt_text
                     applied_prompt = True
 
-            coords_value = inputs.get("coordinates_positive", None)
-            if (
-                class_flat in (
-                    "sam2videosegmentationaddpoints",
-                    "sam2segmentation",
-                    "openshotsam2videosegmentationaddpoints",
-                    "openshotsam2segmentation",
-                )
-                and "coordinates_positive" in inputs
-                and isinstance(coords_value, str)
+            if class_flat in (
+                "sam2videosegmentationaddpoints",
+                "sam2segmentation",
+                "openshotsam2videosegmentationaddpoints",
+                "openshotsam2segmentation",
             ):
+                seed_frame_idx = 0
+                if isinstance(tracking_selection, dict):
+                    try:
+                        seed_frame_idx = max(0, int(tracking_selection.get("seed_frame", 1)) - 1)
+                    except Exception:
+                        seed_frame_idx = 0
+                if "frame_index" in inputs:
+                    try:
+                        inputs["frame_index"] = int(seed_frame_idx)
+                    except Exception:
+                        pass
+                if "tracking_selection_json" in inputs:
+                    try:
+                        inputs["tracking_selection_json"] = json.dumps(tracking_selection or {})
+                    except Exception:
+                        inputs["tracking_selection_json"] = "{}"
+
                 coords_text = coordinates_positive_text or prompt_text
                 points = _parse_sam2_points(coords_text)
-                if ("blur-anything-sam2" in template_id) and (not points):
-                    raise ValueError("No SAM2 points were provided. Use Mask > Pick Point(s) on Source.")
-                inputs["coordinates_positive"] = _normalize_sam2_coords_input(coords_text, coords_value)
+                has_positive_rects = bool(rectangles_positive_text)
+
+                auto_enabled = bool(inputs.get("auto_mode", False)) or auto_mode
+                if "auto_mode" in inputs:
+                    inputs["auto_mode"] = bool(auto_enabled)
+                if ("blur-anything-sam2" in template_id) and (not points) and (not has_positive_rects) and (not auto_enabled):
+                    raise ValueError("No SAM2 seed was provided. Use Points, Rectangle, or Auto mode.")
+
+                # New OpenShot node contract.
+                if "positive_points_json" in inputs and isinstance(inputs.get("positive_points_json", None), str):
+                    inputs["positive_points_json"] = _normalize_sam2_coords_input(
+                        coords_text,
+                        str(inputs.get("positive_points_json", "")),
+                    )
+                # Backward compatibility for third-party node variants.
+                elif "coordinates_positive" in inputs and isinstance(inputs.get("coordinates_positive", None), str):
+                    inputs["coordinates_positive"] = _normalize_sam2_coords_input(
+                        coords_text,
+                        str(inputs.get("coordinates_positive", "")),
+                    )
+
                 if class_flat in ("sam2segmentation", "openshotsam2segmentation") and "individual_objects" in inputs:
                     # For Blur Anything, treat points as a single combined prompt.
                     # This is more stable with mixed positive/negative points and avoids
@@ -429,13 +467,28 @@ class GenerationService:
                     else:
                         # Non-Blur-Anything templates keep multi-object behavior.
                         inputs["individual_objects"] = bool(len(points) > 1)
+
                 if coordinates_negative_text:
-                    neg_value = inputs.get("coordinates_negative", "")
-                    if isinstance(neg_value, str) or "coordinates_negative" not in inputs:
-                        inputs["coordinates_negative"] = _normalize_sam2_coords_input(
+                    if "negative_points_json" in inputs and isinstance(inputs.get("negative_points_json", None), str):
+                        inputs["negative_points_json"] = _normalize_sam2_coords_input(
                             coordinates_negative_text,
-                            str(neg_value or ""),
+                            str(inputs.get("negative_points_json", "")),
                         )
+                    elif "coordinates_negative" in inputs:
+                        neg_value = inputs.get("coordinates_negative", "")
+                        if isinstance(neg_value, str) or "coordinates_negative" not in inputs:
+                            inputs["coordinates_negative"] = _normalize_sam2_coords_input(
+                                coordinates_negative_text,
+                                str(neg_value or ""),
+                            )
+                if rectangles_positive_text and ("positive_rects_json" in inputs) and isinstance(
+                    inputs.get("positive_rects_json", None), str
+                ):
+                    inputs["positive_rects_json"] = rectangles_positive_text
+                if rectangles_negative_text and ("negative_rects_json" in inputs) and isinstance(
+                    inputs.get("negative_rects_json", None), str
+                ):
+                    inputs["negative_rects_json"] = rectangles_negative_text
 
             if not source_path:
                 continue
@@ -511,7 +564,12 @@ class GenerationService:
             class_type = str(node.get("class_type", "")).strip().lower()
             if not class_type:
                 continue
-            if class_type.startswith("save") or class_type in ("previewany", "transnetv2_run", "vhs_videocombine"):
+            if class_type.startswith("save") or class_type in (
+                "previewany",
+                "transnetv2_run",
+                "openshottransnetscenedetect",
+                "vhs_videocombine",
+            ):
                 save_nodes.append(str(node_id))
         return save_nodes
 
@@ -747,6 +805,10 @@ class GenerationService:
                     source_path=source_path,
                     coordinates_positive_text=payload.get("coordinates_positive"),
                     coordinates_negative_text=payload.get("coordinates_negative"),
+                    rectangles_positive_text=payload.get("rectangles_positive"),
+                    rectangles_negative_text=payload.get("rectangles_negative"),
+                    auto_mode=payload.get("auto_mode"),
+                    tracking_selection=payload.get("tracking_selection"),
                 )
             except Exception as ex:
                 QMessageBox.information(self.win, "Invalid Input", str(ex))

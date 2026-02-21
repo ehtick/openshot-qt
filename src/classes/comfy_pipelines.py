@@ -275,39 +275,21 @@ def build_workflow(
         if not source_path:
             raise ValueError("A source video is required for this pipeline.")
         return {
-            "7": {"inputs": {"file": source_path}, "class_type": "LoadVideo"},
-            "2": {
-                "inputs": {
-                    "model": "transnetv2-pytorch-weights",
-                    "device": "auto",
-                },
-                "class_type": "DownloadAndLoadTransNetModel",
-                "_meta": {"title": "MiaoshouAI Load TransNet Model"},
-            },
             "1": {
                 "inputs": {
-                    "threshold": 0.5,
-                    "min_scene_length": 30,
-                    "output_dir": "output",
-                    "TransNet_model": ["2", 0],
-                    "video": ["7", 0],
-                },
-                "class_type": "TransNetV2_Run",
-                "_meta": {"title": "MiaoshouAI Segment Video"},
-            },
-            "8": {
-                "inputs": {
-                    "segment_paths": ["1", 0],
                     "source_video_path": source_path,
+                    "threshold": 0.5,
+                    "min_scene_length_frames": 30,
+                    "device": "auto",
                 },
-                "class_type": "OpenShotSceneRangesFromSegments",
-                "_meta": {"title": "OpenShot Build Scene Ranges"},
+                "class_type": "OpenShotTransNetSceneDetect",
+                "_meta": {"title": "OpenShot TransNet Scene Detect"},
             },
             "9": {
                 "inputs": {
                     "preview": "",
                     "previewMode": None,
-                    "source": ["8", 0],
+                    "source": ["1", 0],
                 },
                 "class_type": "PreviewAny",
                 "_meta": {"title": "Preview Any"},

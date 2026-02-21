@@ -31,7 +31,7 @@ import time
 import uuid
 
 from PyQt5.QtCore import (
-    Qt, QCoreApplication, QMutex, QTimer,
+    Qt, QCoreApplication, QMutex, QTimer, pyqtSignal,
     QPoint, QPointF, QSize, QSizeF, QRect, QRectF,
 )
 from PyQt5.QtGui import (
@@ -50,6 +50,7 @@ from classes.query import Clip, Effect
 
 class VideoWidget(QWidget, updates.UpdateInterface):
     """ A QWidget used on the video display widget """
+    regionAnnotationChanged = pyqtSignal()
 
     def _snap_angle(self, angle_degrees, step_degrees=15.0):
         """Snap an angle to the nearest increment (degrees)."""
@@ -660,7 +661,7 @@ class VideoWidget(QWidget, updates.UpdateInterface):
                 painter.setTransform(self.region_transform)
 
                 cs = self.cs
-                if self.region_selection_mode == "point":
+                if self.region_selection_mode in ("point", "annotate"):
                     point_radius = max(2.0, (cs * 0.4) / max(self.zoom, 0.001))
                     if self.region_points_positive:
                         pos_color = QColor("#53a0ed")
@@ -680,6 +681,42 @@ class VideoWidget(QWidget, updates.UpdateInterface):
                         painter.setBrush(QBrush(neg_color))
                         for pt in self.region_points_negative:
                             painter.drawEllipse(pt, point_radius, point_radius)
+                    # Draw positive rectangles
+                    if self.region_rects_positive:
+                        rect_pos_color = QColor("#53a0ed")
+                        rect_pos_color.setAlphaF(self.handle_opacity)
+                        rect_pos_pen = QPen(QBrush(rect_pos_color), 1.5)
+                        rect_pos_pen.setCosmetic(True)
+                        painter.setPen(rect_pos_pen)
+                        painter.setBrush(Qt.NoBrush)
+                        for rect in self.region_rects_positive:
+                            if isinstance(rect, QRectF):
+                                painter.drawRect(rect.normalized())
+
+                    # Draw negative rectangles
+                    if self.region_rects_negative:
+                        rect_neg_color = QColor("#e05757")
+                        rect_neg_color.setAlphaF(self.handle_opacity)
+                        rect_neg_pen = QPen(QBrush(rect_neg_color), 1.5)
+                        rect_neg_pen.setCosmetic(True)
+                        painter.setPen(rect_neg_pen)
+                        painter.setBrush(Qt.NoBrush)
+                        for rect in self.region_rects_negative:
+                            if isinstance(rect, QRectF):
+                                painter.drawRect(rect.normalized())
+
+                    # Draw current dragging rectangle preview
+                    if self.region_rect_drag_start is not None and self.region_rect_drag_current is not None:
+                        drag_color = QColor("#53a0ed")
+                        if str(self.region_annotation_tool or "").endswith("negative_rect"):
+                            drag_color = QColor("#e05757")
+                        drag_color.setAlphaF(self.handle_opacity)
+                        drag_pen = QPen(QBrush(drag_color), 1.5, Qt.DashLine)
+                        drag_pen.setCosmetic(True)
+                        painter.setPen(drag_pen)
+                        painter.setBrush(Qt.NoBrush)
+                        painter.drawRect(QRectF(self.region_rect_drag_start, self.region_rect_drag_current).normalized())
+
                 elif self.regionTopLeftHandle and self.regionBottomRightHandle:
                     color = QColor("#53a0ed")
                     color.setAlphaF(self.handle_opacity)
@@ -771,6 +808,32 @@ class VideoWidget(QWidget, updates.UpdateInterface):
                 self.region_points_positive = [point]
                 self.region_points_negative = []
             self.update()
+        elif self.region_enabled and self.region_selection_mode == "annotate" and event.button() == Qt.LeftButton:
+            self._ensure_region_transform()
+            point = self.region_transform_inverted.map(event.pos())
+            point = self._clamp_region_point(point)
+            if bool(self.region_annotation_inherited):
+                # First edit on a carried frame should replace inherited selections.
+                self.region_points_positive = []
+                self.region_points_negative = []
+                self.region_rects_positive = []
+                self.region_rects_negative = []
+                self.region_rect_drag_start = None
+                self.region_rect_drag_current = None
+                self.region_annotation_inherited = False
+            tool = str(self.region_annotation_tool or "positive_point")
+            if tool == "positive_point":
+                self.region_points_positive.append(point)
+                self.update()
+                self.regionAnnotationChanged.emit()
+            elif tool == "negative_point":
+                self.region_points_negative.append(point)
+                self.update()
+                self.regionAnnotationChanged.emit()
+            elif tool in ("positive_rect", "negative_rect"):
+                self.region_rect_drag_start = QPointF(point)
+                self.region_rect_drag_current = QPointF(point)
+                self.update()
 
         # Ignore undo/redo history temporarily (to avoid a huge pile of undo/redo history)
         get_app().updates.ignore_history = True
@@ -798,9 +861,28 @@ class VideoWidget(QWidget, updates.UpdateInterface):
         self.rotation_drag_value = None
         self.region_mode = None
 
+        if self.region_enabled and self.region_selection_mode == "annotate":
+            if self.region_rect_drag_start is not None and self.region_rect_drag_current is not None:
+                rect = QRectF(self.region_rect_drag_start, self.region_rect_drag_current).normalized()
+                if rect.width() >= 2.0 and rect.height() >= 2.0:
+                    tool = str(self.region_annotation_tool or "positive_rect")
+                    if tool == "negative_rect":
+                        self.region_rects_negative.append(rect)
+                    else:
+                        self.region_rects_positive.append(rect)
+            self.region_rect_drag_start = None
+            self.region_rect_drag_current = None
+            self.update()
+            self.regionAnnotationChanged.emit()
+
         # Save region image data (as QImage)
         # This can be used other widgets to display the selected region
-        if self.region_enabled and self.region_selection_mode != "point":
+        if (
+            self.region_enabled
+            and self.region_selection_mode not in ("point", "annotate")
+            and self.regionTopLeftHandle is not None
+            and self.regionBottomRightHandle is not None
+        ):
             # Get region coordinates
             region_rect = QRectF(
                 self.regionTopLeftHandle.x(),
@@ -1224,6 +1306,17 @@ class VideoWidget(QWidget, updates.UpdateInterface):
             self.update()
 
         if self.region_enabled:
+            if self.region_selection_mode == "annotate":
+                self.setCursor(Qt.CrossCursor)
+                self._ensure_region_transform()
+                if self.region_rect_drag_start is not None and self.mouse_pressed:
+                    current = self.region_transform_inverted.map(event.pos())
+                    self.region_rect_drag_current = self._clamp_region_point(current)
+                    self.update()
+                self.mouse_position = event.pos()
+                self.mutex.unlock()
+                return
+
             if self.region_selection_mode == "point":
                 self.setCursor(Qt.CrossCursor)
                 self.mouse_position = event.pos()
@@ -1988,6 +2081,10 @@ class VideoWidget(QWidget, updates.UpdateInterface):
             self.region_points = []
             self.region_points_positive = []
             self.region_points_negative = []
+            self.region_rects_positive = []
+            self.region_rects_negative = []
+            self.region_rect_drag_start = None
+            self.region_rect_drag_current = None
             self.regionTopLeftHandle = None
             self.regionBottomRightHandle = None
         get_app().window.refreshFrameSignal.emit()
@@ -2103,9 +2200,15 @@ class VideoWidget(QWidget, updates.UpdateInterface):
         self.region_transform_inverted = None
         self.region_enabled = False
         self.region_selection_mode = "rect"
+        self.region_annotation_tool = "positive_point"
         self.region_points = []
         self.region_points_positive = []
         self.region_points_negative = []
+        self.region_rects_positive = []
+        self.region_rects_negative = []
+        self.region_rect_drag_start = None
+        self.region_rect_drag_current = None
+        self.region_annotation_inherited = False
         self.region_mode = None
         self.regionTopLeftHandle = None
         self.regionBottomRightHandle = None
