@@ -76,6 +76,12 @@ class GenerationService:
         "video2video-basic",
         "video-whisper-srt",
     }
+    SAM2_DEFAULT_TARGET_BATCH_BYTES = 4 * 1024 * 1024 * 1024  # 4 GiB
+    SAM2_ESTIMATED_BYTES_PER_PIXEL = 24.0
+    SAM2_ESTIMATED_BYTES_PER_PIXEL_HIGHLIGHT = 64.0
+    SAM2_ESTIMATED_BYTES_PER_PIXEL_BLUR = 40.0
+    SAM2_MIN_FRAMES_PER_BATCH = 4
+    SAM2_MAX_FRAMES_PER_BATCH = 192
 
     def __init__(self, win):
         self.win = win
@@ -194,6 +200,132 @@ class GenerationService:
             if path:
                 default_name = "{}_gen".format(os.path.splitext(os.path.basename(path))[0])
         return default_name
+
+    def _get_source_dimensions(self, source_file):
+        if not source_file:
+            return (0, 0)
+        data = source_file.data if hasattr(source_file, "data") and isinstance(source_file.data, dict) else {}
+        try:
+            width = int(data.get("width", 0) or 0)
+        except Exception:
+            width = 0
+        try:
+            height = int(data.get("height", 0) or 0)
+        except Exception:
+            height = 0
+        return (max(0, width), max(0, height))
+
+    def _sam2_target_batch_bytes(self):
+        settings = get_app().get_settings()
+        raw_bytes = settings.get("comfy-sam2-target-batch-bytes")
+        if raw_bytes is not None:
+            try:
+                value = int(raw_bytes)
+                if value > 0:
+                    return value
+            except Exception:
+                pass
+        raw_gb = settings.get("comfy-sam2-target-batch-gb")
+        if raw_gb is not None:
+            try:
+                value = float(raw_gb)
+                if value > 0.0:
+                    return int(value * 1024 * 1024 * 1024)
+            except Exception:
+                pass
+        return int(self.SAM2_DEFAULT_TARGET_BATCH_BYTES)
+
+    def _estimate_sam2_frames_per_batch(self, width, height, bytes_per_pixel=None):
+        width = int(max(0, width))
+        height = int(max(0, height))
+        if width <= 0 or height <= 0:
+            return self.SAM2_MIN_FRAMES_PER_BATCH
+        target_bytes = self._sam2_target_batch_bytes()
+        if bytes_per_pixel is None:
+            bytes_per_pixel = self.SAM2_ESTIMATED_BYTES_PER_PIXEL
+        try:
+            bytes_per_pixel = float(bytes_per_pixel)
+        except Exception:
+            bytes_per_pixel = float(self.SAM2_ESTIMATED_BYTES_PER_PIXEL)
+        bytes_per_frame = max(
+            1.0,
+            float(width) * float(height) * bytes_per_pixel,
+        )
+        frames = int(target_bytes / bytes_per_frame)
+        frames = max(self.SAM2_MIN_FRAMES_PER_BATCH, min(self.SAM2_MAX_FRAMES_PER_BATCH, frames))
+        # Keep chunk sizes aligned for more stable batching behavior.
+        frames = max(self.SAM2_MIN_FRAMES_PER_BATCH, int((frames // 4) * 4))
+        return frames
+
+    def _apply_dynamic_sam2_meta_batch(self, workflow, source_file, template_id=None):
+        template_id = str(template_id or "").strip().lower()
+        # Only adjust non-legacy SAM2 video tracking templates/workflows.
+        if template_id and template_id not in (
+            "video-blur-anything-sam2",
+            "video-highlight-anything-sam2",
+            "video-mask-anything-sam2",
+        ):
+            return
+        if not isinstance(workflow, dict):
+            return
+
+        width, height = self._get_source_dimensions(source_file)
+        if width <= 0 or height <= 0:
+            return
+
+        has_sam2_chunked = False
+        for node in workflow.values():
+            if not isinstance(node, dict):
+                continue
+            class_type = str(node.get("class_type", "")).strip().lower()
+            if class_type == "openshotsam2videosegmentationchunked":
+                has_sam2_chunked = True
+                break
+        if not has_sam2_chunked:
+            return
+
+        # Account for downstream per-frame processing memory:
+        # - Highlight path is the heaviest (multiple full-frame tensor intermediates)
+        # - Blur path is moderately heavy
+        # - Mask-only path is closest to baseline SAM2 estimate
+        estimated_bpp = float(self.SAM2_ESTIMATED_BYTES_PER_PIXEL)
+        for node in workflow.values():
+            if not isinstance(node, dict):
+                continue
+            class_type = str(node.get("class_type", "")).strip().lower()
+            if class_type == "openshotimagehighlightmasked":
+                estimated_bpp = max(estimated_bpp, float(self.SAM2_ESTIMATED_BYTES_PER_PIXEL_HIGHLIGHT))
+            elif class_type == "openshotimageblurmasked":
+                estimated_bpp = max(estimated_bpp, float(self.SAM2_ESTIMATED_BYTES_PER_PIXEL_BLUR))
+
+        dynamic_frames = self._estimate_sam2_frames_per_batch(width, height, bytes_per_pixel=estimated_bpp)
+        updated_chunk_nodes = 0
+        updated_batch_nodes = 0
+        for node in workflow.values():
+            if not isinstance(node, dict):
+                continue
+            class_type = str(node.get("class_type", "")).strip().lower()
+            inputs = node.get("inputs", {})
+            if not isinstance(inputs, dict):
+                continue
+            if class_type == "openshotsam2videosegmentationchunked" and "chunk_size_frames" in inputs:
+                inputs["chunk_size_frames"] = int(dynamic_frames)
+                updated_chunk_nodes += 1
+            if class_type == "vhs_batchmanager" and "frames_per_batch" in inputs:
+                inputs["frames_per_batch"] = int(dynamic_frames)
+                updated_batch_nodes += 1
+        if updated_chunk_nodes or updated_batch_nodes:
+            log.info(
+                "Dynamic SAM2 batch size: %s frames (source=%sx%s, target_bytes=%s, est_bpp=%s, template=%s, chunk_nodes=%s, batch_nodes=%s)",
+                dynamic_frames,
+                width,
+                height,
+                self._sam2_target_batch_bytes(),
+                round(estimated_bpp, 2),
+                template_id or "unknown",
+                updated_chunk_nodes,
+                updated_batch_nodes,
+            )
 
     def templates_for_context(self, source_file=None):
         templates = self.template_registry.templates_for_context(source_file=source_file)
@@ -636,6 +768,8 @@ class GenerationService:
             log.debug("Comfy template video input binding nodes=%s source=%s", sorted(video_bind_nodes), source_path)
         if media_type == "audio" and audio_bind_nodes:
             log.debug("Comfy template audio input binding nodes=%s source=%s", sorted(audio_bind_nodes), source_path)
+
+        self._apply_dynamic_sam2_meta_batch(workflow, source_file=source_file, template_id=template_id)
 
         return workflow
 
