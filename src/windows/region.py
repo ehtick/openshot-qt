@@ -386,38 +386,11 @@ class SelectRegion(QDialog):
         self.btnPlay.click()
 
     def _icon_path(self, name):
-        icon_names = [str(name or "").strip()]
-        if self._is_retro_theme() and icon_names[0].startswith("ai-track-"):
-            icon_names.insert(0, f"retro-{icon_names[0]}")
-
-        current_theme_dir = self._current_theme_dir()
-        theme_search_order = [current_theme_dir]
-        if current_theme_dir == "cosmic":
-            theme_search_order.append("cosmic-dusk")
-
-        for icon_name in icon_names:
-            for theme_name in theme_search_order:
-                path = os.path.join(info.PATH, "themes", theme_name, "images", icon_name)
-                if os.path.exists(path):
-                    return path
+        icon_name = str(name or "").strip()
+        path = os.path.join(info.PATH, "themes", "humanity", "images", icon_name)
+        if os.path.exists(path):
+            return path
         return ""
-
-    def _current_theme_name(self):
-        theme_name = ""
-        app = get_app()
-        if app and getattr(app, "theme_manager", None):
-            current_theme = app.theme_manager.get_current_theme()
-            theme_name = str(getattr(current_theme, "name", "") or "")
-        return theme_name
-
-    def _current_theme_dir(self):
-        theme_name = self._current_theme_name().lower()
-        if "cosmic" in theme_name:
-            return "cosmic"
-        return "humanity"
-
-    def _is_retro_theme(self):
-        return self._current_theme_name().strip().lower() == "retro"
 
     def _build_annotation_toolbar(self):
         _ = get_app()._tr
