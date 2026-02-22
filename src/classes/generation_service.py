@@ -483,6 +483,10 @@ class GenerationService:
                 "openshotsam2videosegmentationaddpoints",
                 "openshotsam2segmentation",
             ):
+                coords_text = coordinates_positive_text
+                points = _parse_sam2_points(coords_text)
+                has_positive_rects = bool(rectangles_positive_text)
+
                 seed_frame_idx = 0
                 if isinstance(tracking_selection, dict):
                     try:
@@ -502,9 +506,6 @@ class GenerationService:
                 if "dino_prompt" in inputs:
                     inputs["dino_prompt"] = str(prompt_text or "")
 
-                coords_text = coordinates_positive_text
-                points = _parse_sam2_points(coords_text)
-                has_positive_rects = bool(rectangles_positive_text)
                 has_dino_prompt = bool(str(prompt_text or "").strip()) and ("dino_prompt" in inputs)
 
                 auto_enabled = bool(inputs.get("auto_mode", False)) or auto_mode

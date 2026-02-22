@@ -374,11 +374,14 @@ class GenerateMediaDialog(QDialog):
             "video-blur-anything-sam2",
             "video-mask-anything-sam2",
             "video-highlight-anything-sam2",
+            "image-blur-anything-sam2",
+            "image-mask-anything-sam2",
+            "image-highlight-anything-sam2",
         )
 
     def _is_highlight_template(self):
         template_id = str(self.template_combo.currentData() or "").strip().lower()
-        return template_id == "video-highlight-anything-sam2"
+        return template_id in ("video-highlight-anything-sam2", "image-highlight-anything-sam2")
 
     def _on_template_changed(self, index):
         _ = index
