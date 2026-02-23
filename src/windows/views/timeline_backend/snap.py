@@ -175,10 +175,11 @@ class SnapHelper:
                 tolerance_px = max(1.0, min(snap_px, abs(tolerance_px)))
                 keyframe_targets.append((px, tolerance_px))
 
+        frame = float(getattr(self.widget, "current_frame", 1) or 1.0)
+        playhead_seconds = max(0.0, (max(1.0, frame) - 1.0) / self.widget.fps_float)
         playhead_x = (
             self.widget.track_name_width
-            + (self.widget.current_frame / self.widget.fps_float)
-            * pps
+            + playhead_seconds * pps
             - h_offset
         )
         generic_targets.add(playhead_x)
@@ -218,8 +219,9 @@ class SnapHelper:
         fps = float(getattr(self.widget, "fps_float", 0.0) or 0.0)
         playhead_px = None
         if fps > 0.0:
-            frame = float(getattr(self.widget, "current_frame", 0) or 0.0)
-            playhead_px = track_left + (frame / fps) * pps - h_offset
+            frame = float(getattr(self.widget, "current_frame", 1) or 1.0)
+            playhead_seconds = max(0.0, (max(1.0, frame) - 1.0) / fps)
+            playhead_px = track_left + playhead_seconds * pps - h_offset
 
         targets = []
         seen = set()
