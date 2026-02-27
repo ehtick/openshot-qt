@@ -496,7 +496,9 @@ class PlayerWorker(QObject):
             # Backward compatibility with older libopenshot builds exposing
             # only Seek(frame).
             self.player.Seek(frame)
-        self.current_frame = frame
+        # Force the main loop to publish a fresh position_changed event after
+        # each seek so timeline playheads stay in sync with queued seeks.
+        self.current_frame = None
 
     @pyqtSlot(int)
     @pyqtSlot(int, bool)

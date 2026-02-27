@@ -1724,8 +1724,9 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             frame_to_seek = round(closest_position * fps_float) + 1
             self.SeekSignal.emit(frame_to_seek, True)
 
-            # Update the preview and reselect current frame in properties
-            get_app().window.refreshFrameSignal.emit()
+            # Keep properties in sync with the seek target. Avoid forcing
+            # refreshFrameSignal here: it can queue a stale seek to the old
+            # player position and overwrite this navigation jump.
             get_app().window.propertyTableView.select_frame(frame_to_seek)
 
     def actionNextMarker_trigger(self, checked=True):
@@ -1756,8 +1757,9 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             frame_to_seek = round(closest_position * fps_float) + 1
             self.SeekSignal.emit(frame_to_seek, True)
 
-            # Update the preview and reselct current frame in properties
-            get_app().window.refreshFrameSignal.emit()
+            # Keep properties in sync with the seek target. Avoid forcing
+            # refreshFrameSignal here: it can queue a stale seek to the old
+            # player position and overwrite this navigation jump.
             get_app().window.propertyTableView.select_frame(frame_to_seek)
 
     def actionCenterOnPlayhead_trigger(self, checked=True):

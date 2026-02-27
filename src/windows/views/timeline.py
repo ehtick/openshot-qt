@@ -3765,6 +3765,9 @@ class TimelineView(updates.UpdateInterface, ViewClass):
     @pyqtSlot(int)
     def movePlayhead(self, position_frames):
         """ Move the playhead since the position has changed inside OpenShot (probably due to the video player) """
+        if ViewClass == TimelineWidget:
+            TimelineWidget.update_playhead_pos(self, position_frames)
+            return
         # Get access to timeline scope and set scale to zoom slider value (passed in)
         self.run_js(JS_SCOPE_SELECTOR + ".movePlayheadToFrame(%s);" % (str(position_frames)))
 
