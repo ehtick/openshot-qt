@@ -92,6 +92,17 @@ File Properties       View the properties of a file, such as frame rate, size, e
 Remove from Project   Remove a file from the project
 ====================  ============
 
+Preview File
+------------
+The :guilabel:`Preview File` action opens the Preview dialog for the
+selected file from :guilabel:`Project Files`. Simply double check a file to open this dialog.
+
+- Playback starts automatically.
+- Loop is enabled by default.
+- Press :kbd:`Space` to toggle play/pause.
+- Use the mouse scroll wheel to zoom in/out.
+- A :guilabel:`Reset Zoom` button appears when zoom is not 100%, and resets to 100%.
+
 .. _split_clip_ref:
 
 Split File
@@ -198,7 +209,15 @@ When you choose **File→Save As**, OpenShot copies these folders into your proj
 ``PROJECTNAME_Assets``. For example: ``MyProject_Assets/clipboard`` will contain any media you pasted from the clipboard.
 
 As part of this process, all paths inside your ``*.osp`` project file are updated to be **relative** to your project folder.
-This keeps everything self-contained and easy to move or back up as one folder.
+
+AI Generated Files
+------------------
+
+AI-generated outputs from ComfyUI appear alongside your other assets in
+:guilabel:`Project Files`. Generated thumbnails show queue/progress info.
+
+For AI setup, hardware requirements, and workflow details, see :ref:`ai_ref`.
+This keeps AI outputs easy to find and manage in your project workflow.
 
 Cleanup behavior
 """"""""""""""""

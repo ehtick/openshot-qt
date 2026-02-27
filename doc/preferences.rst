@@ -180,6 +180,36 @@ set of cache values, which should allow most computers to playback video and aud
    Cache Max Frames:                 This is an override on the total allowed frames that can be cached by our caching thread. It is defaulted to 600 frames, but even if you give a huge amount of RAM to OpenShot's cache size, this will override the max # of frames cached. The reason is... sometimes when the preview window is very small, and the cache size is set very high, OpenShot might calculate that we can cache 30,000 frames, or something silly which will take a huge amount of CPU, lagging the system. This setting is designed to clamp the upper limit of the cache to something reasonable... even on systems that give OpenShot huge amounts of RAM to work with.
    ================================  ==================
 
+OpenShot's default cache settings now target a balanced preview experience:
+roughly **50% behind / 50% ahead** of the playhead, **768 MB** cache memory,
+and **900** max frames. In practice, this improves scrubbing and seek behavior
+while reducing stale preview frames on slower systems.
+
+.. _preferences_experimental_ref:
+
+Experimental
+------------
+
+The Experimental tab contains optional features that are still in active
+development.
+
+.. list-table::
+   :widths: 30 20 50
+   :header-rows: 1
+
+   * - Setting
+     - Default
+     - Description
+   * - Comfy UI URL
+     - ``http://127.0.0.1:8188``
+     - URL of your local or remote ComfyUI server
+   * - Check button
+     - N/A
+     - Tests the URL and refreshes AI menu availability
+
+If OpenShot cannot reach this server, AI context menu options are hidden.
+See :ref:`ai_ref` for setup details, requirements, and workflow options.
+
 Debug
 -----
 

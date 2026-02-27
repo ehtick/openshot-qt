@@ -48,6 +48,7 @@ Table of Contents:
    import_export
    preferences
    playback
+   ai
    troubleshoot
    developers
    contributing

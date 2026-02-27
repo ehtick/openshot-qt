@@ -310,6 +310,25 @@ If you have accidentally closed or moved a dock and can no longer find it, there
 First, you can use the :guilabel:`View->Views->Simple View` menu option at the top of the screen, to restore the view back to its
 default. Or you can use the :guilabel:`View->Views->Docks->...` menu to show or hide specific dock widgets on the main window.
 
+AI Context Menu (Optional)
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+AI actions are available from right-click context menus.
+
+When available, you can right-click in :guilabel:`Project Files` (or on supported
+file types) and choose:
+
+- :guilabel:`Create with AI`
+- :guilabel:`Enhance with AI`
+
+These actions send your selected media to ComfyUI workflows and import the
+results back into :guilabel:`Project Files`. You can also cancel active AI jobs,
+and view job progress directly in the :guilabel:`Project Files` thumbnails/list.
+
+.. note::
+   This is an optional feature. If OpenShot cannot reach your ComfyUI server,
+   these AI menu options are hidden. See :ref:`ai_ref` for setup details.
+
 High DPI / 4K Monitors
 ----------------------
 
