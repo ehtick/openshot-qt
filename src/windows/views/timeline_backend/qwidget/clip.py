@@ -26,6 +26,7 @@
  """
 
 import json
+import time
 import uuid
 from PyQt5.QtCore import Qt, QRectF
 from PyQt5.QtWidgets import QApplication
@@ -254,17 +255,130 @@ class ClipInteractionMixin:
         # Each drag operation is grouped under a single undo transaction
         self._drag_transaction_id = str(uuid.uuid4())
 
-        ctrl = bool(e.modifiers() & Qt.ControlModifier)
+        modifiers = e.modifiers()
+        ctrl = bool(modifiers & Qt.ControlModifier)
+        alt = bool(modifiers & Qt.AltModifier)
+        shift = bool(modifiers & Qt.ShiftModifier)
+        sel_type = "transition" if isinstance(clicked_item, Transition) else "clip"
         already = (
             clicked_item.id in self.win.selected_clips or
             clicked_item.id in self.win.selected_transitions
         )
 
-        if not already:
-            sel_type = "transition" if isinstance(clicked_item, Transition) else "clip"
-            # Replace existing selections unless the user is multi-selecting
-            self.win.addSelection(clicked_item.id, sel_type, not ctrl)
+        if alt:
+            # ALT+Click: select the clicked item plus everything to its right on
+            # the same layer.  CTRL+ALT keeps existing selection; plain ALT replaces.
+            if not ctrl:
+                self.win.clearSelections()
+            self.selectRipple(clicked_item.id, sel_type)
+            # ALT does not update _last_click_pos; nothing to drag.
+            self.dragging_items = []
+            self._drag_transaction_id = None
             self.changed(None)
+            return
+
+        elif shift and not already and getattr(self, "_last_click_pos", None) is not None:
+            # SHIFT+Click: box-select all clips/transitions whose start position
+            # falls between the anchor and this click, across layers between them.
+            last_pos, last_layer = self._last_click_pos
+            curr_data = clicked_item.data if isinstance(clicked_item.data, dict) else {}
+            curr_pos = float(curr_data.get("position", 0.0) or 0.0)
+            curr_layer = int(curr_data.get("layer", 0) or 0)
+
+            min_pos = min(last_pos, curr_pos)
+            max_pos = max(last_pos, curr_pos)
+            min_layer = min(last_layer, curr_layer)
+            max_layer = max(last_layer, curr_layer)
+
+            if not ctrl:
+                self.win.clearSelections()
+            for clip in Clip.filter():
+                d = clip.data if isinstance(clip.data, dict) else {}
+                try:
+                    if (min_pos <= float(d.get("position", 0.0)) <= max_pos and
+                            min_layer <= int(d.get("layer", 0)) <= max_layer):
+                        self.win.addSelection(clip.id, "clip", False)
+                except (TypeError, ValueError):
+                    pass
+            for tran in Transition.filter():
+                d = tran.data if isinstance(tran.data, dict) else {}
+                try:
+                    if (min_pos <= float(d.get("position", 0.0)) <= max_pos and
+                            min_layer <= int(d.get("layer", 0)) <= max_layer):
+                        self.win.addSelection(tran.id, "transition", False)
+                except (TypeError, ValueError):
+                    pass
+
+            self._last_click_pos = (curr_pos, curr_layer)
+            self.changed(None)
+            # Fall through to drag setup; SHIFT+drag freezes horizontal movement.
+
+        elif ctrl and already:
+            dbl = QApplication.doubleClickInterval() / 1000.0
+            just_added = (
+                getattr(self, "_ctrl_just_selected_id", None) == clicked_item.id and
+                time.monotonic() - getattr(self, "_ctrl_just_selected_time", 0.0) < dbl
+            )
+            self._ctrl_just_selected_id = None
+            data = clicked_item.data if isinstance(clicked_item.data, dict) else {}
+            self._last_click_pos = (
+                float(data.get("position", 0.0) or 0.0),
+                int(data.get("layer", 0) or 0),
+            )
+            if just_added:
+                # Second press of a double-click: clip was just CTRL-added;
+                # don't immediately toggle it back off — preserve selection.
+                pass
+            else:
+                # Deliberate CTRL+Click on selected item: toggle off.
+                self._ctrl_just_deselected_id = clicked_item.id
+                self._ctrl_just_deselected_time = time.monotonic()
+                self._deselect_timeline_item(clicked_item.id, sel_type)
+                self.dragging_items = []
+                self._drag_transaction_id = None
+                self.changed(None)
+                return
+
+        elif not already:
+            dbl = QApplication.doubleClickInterval() / 1000.0
+            just_deselected = (
+                ctrl and
+                getattr(self, "_ctrl_just_deselected_id", None) == clicked_item.id and
+                time.monotonic() - getattr(self, "_ctrl_just_deselected_time", 0.0) < dbl
+            )
+            self._ctrl_just_deselected_id = None
+            if just_deselected:
+                # Second press of a double-click: clip was just CTRL-deselected;
+                # don't immediately re-add it — preserve deselected state.
+                data = clicked_item.data if isinstance(clicked_item.data, dict) else {}
+                self._last_click_pos = (
+                    float(data.get("position", 0.0) or 0.0),
+                    int(data.get("layer", 0) or 0),
+                )
+            else:
+                # Regular click clears+selects; CTRL+click adds to selection.
+                self.win.addSelection(clicked_item.id, sel_type, not ctrl)
+                if ctrl:
+                    self._ctrl_just_selected_id = clicked_item.id
+                    self._ctrl_just_selected_time = time.monotonic()
+                else:
+                    self._ctrl_just_selected_id = None
+                data = clicked_item.data if isinstance(clicked_item.data, dict) else {}
+                self._last_click_pos = (
+                    float(data.get("position", 0.0) or 0.0),
+                    int(data.get("layer", 0) or 0),
+                )
+                self.changed(None)
+
+        else:
+            # Clicking already-selected item (no special modifier): preserve
+            # multi-selection for group drag.
+            self._ctrl_just_selected_id = None
+            data = clicked_item.data if isinstance(clicked_item.data, dict) else {}
+            self._last_click_pos = (
+                float(data.get("position", 0.0) or 0.0),
+                int(data.get("layer", 0) or 0),
+            )
 
         # All selected clips and transitions participate in the drag
         self.dragging_items = [
@@ -362,12 +476,17 @@ class ClipInteractionMixin:
         if pps <= 0.0:
             return
 
-        new_bbox_x = e.pos().x() - self.drag_clip_offset
-        delta_sec = (new_bbox_x - self.drag_bbox.x()) / pps
+        # SHIFT+Drag: freeze horizontal movement (track-only drag), matching JS behaviour.
+        shift_held = bool(e.modifiers() & Qt.ShiftModifier) if e else False
+        if shift_held:
+            delta_sec = 0.0
+        else:
+            new_bbox_x = e.pos().x() - self.drag_clip_offset
+            delta_sec = (new_bbox_x - self.drag_bbox.x()) / pps
 
-        # Snap horizontally ±1.5 s (pure x-axis)
-        if self.enable_snapping:
-            delta_sec = self._snap_delta(delta_sec)
+            # Snap horizontally ±1.5 s (pure x-axis)
+            if self.enable_snapping:
+                delta_sec = self._snap_delta(delta_sec)
 
         # -------- Vertical delta (track indexes) ----
         new_idx_under_cursor = self._track_index_at_viewport_y(

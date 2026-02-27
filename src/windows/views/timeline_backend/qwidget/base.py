@@ -247,6 +247,11 @@ class TimelineWidgetBase(QWidget):
         self._drag_moved = False
         self._drag_press_pos = None
         self._drag_threshold_met = False
+        self._last_click_pos = None          # (position, layer) stored for SHIFT+Click range selection
+        self._ctrl_just_selected_id = None   # ID of clip just CTRL-added; guards against double-click toggle
+        self._ctrl_just_selected_time = 0.0
+        self._ctrl_just_deselected_id = None # ID of clip just CTRL-removed; guards against double-click re-add
+        self._ctrl_just_deselected_time = 0.0
 
         # Resize / timing helpers
         self.enable_timing = False
@@ -2177,6 +2182,19 @@ class TimelineWidgetBase(QWidget):
             timeline.addSelection(item_id_str, item_type, clear_existing)
         self.win.addSelection(item_id_str, item_type, clear_existing)
         # Selection changes affect cached clip renders and keyframe visibility.
+        self.clip_painter.clear_cache()
+        self.geometry.mark_dirty()
+        self._keyframes_dirty = True
+        self.update()
+
+    def _deselect_timeline_item(self, item_id, item_type):
+        """Remove a single item from the selection."""
+        if item_id is None or not item_type:
+            return
+        item_id_str = str(item_id)
+        if not item_id_str:
+            return
+        self.win.removeSelection(item_id_str, item_type)
         self.clip_painter.clear_cache()
         self.geometry.mark_dirty()
         self._keyframes_dirty = True
