@@ -180,6 +180,10 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         # Log the exit routine
         log.info('---------------- Shutting down -----------------')
 
+        # Flush and close UI trace recorder, if enabled
+        if getattr(self, "ui_trace_recorder", None):
+            self.ui_trace_recorder.close()
+
         if self.tutorial_manager:
             # Close any tutorial dialogs (if any)
             self.tutorial_manager.hide_dialog()
@@ -4071,6 +4075,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         self.shutting_down = False
         self.lock = threading.Lock()
         self.installEventFilter(self)
+        self.ui_trace_recorder = None
 
         # set window on app for reference during initialization of children
         app = get_app()
@@ -4327,6 +4332,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         # Connect Selection signals
         self.SelectionAdded.connect(self.addSelection)
         self.SelectionRemoved.connect(self.removeSelection)
+        self._init_ui_trace_recorder()
 
         # Connect 'ignore update' signal
         self.ignore_updates = False
@@ -4379,6 +4385,16 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         self._schedule_tab_order_update()
         self._schedule_initial_focus()
         self._install_focus_debugger()
+
+    def _init_ui_trace_recorder(self):
+        """Enable env-configured UI trace recording for automated test capture."""
+        try:
+            from classes.ui_trace_recorder import UiTraceRecorder
+            recorder = UiTraceRecorder(self)
+            if recorder.enabled:
+                self.ui_trace_recorder = recorder
+        except Exception:
+            log.error("Failed to initialize UI trace recorder", exc_info=1)
 
     def _schedule_initial_focus(self):
         QTimer.singleShot(0, self._set_initial_focus)
