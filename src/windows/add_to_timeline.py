@@ -408,9 +408,12 @@ class AddToTimeline(QDialog):
         for idx, clip_id in enumerate(added_clip_ids):
             if clip_id:
                 win.addSelection(str(clip_id), "clip", clear_existing=(idx == 0))
-        if added_clip_ids and hasattr(win.timeline, "geometry"):
-            win.timeline.geometry.mark_dirty()
-            win.timeline.update()
+        if added_clip_ids:
+            timeline_geometry = getattr(win.timeline, "geometry", None)
+            if hasattr(timeline_geometry, "mark_dirty"):
+                timeline_geometry.mark_dirty()
+            if hasattr(win.timeline, "update"):
+                win.timeline.update()
 
         # Accept dialog
         super(AddToTimeline, self).accept()
