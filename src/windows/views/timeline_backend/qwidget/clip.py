@@ -237,6 +237,8 @@ class ClipInteractionMixin:
         e = self._last_event
 
         self.snap.reset()
+        self._collapse_selection_on_release = False
+        self._collapse_selection_target = None
         self._drag_moved = False
         self._drag_press_pos = e.pos() if e else None
         self._drag_threshold_met = False
@@ -371,14 +373,22 @@ class ClipInteractionMixin:
                 self.changed(None)
 
         else:
-            # Clicking already-selected item (no special modifier): preserve
-            # multi-selection for group drag.
+            # Clicking already-selected item (no special modifier):
+            # preserve multi-selection for group drag, but collapse to this
+            # one item if this ends as a plain click (no drag movement).
             self._ctrl_just_selected_id = None
             data = clicked_item.data if isinstance(clicked_item.data, dict) else {}
             self._last_click_pos = (
                 float(data.get("position", 0.0) or 0.0),
                 int(data.get("layer", 0) or 0),
             )
+            selected_count = (
+                len(getattr(self.win, "selected_clips", []) or [])
+                + len(getattr(self.win, "selected_transitions", []) or [])
+            )
+            if selected_count > 1:
+                self._collapse_selection_on_release = True
+                self._collapse_selection_target = (clicked_item.id, sel_type)
 
         # All selected clips and transitions participate in the drag
         self.dragging_items = [
@@ -607,6 +617,8 @@ class ClipInteractionMixin:
         """Persist all moved clips/transitions and refresh geometry."""
         items = getattr(self, "dragging_items", None) or []
         moved = bool(getattr(self, "_drag_moved", False))
+        collapse_selection = bool(getattr(self, "_collapse_selection_on_release", False))
+        collapse_target = getattr(self, "_collapse_selection_target", None)
 
         if items and moved:
             self._preserve_overrides_once = True
@@ -646,10 +658,16 @@ class ClipInteractionMixin:
         self.dragging_items = []
         self._drag_transaction_id = None
         self.snap.reset()
+        self._collapse_selection_on_release = False
+        self._collapse_selection_target = None
         if moved:
             self._update_project_duration()
             self.changed(None)
         else:
+            if collapse_selection and collapse_target:
+                target_id, target_type = collapse_target
+                self.win.addSelection(target_id, target_type, True)
+                self.changed(None)
             self.geometry.mark_dirty()
         self.update()
         self._release_cursor()
