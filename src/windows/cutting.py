@@ -311,6 +311,11 @@ class Cutting(QDialog):
     def movePlayhead(self, frame_number):
         """Update the playhead position"""
 
+        # Keep slider drag native; ignore async playhead pushes while dragging.
+        if self.sliderVideo.isSliderDown():
+            self.lblVideoTime.setText(self.frame_to_timestamp(self.sliderVideo.value()))
+            return
+
         # Move slider to correct frame position
         self.sliderIgnoreSignal = True
         self.sliderVideo.setValue(frame_number)

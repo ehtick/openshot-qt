@@ -49,11 +49,13 @@ class PreviewParent(QObject, UpdateInterface):
         if action and len(action.key) >= 1 and action.key[0].lower() in ["files", "history", "markers", "layers", "scale", "profile", "sample_rate", "export_settings"]:
             return
 
-        try:
-            # Keep track of max timeline frame # on any updates to the timeline
-            self.timeline_max_length = get_app().window.timeline_sync.GetLastFrame()
-            log.debug(f"Max timeline length/frames detected: {self.timeline_max_length}")
+        if not getattr(self, "_use_timeline_sync_max", True):
+            return
 
+        try:
+            # Keep track of max timeline frame # on any updates to the timeline.
+            self.timeline_max_length = max(1, int(get_app().window.timeline_sync.GetLastFrame() or 1))
+            log.debug(f"Max timeline length/frames detected: {self.timeline_max_length}")
         except Exception as e:
             log.info("Error calculating max timeline length on PreviewParent: %s. %s" % (e, action.json(is_array=True)))
 
@@ -128,10 +130,18 @@ class PreviewParent(QObject, UpdateInterface):
         # Important vars
         self.parent = parent
         self.timeline = timeline
-        if getattr(get_app().window, "timeline_sync", None):
-            self.timeline_max_length = get_app().window.timeline_sync.GetLastFrame()
+        try:
+            max_len = max(1, int(max_length))
+        except (TypeError, ValueError):
+            max_len = 1
+
+        # Dialog previews (Split File / Region) pass their own max_length and
+        # should not be clamped by the main timeline's last frame.
+        self._use_timeline_sync_max = max_len <= 1
+        if self._use_timeline_sync_max and getattr(get_app().window, "timeline_sync", None):
+            self.timeline_max_length = max(1, int(get_app().window.timeline_sync.GetLastFrame() or 1))
         else:
-            self.timeline_max_length = max(1, int(max_length))
+            self.timeline_max_length = max_len
 
         # Background Worker Thread (for preview video process)
         self.background = QThread(self)
