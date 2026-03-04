@@ -250,6 +250,35 @@ class ClipPainter(BasePainter):
                 return True
             if isinstance(value, (int, float)) and value:
                 return True
+
+        # Audio assets (e.g. mp3/m4a/ogg) should reuse one visual frame
+        # across the timeline even if libopenshot reports dynamic frame counts.
+        if self._clip_is_audio_media(clip):
+            return True
+        return False
+
+    def _clip_is_audio_media(self, clip):
+        """Best-effort audio media detection resilient to reader metadata quirks."""
+        if not clip:
+            return False
+        data = clip.data if isinstance(clip.data, dict) else {}
+        reader = data.get("reader") if isinstance(data.get("reader"), dict) else {}
+
+        media_type = str(reader.get("media_type") or data.get("media_type") or "").strip().lower()
+        if media_type == "audio":
+            return True
+
+        source_path = str(
+            reader.get("path")
+            or data.get("path")
+            or reader.get("file_path")
+            or data.get("file_path")
+            or ""
+        ).strip().lower()
+        audio_exts = (".mp3", ".m4a", ".aac", ".ogg", ".opus", ".flac", ".wav", ".wma")
+        if source_path.endswith(audio_exts):
+            return True
+
         return False
 
     def _clip_file_id(self, clip):

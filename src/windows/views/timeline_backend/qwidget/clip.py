@@ -383,7 +383,7 @@ class ClipInteractionMixin:
         # All selected clips and transitions participate in the drag
         self.dragging_items = [
             itm
-            for _rect, itm, selected, _type in self.geometry.iter_items()
+            for _rect, itm, selected, _type in self.geometry.iter_items(viewport=False)
             if selected
         ]
         if not self.dragging_items:
@@ -663,7 +663,7 @@ class ClipInteractionMixin:
         """Return a QRectF encompassing all currently-selected clips and transitions."""
         rects = [
             rect
-            for rect, _item, selected, _type in self.geometry.iter_items()
+            for rect, _item, selected, _type in self.geometry.iter_items(viewport=False)
             if selected
         ]
         if not rects:
