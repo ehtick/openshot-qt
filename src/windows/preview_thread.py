@@ -51,7 +51,7 @@ class PreviewParent(QObject, UpdateInterface):
 
         try:
             # Keep track of max timeline frame # on any updates to the timeline
-            self.timeline_max_length = self.timeline.GetMaxFrame()
+            self.timeline_max_length = get_app().window.timeline_sync.GetLastFrame()
             log.debug(f"Max timeline length/frames detected: {self.timeline_max_length}")
 
         except Exception as e:
@@ -59,12 +59,13 @@ class PreviewParent(QObject, UpdateInterface):
 
     # Signal when the frame position changes in the preview player
     def onPositionChanged(self, current_frame):
-        self.parent.movePlayhead(current_frame)
+        timeline_last_frame = max(1, int(getattr(self, "timeline_max_length", 1) or 1))
+        self.parent.movePlayhead(max(1, min(int(current_frame), timeline_last_frame)))
 
         # Check if we are at the end of the timeline
         if self.worker.player.Mode() == openshot.PLAYBACK_PLAY:
             loop_preview = bool(getattr(self.parent, "loop_playback", False))
-            if self.worker.player.Speed() > 0.0 and current_frame >= self.timeline_max_length:
+            if self.worker.player.Speed() > 0.0 and current_frame >= timeline_last_frame:
                 if loop_preview:
                     # Loop preview playback back to the beginning.
                     self.worker.Seek(1)
@@ -72,11 +73,11 @@ class PreviewParent(QObject, UpdateInterface):
                     # Yes, pause the video
                     self.parent.PauseSignal.emit()
                     # If the player got past the end of the project, go back.
-                    self.worker.Seek(self.timeline_max_length)
+                    self.worker.Seek(timeline_last_frame)
             if self.worker.player.Speed() < 0.0 and current_frame <= 1:
                 if loop_preview:
                     # Loop rewind to the end frame.
-                    self.worker.Seek(self.timeline_max_length)
+                    self.worker.Seek(timeline_last_frame)
                 else:
                     # If rewinding, and the player got past the first frame,
                     # pause and go to frame 1
@@ -127,7 +128,10 @@ class PreviewParent(QObject, UpdateInterface):
         # Important vars
         self.parent = parent
         self.timeline = timeline
-        self.timeline_max_length = max_length
+        if getattr(get_app().window, "timeline_sync", None):
+            self.timeline_max_length = get_app().window.timeline_sync.GetLastFrame()
+        else:
+            self.timeline_max_length = max(1, int(max_length))
 
         # Background Worker Thread (for preview video process)
         self.background = QThread(self)

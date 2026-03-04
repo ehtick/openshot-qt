@@ -1122,14 +1122,14 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         and the total number of frames in our timeline clips. For example,
         if we are at the end of our last clip, and the user clicks play, we
         do not want to start playback."""
-        # Get max frame (based on last clip) and current frame
+        # Get max frame (based on last clip) and current frame.
         timeline_sync = get_app().window.timeline_sync
         if timeline_sync and timeline_sync.timeline:
-            max_frame = timeline_sync.timeline.GetMaxFrame()
+            last_frame = timeline_sync.GetLastFrame()
             current_frame = self.preview_thread.current_frame
             if current_frame is not None:
                 next_frame = current_frame + requested_speed
-                return next_frame <= max_frame and next_frame > 0
+                return next_frame <= last_frame and next_frame > 0
         return False
 
     def actionPlay_trigger(self):
@@ -1238,8 +1238,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         log.debug("actionJumpEnd_trigger")
 
         # Determine last frame (based on clips) & seek there
-        max_frame = get_app().window.timeline_sync.timeline.GetMaxFrame()
-        self.SeekSignal.emit(max_frame, True)
+        self.SeekSignal.emit(get_app().window.timeline_sync.GetLastFrame(), True)
         QTimer.singleShot(50, self.actionCenterOnPlayhead_trigger)
 
     def onPlayCallback(self):
@@ -1597,6 +1596,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             "vector": "blue",
             }
         marker.save()
+        self.timeline.setFocus(Qt.OtherFocusReason)
 
     def findAllMarkerPositions(self):
         """Build and return a list of all seekable locations for the currently-selected timeline elements"""
@@ -1647,9 +1647,8 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
 
         # If nothing is selected, also add the end of the last clip
         if not self.selected_clips + self.selected_transitions + self.selected_effects:
-            all_marker_positions.append(
-                # last frame is -1 frame's duration
-                get_app().window.timeline_sync.timeline.GetMaxTime() - frame_duration)
+            last_frame = get_app().window.timeline_sync.GetLastFrame()
+            all_marker_positions.append((last_frame - 1) / fps_float)
 
         # Get list of marker and important positions (like selected clip bounds)
         for marker in Marker.filter():
@@ -1726,12 +1725,14 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         if closest_position is not None:
             # Seek
             frame_to_seek = round(closest_position * fps_float) + 1
+            frame_to_seek = min(frame_to_seek, get_app().window.timeline_sync.GetLastFrame())
             self.SeekSignal.emit(frame_to_seek, True)
 
             # Keep properties in sync with the seek target. Avoid forcing
             # refreshFrameSignal here: it can queue a stale seek to the old
             # player position and overwrite this navigation jump.
             get_app().window.propertyTableView.select_frame(frame_to_seek)
+        self.timeline.setFocus(Qt.OtherFocusReason)
 
     def actionNextMarker_trigger(self, checked=True):
         log.info("actionNextMarker_trigger")
@@ -1759,12 +1760,14 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         if closest_position is not None:
             # Seek
             frame_to_seek = round(closest_position * fps_float) + 1
+            frame_to_seek = min(frame_to_seek, get_app().window.timeline_sync.GetLastFrame())
             self.SeekSignal.emit(frame_to_seek, True)
 
             # Keep properties in sync with the seek target. Avoid forcing
             # refreshFrameSignal here: it can queue a stale seek to the old
             # player position and overwrite this navigation jump.
             get_app().window.propertyTableView.select_frame(frame_to_seek)
+        self.timeline.setFocus(Qt.OtherFocusReason)
 
     def actionCenterOnPlayhead_trigger(self, checked=True):
         """ Center the timeline on the current playhead position """
