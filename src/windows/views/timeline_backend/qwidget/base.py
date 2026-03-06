@@ -2766,6 +2766,8 @@ class TimelineWidgetBase(QWidget):
         add_button = self._panel_add_button_at(pos)
         if add_button:
             self._press_hit = "panel-add"
+            add_button = dict(add_button)
+            add_button["modifiers"] = modifiers
             self._panel_press_info = add_button
             return
         panel_marker = self._panel_marker_at(pos)
@@ -3020,9 +3022,8 @@ class TimelineWidgetBase(QWidget):
     def _panel_show_property_menu_at(self, pos):
         lane = self._panel_lane_at(pos)
         if not lane:
-            return False
-        label_rect = lane.get("label_rect")
-        if not isinstance(label_rect, QRectF) or not label_rect.contains(pos):
+            lane = self._panel_lane_for_label_gap(pos)
+        if not lane:
             return False
         track_num = lane.get("track")
         key = self.normalize_track_number(track_num) if track_num is not None else None
@@ -3030,29 +3031,26 @@ class TimelineWidgetBase(QWidget):
             return False
         info = self._panel_properties.get(key)
         if not isinstance(info, dict):
-            return False
-        if info.get("item_type") == "multi":
-            return False
-        available = info.get("available_properties") or []
-        if not available:
-            return False
-
-        item_id = info.get("item_id", "")
+            info = {}
         item_type = info.get("item_type")
-        manual_entry = self._panel_manual_properties.get(key)
-        if (
-            not manual_entry
-            or manual_entry.get("item_id") != item_id
-            or manual_entry.get("item_type") != item_type
-        ):
-            manual_entry = {"item_id": item_id, "item_type": item_type, "properties": set()}
-        else:
-            manual_entry = {
-                "item_id": manual_entry.get("item_id", ""),
-                "item_type": manual_entry.get("item_type"),
-                "properties": set(manual_entry.get("properties") or []),
-            }
-        self._panel_manual_properties[key] = manual_entry
+        available = info.get("available_properties") or []
+        item_id = info.get("item_id", "")
+
+        if item_id or item_type:
+            manual_entry = self._panel_manual_properties.get(key)
+            if (
+                not manual_entry
+                or manual_entry.get("item_id") != item_id
+                or manual_entry.get("item_type") != item_type
+            ):
+                manual_entry = {"item_id": item_id, "item_type": item_type, "properties": set()}
+            else:
+                manual_entry = {
+                    "item_id": manual_entry.get("item_id", ""),
+                    "item_type": manual_entry.get("item_type"),
+                    "properties": set(manual_entry.get("properties") or []),
+                }
+            self._panel_manual_properties[key] = manual_entry
 
         available_sorted = sorted(
             (entry for entry in available if isinstance(entry, dict)),
@@ -3065,29 +3063,89 @@ class TimelineWidgetBase(QWidget):
         }
         title = get_app()._tr("Keyframe Properties")
         menu = StyledContextMenu(title=title, parent=self)
-        handled = False
-        for entry in available_sorted:
-            key_name = entry.get("key")
-            if key_name is None:
-                continue
-            key_str = str(key_name)
-            label = entry.get("display_name") or key_str
-            action = menu.addAction(label)
-            if key_str in visible_keys:
-                action.setEnabled(False)
-                action.setCheckable(True)
-                action.setChecked(True)
-                continue
-            action.triggered.connect(partial(self._panel_add_visible_property, key, key_str))
-            handled = True
+        if item_type == "multi":
+            visible_multi_keys = {
+                str(prop.get("key"))
+                for prop in (info.get("properties") or [])
+                if isinstance(prop, dict) and prop.get("key") is not None and not prop.get("placeholder")
+            }
+            for entry in available_sorted:
+                key_name = entry.get("key")
+                if key_name is None:
+                    continue
+                key_str = str(key_name)
+                label = entry.get("display_name") or key_str
+                if not label:
+                    continue
+                action = menu.addAction(label)
+                if key_str in visible_multi_keys:
+                    action.setEnabled(False)
+                    action.setCheckable(True)
+                    action.setChecked(True)
+                else:
+                    action.triggered.connect(partial(self._panel_add_visible_property, key, key_str))
+        else:
+            for entry in available_sorted:
+                key_name = entry.get("key")
+                if key_name is None:
+                    continue
+                key_str = str(key_name)
+                label = entry.get("display_name") or key_str
+                action = menu.addAction(label)
+                if key_str in visible_keys:
+                    action.setEnabled(False)
+                    action.setCheckable(True)
+                    action.setChecked(True)
+                    continue
+                action.triggered.connect(partial(self._panel_add_visible_property, key, key_str))
 
         if not menu.actions():
-            placeholder = menu.addAction(get_app()._tr("No keyframe properties available"))
+            message = get_app()._tr("No keyframes are avaialble")
+            placeholder = menu.addAction(message)
             placeholder.setEnabled(False)
 
         global_pos = self.mapToGlobal(pos)
         menu.exec_(global_pos)
-        return handled or bool(menu.actions())
+        return bool(menu.actions())
+
+    def _panel_lane_for_label_gap(self, pos):
+        """
+        Resolve clicks in tiny vertical gaps between panel rows to the nearest
+        row on the same track within the full keyframe panel band.
+        """
+        self.geometry.ensure()
+        for _track_rect, track, name_rect in self.geometry.iter_tracks():
+            track_num = self.normalize_track_number(track.data.get("number"))
+            panel_rect = self.geometry.panel_rect(track_num)
+            if not panel_rect or panel_rect.height() <= 0.0:
+                continue
+            full_panel_band = QRectF(
+                name_rect.x(),
+                panel_rect.y(),
+                name_rect.width() + panel_rect.width(),
+                panel_rect.height(),
+            )
+            if not full_panel_band.contains(pos):
+                continue
+
+            nearest_lane = None
+            nearest_dist = None
+            y_pos = float(pos.y())
+            for lane in (self._iter_panel_lanes() or []):
+                if self.normalize_track_number(lane.get("track")) != track_num:
+                    continue
+                label_rect = lane.get("label_rect")
+                if not isinstance(label_rect, QRectF):
+                    continue
+                center_y = float(label_rect.center().y())
+                dist = abs(y_pos - center_y)
+                if nearest_dist is None or dist < nearest_dist:
+                    nearest_dist = dist
+                    nearest_lane = lane
+            if nearest_lane:
+                return nearest_lane
+            return None
+        return None
 
     def _panel_add_visible_property(self, track_num, prop_key):
         key = self.normalize_track_number(track_num) if track_num is not None else None
@@ -3095,8 +3153,6 @@ class TimelineWidgetBase(QWidget):
             return False
         info = self._panel_properties.get(key)
         if not isinstance(info, dict):
-            return False
-        if info.get("item_type") == "multi":
             return False
         available = info.get("available_properties") or []
         available_map = {

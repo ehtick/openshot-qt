@@ -1105,6 +1105,22 @@ class ClipInteractionMixin:
             self._resizing_item = None
             self._snap_keyframe_seconds = []
             self.snap.reset()
+            if hasattr(self, "_resize_snap_ignore_backup"):
+                ignore_ids = set(self._resize_snap_ignore_backup)
+                del self._resize_snap_ignore_backup
+                item_id = getattr(item, "id", None)
+                if item_id is not None and item_id in ignore_ids:
+                    ignore_ids.discard(item_id)
+                self._snap_ignore_ids = ignore_ids
+            # Ensure selection visuals are fully refreshed even when resize
+            # starts/ends without movement (click on edge).
+            self.changed(None)
+            self.geometry.mark_dirty()
+            self._keyframes_dirty = True
+            self.update()
+            self._release_cursor()
+            if self._last_event:
+                self._updateCursor(self._last_event.pos())
             return
         start = self._resize_new_start
         end = self._resize_new_end
