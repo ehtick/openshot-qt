@@ -1953,8 +1953,21 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             # Group transactions
             tid = str(uuid.uuid4())
 
-            # Get current FPS (prior to changing)
+            # Detect whether the project profile is actually changing
+            current_profile_desc = proj.get("profile")
+            current_width = proj.get("width")
+            current_height = proj.get("height")
             current_fps = proj.get("fps")
+            profile_changed = any([
+                current_profile_desc != profile.info.description,
+                current_width != profile.info.width,
+                current_height != profile.info.height,
+                not current_fps,
+                current_fps.get("num") != profile.info.fps.num,
+                current_fps.get("den") != profile.info.fps.den
+            ])
+
+            # Get current FPS (prior to changing)
             current_fps_float = float(current_fps["num"]) / float(current_fps["den"])
             fps_factor = float(profile.info.fps.ToFloat() / current_fps_float)
 
@@ -1972,6 +1985,9 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             get_app().updates.update(["display_ratio"], {"num": profile.info.display_ratio.num, "den": profile.info.display_ratio.den})
             get_app().updates.update(["pixel_ratio"], {"num": profile.info.pixel_ratio.num, "den": profile.info.pixel_ratio.den})
             get_app().updates.update(["fps"], {"num": profile.info.fps.num, "den": profile.info.fps.den})
+            if profile_changed:
+                # Export dialog settings are profile-dependent; reset cache on profile changes.
+                get_app().updates.update(["export_settings"], None)
 
             # Clear transaction id
             get_app().updates.transaction_id = None
