@@ -90,6 +90,9 @@ Timeline Toolbar
 
 .. image:: images/timeline.jpg
 
+For a beginner-friendly overview of timeline editing (selection, tracks,
+keyframes, and common workflows), see :ref:`timeline_ref`.
+
 .. table::
    :widths: 20 73
 

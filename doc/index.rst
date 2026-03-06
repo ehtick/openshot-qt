@@ -37,6 +37,7 @@ Table of Contents:
    quick_tutorial
    getting_started
    main_window
+   timeline
    files
    clips
    transitions
