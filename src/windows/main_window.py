@@ -2893,24 +2893,23 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         # Clear caption editor (if nothing is selected)
         get_app().window.CaptionTextLoaded.emit("", None)
 
-        # Update transform handles based on current selection
-        if get_app().get_settings().get("auto-transform"):
-            self.TransformSignal.emit(self.selected_clips)
+        # Always keep transform handles in sync with current selection.
+        self.TransformSignal.emit(self.selected_clips)
 
-            emitted_transform = False
-            for sel in self.selected_items:
-                if sel["type"] == "effect":
-                    effect = Effect.get(id=sel["id"])
-                    if effect and (
-                        effect.data.get("has_tracked_object")
-                        or effect.data.get("class_name") == "Crop"
-                    ):
-                        clip_id = effect.parent['id']
-                        self.KeyFrameTransformSignal.emit(sel["id"], clip_id)
-                        emitted_transform = True
+        emitted_transform = False
+        for sel in self.selected_items:
+            if sel["type"] == "effect":
+                effect = Effect.get(id=sel["id"])
+                if effect and (
+                    effect.data.get("has_tracked_object")
+                    or effect.data.get("class_name") == "Crop"
+                ):
+                    clip_id = effect.parent['id']
+                    self.KeyFrameTransformSignal.emit(sel["id"], clip_id)
+                    emitted_transform = True
 
-            if not emitted_transform:
-                self.KeyFrameTransformSignal.emit("", "")
+        if not emitted_transform:
+            self.KeyFrameTransformSignal.emit("", "")
 
     def selected_files(self):
         """ Return a list of File objects for the Project Files dock's selection """

@@ -421,6 +421,12 @@ QLineEdit#filesFilter, QLineEdit#effectsFilter, QLineEdit#transitionsFilter, QLi
     padding-right: 8px;
 }
 
+QLineEdit,
+QSpinBox,
+QDoubleSpinBox {
+    padding-left: 6px;
+}
+
 QLineEdit#filesFilter:focus, QLineEdit#effectsFilter:focus, QLineEdit#transitionsFilter:focus, QLineEdit#emojisFilter:focus, QLineEdit#txtPropertyFilter:focus {
     border-width: 1.2px;
     border-style: solid;
@@ -599,6 +605,18 @@ QDialog#generateDialog QLineEdit:focus,
 QDialog#generateDialog QTextEdit:focus,
 QDialog#generateDialog QComboBox:focus {
     border: 1.2px solid #53a0ed;
+}
+
+QLineEdit:disabled,
+QTextEdit:disabled,
+QComboBox:disabled,
+QSpinBox:disabled,
+QDoubleSpinBox:disabled {
+    color: #808080;
+}
+
+QComboBox:disabled::drop-down {
+    opacity: 0.75;
 }
 
 QWidget#cutting QPushButton#btnStart,QPushButton#btnEnd  {
