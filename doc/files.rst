@@ -224,21 +224,6 @@ When you choose **File→Save As**, OpenShot copies these folders into your proj
 
 As part of this process, all paths inside your ``*.osp`` project file are updated to be **relative** to your project folder.
 
-AI Generated Files
-------------------
-
-AI-generated outputs from ComfyUI appear alongside your other assets in
-:guilabel:`Project Files`. Generated thumbnails show queue/progress info.
-
-For AI setup, hardware requirements, and workflow details, see :ref:`ai_ref`.
-This keeps AI outputs easy to find and manage in your project workflow.
-
-Cleanup behavior
-""""""""""""""""
-Starting a **new project** or opening an **existing project** clears the temporary ``.openshot_qt`` working folders so you begin
-with a clean slate. Your saved projects are not affected, and any assets previously copied into a ``PROJECTNAME_Assets`` folder
-remain in that project's directory.
-
 Missing Files
 -------------
 

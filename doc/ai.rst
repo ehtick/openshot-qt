@@ -122,6 +122,11 @@ When ComfyUI is available, OpenShot shows AI tools in context menus:
 Generated files are added to :guilabel:`Project Files` with progress text and
 queue badges. Outputs are saved under ``.openshot_qt/comfyui-output/``.
 
+Starting a **new project** or opening an **existing project** clears the
+temporary ``.openshot_qt`` AI working folders so you begin with a clean slate.
+Your saved projects are not affected, and any assets previously copied into a
+``PROJECTNAME_Assets`` folder remain in that project's directory.
+
 If ComfyUI is unavailable, OpenShot hides the AI menus. Configure the server URL
 in :guilabel:`Preferences -> Experimental -> Comfy UI URL`, then use the
 :guilabel:`Check` button to test connectivity.
@@ -132,16 +137,20 @@ Workflow Templates
 OpenShot reads built-in templates from ``src/comfyui/``. It also loads custom
 user templates from ``~/.openshot_qt/comfyui/``.
 
-Each template is a JSON workflow with fields such as:
+To add your own workflow:
 
-- ``name``
-- ``template_id``
-- ``menu_category`` (``create`` or ``enhance``)
-- ``menu_parent`` (for grouped menu items like object tracking)
-- ``workflow`` (ComfyUI node graph)
+1. In ComfyUI, open the workflow tab you want to use.
+2. Choose :guilabel:`Export (API)` to save the workflow as a ``*.json`` file.
+3. Copy that JSON file into ``~/.openshot_qt/comfyui/``.
+4. Restart OpenShot, or reopen the project if needed.
 
-OpenShot writes a ``.openshot_qt/comfyui/debug.json`` payload for jobs so advanced users can inspect
-exact request data sent to ComfyUI.
+OpenShot will automatically load the workflow and show it in the appropriate AI
+menu. When you trigger it from OpenShot, the selected source file is passed into
+the workflow, and the output from the workflow's final output node is imported
+back into :guilabel:`Project Files`.
+
+OpenShot also writes a ``.openshot_qt/comfyui/debug.json`` payload for advanced
+users who want to inspect the exact request sent to ComfyUI.
 
 AI Action Dialog
 ----------------
@@ -400,9 +409,11 @@ Starting Points for New Users
 
 If you are new to these tools, start with:
 
-1. :guilabel:`Image...`
-2. :guilabel:`Change Image Style...`
-3. :guilabel:`Increase Resolution (image)`
+1. :guilabel:`Create with AI` -> :guilabel:`Image`
+2. :guilabel:`Enhance with AI` -> :guilabel:`Increase Resolution`
+3. :guilabel:`Enhance with AI` -> :guilabel:`Smooth Motion`
+4. :guilabel:`Enhance with AI` -> :guilabel:`Split into Scenes`
+5. :guilabel:`Enhance with AI` -> :guilabel:`Add Captions`
 
 Troubleshooting
 ---------------

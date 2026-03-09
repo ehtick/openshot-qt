@@ -44,6 +44,7 @@ Overview
    8   Timeline            The timeline visualizes your video project, and each clip and transition in your project. You can drag the mouse to select, move, or delete multiple items.
    9   Filter              Filter the list of items shown (project files, transitions, effects, and emojis) by using these buttons and filter textbox. Enter a few letters of what you are looking for, and the results will be shown.
    10  Playback            Left to Right: Jump to Start, Rewind, Play/Pause, Fast Forward, and Jump to End
+   11  Track               Track area containing the track name, track menu, and per-track controls such as lock and keyframe panel icons.
    ==  ==================  ============
 
 For step-by-step instructions on the basic usage of OpenShot, be sure to read the
@@ -324,66 +325,3 @@ exit the program. Re-launching OpenShot will restore your custom dock layout aut
 If you have accidentally closed or moved a dock and can no longer find it, there are a couple easy solutions.
 First, you can use the :guilabel:`View->Views->Simple View` menu option at the top of the screen, to restore the view back to its
 default. Or you can use the :guilabel:`View->Views->Docks->...` menu to show or hide specific dock widgets on the main window.
-
-AI Context Menu (Optional)
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-AI actions are available from right-click context menus.
-
-When available, you can right-click in :guilabel:`Project Files` (or on supported
-file types) and choose:
-
-- :guilabel:`Create with AI`
-- :guilabel:`Enhance with AI`
-
-These actions send your selected media to ComfyUI workflows and import the
-results back into :guilabel:`Project Files`. You can also cancel active AI jobs,
-and view job progress directly in the :guilabel:`Project Files` thumbnails/list.
-
-.. note::
-   This is an optional feature. If OpenShot cannot reach your ComfyUI server,
-   these AI menu options are hidden. See :ref:`ai_ref` for setup details.
-
-High DPI / 4K Monitors
-----------------------
-
-OpenShot Video Editor provides robust support for High DPI (Dots Per Inch) monitors, ensuring that the interface looks
-sharp and is easily readable on displays with various DPI settings. This support is particularly beneficial for users
-with 4K monitors or other high-resolution displays.
-
-Per Monitor DPI Awareness
-^^^^^^^^^^^^^^^^^^^^^^^^^
-
-OpenShot is DPI aware on a per-monitor basis, meaning it can adjust its scaling dynamically depending on the DPI
-settings of each connected monitor. This ensures a consistent and high-quality user experience across different displays.
-
-DPI Scaling on Windows
-^^^^^^^^^^^^^^^^^^^^^^
-
-On Windows, OpenShot rounds the scaling factor to the nearest whole value to maintain visual integrity. This rounding
-helps avoid visual artifacts in the UI rendering and ensures that the interface elements remain crisp and well-aligned.
-Due to this rounding, scaling options can sometimes lead to increased font-sizes and a feeling that the UI elements
-are a bit too large.
-
-- **125% scaling** rounds to **100%**
-- **150% scaling** rounds to **200%**
-
-Workarounds for Fine-Grained Adjustment
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-While rounding helps maintain a clean interface, there are workarounds for users who require more precise control
-over the scaling. However, these methods are **not recommended** due to potential visual artifacts:
-
-- **QT_SCALE_FACTOR_ROUNDING_POLICY=PassThrough**
-
-   - Setting this environment variable can disable rounding and allow more precise scaling.
-   - **Note:** This may cause visual artifacts, particularly in the timeline, and is not recommended.
-
-- **QT_SCALE_FACTOR=1.25** (or similar value)
-
-   - Manually setting the scale factor can provide finer adjustments to the font and UI scaling.
-   - This can also be set via Preferences (User Interface Scale) - but expect border/line issues on Windows with fractional scales.
-   - **Note:** This method can also lead to visual artifacts and make OpenShot harder to use.
-
-For more info on adjusting these environment variables, please visit
-https://github.com/OpenShot/openshot-qt/wiki/OpenShot-UI-too-large.
