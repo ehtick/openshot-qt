@@ -214,7 +214,6 @@ Learning a few of these shortcuts can save you a bunch of time!
    Thumbnail View                        :kbd:`Ctrl+Page Down`
    Timing Toggle                         :kbd:`T`
    Title                                 :kbd:`Ctrl+T`
-   Transform                             :kbd:`Ctrl+Alt+T`
    Translate this Application...         :kbd:`F6`
    Un-Freeze View                        :kbd:`Ctrl+Shift+F`
    Undo                                  :kbd:`Ctrl+Z`

@@ -1071,14 +1071,6 @@
   },
   {
     "category": "Keyboard",
-    "title": "Transform",
-    "restart": false,
-    "setting": "actionTransform",
-    "value": "Ctrl+Alt+T",
-    "type": "text"
-  },
-  {
-    "category": "Keyboard",
     "title": "Insert Keyframe",
     "restart": false,
     "setting": "actionInsertKeyframe",

@@ -52,7 +52,7 @@ from classes.thumbnail import GetThumbPath
 from classes.waveform import get_audio_data
 from .timeline_backend.enums import (
     MenuFade, MenuRotate, MenuLayout, MenuAlign, MenuAnimate, MenuVolume,
-    MenuTransform, MenuTime, MenuCopy, MenuSlice, MenuSplitAudio
+    MenuTime, MenuCopy, MenuSlice, MenuSplitAudio
 )
 from .timeline_backend.qwidget import TimelineWidget
 from .timeline_backend.colors import effect_color_hex
@@ -1649,12 +1649,6 @@ class TimelineView(updates.UpdateInterface, ViewClass):
 
                 menu.addMenu(Slice_Menu)
 
-        # Transform menu
-        Transform_Action = self.window.actionTransform
-        Transform_Action.triggered.connect(
-            partial(self.Transform_Triggered, MenuTransform.DEFAULT, clip_ids))
-        menu.addAction(Transform_Action)
-
         # Add clip display menu (waveform or thumbnail)
         menu.addSeparator()
         Waveform_Menu = StyledContextMenu(title=_("Display"), parent=self)
@@ -1674,16 +1668,6 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         # Show context menu
         self.context_menu_cursor_position = QCursor.pos()
         return menu.popup(self.context_menu_cursor_position)
-
-    def Transform_Triggered(self, action, clip_ids):
-        log.debug("Transform_Triggered")
-
-        # Emit signal to transform these clips
-        if clip_ids:
-            self.window.TransformSignal.emit(clip_ids)
-        else:
-            # Clear transform
-            self.window.TransformSignal.emit([])
 
     def Show_Waveform_Triggered(self, clip_ids, transaction_id=None):
         """Show a waveform for all selected clips"""
