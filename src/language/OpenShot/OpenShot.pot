@@ -3709,7 +3709,7 @@ msgid "Hardware Decoder Max Height (0 = Default)"
 msgstr ""
 
 #: Settings for blender_gpu_enabled
-msgid "Use Blender GPU rendering for Animated Titles (Experimental)"
+msgid "Use Blender GPU rendering for Animated Titles"
 msgstr ""
 
 #: Settings for auto-transform
@@ -4786,4 +4786,3 @@ msgstr ""
 #: /home/jonathan/apps/openshot-qt/src/windows/ui/title-editor.ui:14
 msgid "Titles"
 msgstr ""
-

@@ -796,13 +796,18 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
 
     def auto_save_project(self):
         """Auto save the project"""
-        import time
-
         app = get_app()
+        current_data_version = app.updates.data_version
 
         # Get current filepath (if any)
         file_path = app.project.current_filepath
         if not app.project.needs_save():
+            return
+
+        # Skip if no project mutations happened since the last autosave.
+        # This avoids rewriting the same backup.osp on every timer tick for
+        # untitled/recovered projects that remain "unsaved" by design.
+        if current_data_version == self.last_auto_save_data_version:
             return
 
         if file_path:
@@ -830,6 +835,8 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             # No saved project found
             log.info("Creating backup of project file: %s", info.BACKUP_FILE)
             app.project.save(info.BACKUP_FILE, backup_only=True)
+
+        self.last_auto_save_data_version = current_data_version
 
     def actionSaveAs_trigger(self):
         app = get_app()
@@ -4095,6 +4102,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         self.lock = threading.Lock()
         self.installEventFilter(self)
         self.ui_trace_recorder = None
+        self.last_auto_save_data_version = -1
 
         # set window on app for reference during initialization of children
         app = get_app()
