@@ -43,7 +43,6 @@ from PyQt5.QtGui import QKeySequence, QIcon
 from classes import info, ui_util, tabstops
 from classes import openshot_rc  # noqa
 from classes.app import get_app
-from classes.comfy_client import ComfyClient
 from classes.language import get_all_languages
 from classes.logger import log
 from classes.metrics import track_metric_screen
@@ -709,55 +708,95 @@ class Preferences(QDialog):
 
     def check_comfy_ui_url(self, widget, param, btn=None):
         _ = get_app()._tr
+        if btn and btn.property("comfy_check_pending"):
+            return
         url = str(widget.text() or "").strip().rstrip("/")
         if not url:
             log.info("ComfyUI URL check failed: empty URL")
-            if btn:
-                icon = self.style().standardIcon(QStyle.SP_DialogCancelButton)
-                btn.setIcon(icon)
-                btn.setToolTip(_("ComfyUI URL is empty."))
+            self._update_comfy_ui_check_button(
+                btn,
+                available=False,
+                tooltip=_("ComfyUI URL is empty."),
+                enabled=True,
+            )
             return
 
         # Persist normalized URL before validation.
         self.s.set(param["setting"], url)
         widget.setText(url)
+        self._update_comfy_ui_check_button(
+            btn,
+            available=False,
+            tooltip=_("Checking ComfyUI connection..."),
+            enabled=True,
+            clear_icon=True,
+            pending=True,
+        )
 
-        available = False
-        error_text = ""
-        try:
-            available = ComfyClient(url).ping(timeout=2.0)
-        except Exception as ex:
-            error_text = str(ex)
+        window = getattr(get_app(), "window", None)
+        if not window:
+            self._update_comfy_ui_check_button(
+                btn,
+                available=False,
+                tooltip=_("Connection failed."),
+                enabled=True,
+                pending=False,
+            )
+            return
 
-        # Refresh cached availability so context menus update immediately.
-        try:
-            if getattr(get_app(), "window", None):
-                get_app().window.is_comfy_available(force=True)
-        except Exception:
-            log.debug("ComfyUI availability cache refresh failed", exc_info=1)
+        def _handle_result(available, error_text, checked_url):
+            try:
+                current_url = str(widget.text() or "").strip().rstrip("/")
+                if checked_url != current_url:
+                    self._update_comfy_ui_check_button(
+                        btn,
+                        available=False,
+                        tooltip=_("ComfyUI URL changed. Click Check to validate the new value."),
+                        enabled=True,
+                        clear_icon=True,
+                        pending=False,
+                    )
+                    return
+                if available:
+                    self._update_comfy_ui_check_button(
+                        btn,
+                        available=True,
+                        tooltip=_("Connection successful. AI menus are enabled."),
+                        enabled=True,
+                        pending=False,
+                    )
+                    return
 
-        if available:
-            log.info("ComfyUI URL check succeeded at %s", url)
-            if btn:
-                icon = self.style().standardIcon(QStyle.SP_DialogApplyButton)
-                btn.setIcon(icon)
-                btn.setToolTip(_("Connection successful. AI menus are enabled."))
-        else:
-            if error_text:
-                log.info("ComfyUI URL check failed at %s (%s)", url, error_text)
-                message = _("Connection failed: {}").format(error_text)
-            else:
-                log.info("ComfyUI URL check failed at %s", url)
-                message = _("Connection failed.")
-            if btn:
-                icon = self.style().standardIcon(QStyle.SP_DialogCancelButton)
-                btn.setIcon(icon)
-                btn.setToolTip(
-                    "{} {}".format(
+                message = _("Connection failed: {}").format(error_text) if error_text else _("Connection failed.")
+                self._update_comfy_ui_check_button(
+                    btn,
+                    available=False,
+                    tooltip="{} {}".format(
                         message,
                         _("AI menus are disabled until ComfyUI is reachable."),
-                    )
+                    ),
+                    enabled=True,
+                    pending=False,
                 )
+            except RuntimeError:
+                return
+
+        window.refresh_comfy_availability_async(timeout=2.0, callback=_handle_result)
+
+    def _update_comfy_ui_check_button(self, btn, available, tooltip, enabled, clear_icon=False, pending=None):
+        if not btn:
+            return
+        if clear_icon:
+            btn.setIcon(QIcon())
+        else:
+            icon = self.style().standardIcon(
+                QStyle.SP_DialogApplyButton if available else QStyle.SP_DialogCancelButton
+            )
+            btn.setIcon(icon)
+        btn.setToolTip(str(tooltip or ""))
+        btn.setEnabled(bool(enabled))
+        if pending is not None:
+            btn.setProperty("comfy_check_pending", bool(pending))
 
     def dropdown_index_changed(self, widget, param, index):
         # Save setting

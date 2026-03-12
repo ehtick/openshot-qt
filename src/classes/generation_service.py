@@ -35,6 +35,7 @@ from urllib.parse import unquote
 from fractions import Fraction
 
 import openshot
+from PyQt5.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 from PyQt5.QtWidgets import QMessageBox, QDialog
 
 from classes import info
@@ -61,7 +62,21 @@ def is_supported_img2img_path(path):
     return ext in RASTER_IMAGE_EXTENSIONS
 
 
-class GenerationService:
+class _ComfyAvailabilityWorker(QObject):
+    finished = pyqtSignal(int, str, bool, str)
+
+    @pyqtSlot(int, str, float)
+    def check(self, request_id, url, timeout):
+        available = False
+        error_text = ""
+        try:
+            available = ComfyClient(url).ping(timeout=float(timeout))
+        except Exception as ex:
+            error_text = str(ex)
+        self.finished.emit(int(request_id), str(url), bool(available), str(error_text or ""))
+
+
+class GenerationService(QObject):
     """Encapsulates generation-specific UI + workflow behavior."""
     SAM2_DEFAULT_TARGET_BATCH_BYTES = 4 * 1024 * 1024 * 1024  # 4 GiB
     SAM2_ESTIMATED_BYTES_PER_PIXEL = 24.0
@@ -69,13 +84,25 @@ class GenerationService:
     SAM2_ESTIMATED_BYTES_PER_PIXEL_BLUR = 40.0
     SAM2_MIN_FRAMES_PER_BATCH = 4
     SAM2_MAX_FRAMES_PER_BATCH = 192
+    _request_comfy_check = pyqtSignal(int, str, float)
 
     def __init__(self, win):
+        super().__init__(win)
         self.win = win
         self._generation_temp_files = []
         self._comfy_status_cache = {"checked_at": 0.0, "available": False, "url": ""}
         self._last_logged_comfy_state = None
         self.template_registry = ComfyTemplateRegistry()
+        self._comfy_check_request_id = 0
+        self._latest_comfy_check_request_id = 0
+        self._comfy_check_callbacks = {}
+        self._comfy_check_thread = QThread(self)
+        self._comfy_check_thread.setObjectName("comfy_availability_worker")
+        self._comfy_check_worker = _ComfyAvailabilityWorker()
+        self._comfy_check_worker.moveToThread(self._comfy_check_thread)
+        self._request_comfy_check.connect(self._comfy_check_worker.check)
+        self._comfy_check_worker.finished.connect(self._on_comfy_check_finished)
+        self._comfy_check_thread.start()
 
     def cleanup_temp_files(self):
         for tmp_path in list(self._generation_temp_files):
@@ -90,12 +117,29 @@ class GenerationService:
         url = get_app().get_settings().get("comfy-ui-url") or "http://127.0.0.1:8188"
         return str(url).strip().rstrip("/")
 
+    def shutdown(self):
+        if getattr(self, "_comfy_check_thread", None):
+            self._comfy_check_thread.quit()
+            self._comfy_check_thread.wait()
+
+    def refresh_comfy_availability_async(self, timeout=0.5, callback=None):
+        self._comfy_check_request_id += 1
+        request_id = self._comfy_check_request_id
+        url = self.comfy_ui_url()
+        self._latest_comfy_check_request_id = request_id
+        if callable(callback):
+            self._comfy_check_callbacks[request_id] = callback
+        self._request_comfy_check.emit(request_id, url, float(timeout))
+        return request_id
+
     def is_comfy_available(self, force=False):
-        now = time()
-        if not force and (now - self._comfy_status_cache["checked_at"]) < 2.0:
+        url = self.comfy_ui_url()
+        if not force:
+            if str(self._comfy_status_cache.get("url", "")) != url:
+                return False
             return self._comfy_status_cache["available"]
 
-        url = self.comfy_ui_url()
+        now = time()
         available = False
         error_text = ""
         try:
@@ -121,6 +165,35 @@ class GenerationService:
                     log.info("ComfyUI check failed at %s", url)
             self._last_logged_comfy_state = state
         return available
+
+    @pyqtSlot(int, str, bool, str)
+    def _on_comfy_check_finished(self, request_id, url, available, error_text):
+        callback = self._comfy_check_callbacks.pop(int(request_id), None)
+        if int(request_id) != int(self._latest_comfy_check_request_id):
+            return
+
+        previous_available = bool(self._comfy_status_cache.get("available"))
+        previous_url = str(self._comfy_status_cache.get("url", ""))
+        self._comfy_status_cache["checked_at"] = time()
+        self._comfy_status_cache["available"] = bool(available)
+        self._comfy_status_cache["url"] = str(url)
+
+        state = (str(url), bool(available))
+        if state != self._last_logged_comfy_state or previous_url != str(url) or previous_available != bool(available):
+            if available:
+                log.info("ComfyUI check passed at %s", url)
+            else:
+                if error_text:
+                    log.info("ComfyUI check failed at %s (%s)", url, error_text)
+                else:
+                    log.info("ComfyUI check failed at %s", url)
+            self._last_logged_comfy_state = state
+
+        if callback:
+            try:
+                callback(bool(available), str(error_text or ""), str(url))
+            except Exception:
+                log.debug("ComfyUI availability callback failed", exc_info=1)
 
     def can_open_generate_dialog(self):
         return len(self.win.selected_file_ids()) <= 1

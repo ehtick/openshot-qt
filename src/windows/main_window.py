@@ -222,6 +222,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
 
         # Cleanup temporary generation source files
         if getattr(self, "generation_service", None):
+            self.generation_service.shutdown()
             self.generation_service.cleanup_temp_files()
 
         # Stop ZMQ polling thread (if any)
@@ -2038,6 +2039,9 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
 
     def is_comfy_available(self, force=False):
         return self.generation_service.is_comfy_available(force=force)
+
+    def refresh_comfy_availability_async(self, timeout=0.5, callback=None):
+        return self.generation_service.refresh_comfy_availability_async(timeout=timeout, callback=callback)
 
     def can_open_generate_dialog(self):
         return self.generation_service.can_open_generate_dialog()
@@ -4159,6 +4163,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         self.generation_queue = GenerationQueueManager(self)
         self.generation_queue.job_finished.connect(self._on_generation_job_finished)
         self._init_generation_actions()
+        self.refresh_comfy_availability_async()
 
         # Add window as watcher to receive undo/redo status updates
         app.updates.add_watcher(self)
