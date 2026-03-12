@@ -93,7 +93,7 @@ class SnapHelper:
         for label in labels:
             active.pop(label, None)
 
-    def _target_edges_px(self):
+    def _target_edges_px(self, *, viewport=False):
         self.geometry.ensure()
         pps = float(self.widget.pixels_per_second or 0.0)
         if pps <= 0.0:
@@ -101,25 +101,26 @@ class SnapHelper:
 
         generic_targets = set()
         keyframe_targets = []
-        h_offset = self._h_offset()
+        h_offset = self._h_offset() if viewport else 0.0
         left_edge = self.widget.track_name_width - h_offset
 
         ignore_ids = getattr(self.widget, "_snap_ignore_ids", set())
-        for rect, obj, _selected in self.geometry.iter_clips():
+        for rect, obj, _selected in self.geometry.iter_clips(viewport=viewport):
             obj_id = getattr(obj, "id", None)
             if obj_id in ignore_ids:
                 continue
             generic_targets.add(rect.left())
             generic_targets.add(rect.right())
 
-        for rect, obj, _selected in self.geometry.iter_transitions():
+        for rect, obj, _selected in self.geometry.iter_transitions(viewport=viewport):
             obj_id = getattr(obj, "id", None)
             if obj_id in ignore_ids:
                 continue
             generic_targets.add(rect.left())
             generic_targets.add(rect.right())
 
-        for entry in self.geometry.iter_markers():
+        marker_entries = self.geometry.iter_markers() if viewport else self.geometry.marker_rects
+        for entry in marker_entries:
             if isinstance(entry, dict):
                 rect = entry.get("line_rect") or entry.get("rect")
             else:
@@ -187,12 +188,11 @@ class SnapHelper:
     def keyframe_snap_seconds(self, include_playhead=True):
         """Return generic snap targets converted to seconds for keyframe drags."""
 
-        px_targets = self._target_edges_px()
+        px_targets = self._target_edges_px(viewport=False)
         pps = float(self.widget.pixels_per_second or 0.0)
         if pps <= 0.0:
             return []
 
-        h_offset = self._h_offset()
         track_left = float(getattr(self.widget, "track_name_width", 0.0) or 0.0)
 
         fps = float(getattr(self.widget, "fps_float", 0.0) or 0.0)
@@ -200,7 +200,7 @@ class SnapHelper:
         if fps > 0.0:
             frame = float(getattr(self.widget, "current_frame", 1) or 1.0)
             playhead_seconds = max(0.0, (max(1.0, frame) - 1.0) / fps)
-            playhead_px = track_left + playhead_seconds * pps - h_offset
+            playhead_px = track_left + playhead_seconds * pps
 
         targets = []
         seen = set()
@@ -226,7 +226,7 @@ class SnapHelper:
                 if abs(px_value - playhead_px) <= 0.5:
                     continue
 
-            seconds = (px_value + h_offset - track_left) / pps
+            seconds = (px_value - track_left) / pps
             if not math.isfinite(seconds):
                 continue
             if seconds < 0.0:
@@ -330,7 +330,7 @@ class SnapHelper:
         if not hasattr(bbox, "x"):
             return delta_sec
 
-        targets = self._target_edges_px()
+        targets = self._target_edges_px(viewport=False)
         if not targets:
             self.reset(["drag-left", "drag-right"])
             return delta_sec
@@ -378,15 +378,13 @@ class SnapHelper:
         if pps <= 0.0:
             return delta_sec
         snap_px = self._snap_tolerance_px()
-        h_offset = self._h_offset()
         start_px = (
             self.widget.track_name_width
             + orig_edge_sec * self.widget.pixels_per_second
-            - h_offset
         )
         edge_px = start_px + (delta_sec * self.widget.pixels_per_second)
         moved_px = edge_px - start_px
-        targets = self._target_edges_px()
+        targets = self._target_edges_px(viewport=False)
         label = getattr(self.widget, "_resize_edge", None)
         if label in ("left", "right"):
             label = f"edge-{label}"
