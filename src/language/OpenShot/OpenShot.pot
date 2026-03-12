@@ -1313,7 +1313,7 @@ msgid "Select executable file"
 msgstr ""
 
 #: /home/jonathan/apps/openshot-qt/src/windows/preferences.py:718
-msgid "Comfy UI URL is empty."
+msgid "ComfyUI URL is empty."
 msgstr ""
 
 #: /home/jonathan/apps/openshot-qt/src/windows/preferences.py:744
@@ -3798,7 +3798,7 @@ msgid "Image Quality (Disk Only)"
 msgstr ""
 
 #: Settings for comfy-ui-url
-msgid "Comfy UI URL"
+msgid "ComfyUI URL"
 msgstr ""
 
 #: Settings Category for Advanced
@@ -4957,4 +4957,3 @@ msgstr ""
 #: /home/jonathan/apps/openshot-qt/src/windows/ui/title-editor.ui:14
 msgid "Titles"
 msgstr ""
-

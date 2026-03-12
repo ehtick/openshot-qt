@@ -419,7 +419,7 @@
   },
   {
     "value": "http://127.0.0.1:8188",
-    "title": "Comfy UI URL",
+    "title": "ComfyUI URL",
     "type": "text",
     "restart": false,
     "category": "Advanced",

@@ -715,7 +715,7 @@ class Preferences(QDialog):
             if btn:
                 icon = self.style().standardIcon(QStyle.SP_DialogCancelButton)
                 btn.setIcon(icon)
-                btn.setToolTip(_("Comfy UI URL is empty."))
+                btn.setToolTip(_("ComfyUI URL is empty."))
             return
 
         # Persist normalized URL before validation.
