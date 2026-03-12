@@ -245,6 +245,8 @@ if sys.platform == "win32":
         "libjasper-4.dll",
         "libtiff-5.dll",
         "libwebp-7.dll",
+        "libwebpdemux-2.dll",
+        "libwebpmux-3.dll",
         "liblzma-5.dll",
         "libdeflate.dll",
         "zlib1.dll",
