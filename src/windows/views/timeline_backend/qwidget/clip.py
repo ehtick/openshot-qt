@@ -584,7 +584,7 @@ class ClipInteractionMixin:
 
             delta_sec = frame_offset / fps
 
-        # Reapply second-based bounds to account for frame rounding
+        # Reapply left bound to account for frame rounding
         if start_positions:
             min_delta_sec = -min(start_positions)
             if delta_sec < min_delta_sec:
