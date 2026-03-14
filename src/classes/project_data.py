@@ -41,6 +41,7 @@ from classes.json_data import JsonDataStore
 from classes.logger import log
 from classes.updates import UpdateInterface
 from classes.assets import get_assets_path
+from classes.path_utils import comparable_local_path, normalized_local_path
 from windows.views.find_file import find_missing_file
 from classes.convert_framerate import change_profile
 
@@ -1094,19 +1095,22 @@ class ProjectDataStore(JsonDataStore, UpdateInterface):
         s = get_app().get_settings()
         recent_projects = s.get("recent_projects")
 
-        # Make sure file_path is absolute
-        file_path = os.path.abspath(file_path)
+        normalized_path = normalized_local_path(file_path)
+        normalized_key = comparable_local_path(normalized_path)
 
-        # Remove existing project
-        if file_path in recent_projects:
-            recent_projects.remove(file_path)
+        # Remove existing project entries, including mixed-separator duplicates.
+        recent_projects = [
+            normalized_local_path(existing_path)
+            for existing_path in recent_projects
+            if comparable_local_path(existing_path) != normalized_key
+        ]
 
         # Remove oldest item (if needed)
-        if len(recent_projects) > 10:
+        if len(recent_projects) >= 10:
             del recent_projects[0]
 
         # Append file path to end of recent files
-        recent_projects.append(file_path)
+        recent_projects.append(normalized_path)
 
         # Save setting
         s.set("recent_projects", recent_projects)

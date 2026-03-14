@@ -62,6 +62,7 @@ from classes.importers.edl import import_edl
 from classes.importers.final_cut_pro import import_xml
 from classes.logger import log
 from classes.metrics import track_metric_session, track_metric_screen
+from classes.path_utils import comparable_local_path, native_display_path, normalized_local_path
 from classes.query import File, Clip, Transition, Marker, Track, Effect
 from classes.generation_queue import GenerationQueueManager
 from classes.generation_service import GenerationService
@@ -3015,6 +3016,21 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
 
         # Get list of recent projects
         recent_projects = s.get("recent_projects")
+        normalized_projects = []
+        seen_projects = set()
+
+        for file_path in recent_projects:
+            normalized_path = normalized_local_path(file_path)
+            comparable_path = comparable_local_path(normalized_path)
+            if not normalized_path or comparable_path in seen_projects:
+                continue
+            seen_projects.add(comparable_path)
+            normalized_projects.append(normalized_path)
+
+        if normalized_projects != recent_projects:
+            s.set("recent_projects", normalized_projects)
+            s.save()
+        recent_projects = normalized_projects
 
         # Add Recent Projects menu (after Open File)
         if not self.recent_menu:
@@ -3035,12 +3051,18 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
 
         for file_path in reversed(recent_projects):
             # Add each recent project
-            new_action = self.recent_menu.addAction(file_path)
+            native_path = native_display_path(file_path)
+            new_action = self.recent_menu.addAction(native_path)
+            new_action.setToolTip(native_path)
             new_action.triggered.connect(functools.partial(self.recent_project_clicked, file_path))
 
         # Add 'Clear Recent Projects' menu to bottom of list
         self.recent_menu.addSeparator()
         self.recent_menu.addAction(self.actionClearRecents)
+        try:
+            self.actionClearRecents.triggered.disconnect(self.clear_recents_clicked)
+        except TypeError:
+            pass
         self.actionClearRecents.triggered.connect(self.clear_recents_clicked)
 
         # Build recovery menu as well
@@ -3170,8 +3192,11 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         """Remove a project from the Recent menu if OpenShot can't find it"""
         s = get_app().get_settings()
         recent_projects = s.get("recent_projects")
-        if file_path in recent_projects:
-            recent_projects.remove(file_path)
+        file_key = comparable_local_path(file_path)
+        recent_projects = [
+            existing_path for existing_path in recent_projects
+            if comparable_local_path(existing_path) != file_key
+        ]
         s.set("recent_projects", recent_projects)
         s.save()
 
@@ -3183,6 +3208,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         """Clear all recent projects"""
         s = get_app().get_settings()
         s.set("recent_projects", [])
+        s.save()
 
         # Reload recent project list
         self.load_recent_menu()
