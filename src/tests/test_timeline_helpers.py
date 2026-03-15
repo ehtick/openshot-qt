@@ -201,7 +201,7 @@ class TimelineHelperTests(unittest.TestCase):
         action = UpdateAction(
             type="update",
             key=["files", {"id": "F1"}],
-            values={"path": "/tmp/file.mp4"},
+            values={"path": "example.mp4"},
         )
 
         self.assertFalse(self.timeline_module.TimelineView._should_refresh_waveforms(helper, action))

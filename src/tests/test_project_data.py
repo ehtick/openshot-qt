@@ -27,6 +27,7 @@
 
 import os
 import sys
+import tempfile
 import types
 import unittest
 from contextlib import ExitStack
@@ -164,21 +165,27 @@ class ProjectDataTests(unittest.TestCase):
         self.app.window = types.SimpleNamespace(actionClearWaveformData=clear_waveform_action)
         self.app.updates = types.SimpleNamespace(load=lambda payload: loaded_payloads.append(payload))
 
-        with ExitStack() as stack:
-            stack.enter_context(
-                patch.object(store, "new", lambda: setattr(store, "_data", default_project.copy()))
-            )
-            stack.enter_context(
-                patch.object(store, "read_from_file", lambda file_path, path_mode="ignore": loaded_project.copy())
-            )
-            stack.enter_context(patch.object(store, "check_if_paths_are_valid", lambda: None))
-            stack.enter_context(patch.object(store, "add_to_recent_files", lambda file_path: None))
-            stack.enter_context(patch.object(store, "upgrade_project_data_structures", lambda: None))
-            stack.enter_context(patch.object(store, "get_profile", lambda **kwargs: object()))
-            stack.enter_context(patch.object(store, "apply_default_audio_settings", lambda: None))
-            ProjectDataStore.load(store, "/tmp/example.osp", clear_thumbnails=False)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = os.path.join(tmpdir, "example.osp")
+            with ExitStack() as stack:
+                stack.enter_context(
+                    patch.object(store, "new", lambda: setattr(store, "_data", default_project.copy()))
+                )
+                stack.enter_context(
+                    patch.object(
+                        store,
+                        "read_from_file",
+                        lambda file_path, path_mode="ignore": loaded_project.copy(),
+                    )
+                )
+                stack.enter_context(patch.object(store, "check_if_paths_are_valid", lambda: None))
+                stack.enter_context(patch.object(store, "add_to_recent_files", lambda file_path: None))
+                stack.enter_context(patch.object(store, "upgrade_project_data_structures", lambda: None))
+                stack.enter_context(patch.object(store, "get_profile", lambda **kwargs: object()))
+                stack.enter_context(patch.object(store, "apply_default_audio_settings", lambda: None))
+                ProjectDataStore.load(store, project_path, clear_thumbnails=False)
 
-        self.assertEqual(store.current_filepath, "/tmp/example.osp")
+        self.assertEqual(store.current_filepath, project_path)
         self.assertFalse(store.has_unsaved_changes)
         self.assertEqual(store._data["history"], {"undo": [], "redo": []})
         self.assertTrue(clear_waveform_action.enabled)
@@ -215,19 +222,19 @@ class ProjectDataTests(unittest.TestCase):
 
     def test_add_to_recent_files_moves_existing_path_to_end(self):
         store = make_store()
-        self.app.settings.values["recent_projects"] = [
-            "/tmp/one.osp",
-            "/tmp/two.osp",
-            "/tmp/three.osp",
-        ]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            one = os.path.join(tmpdir, "one.osp")
+            two = os.path.join(tmpdir, "two.osp")
+            three = os.path.join(tmpdir, "three.osp")
+            self.app.settings.values["recent_projects"] = [one, two, three]
 
-        ProjectDataStore.add_to_recent_files(store, "/tmp/two.osp")
+            ProjectDataStore.add_to_recent_files(store, two)
 
-        self.assertEqual(
-            self.app.settings.values["recent_projects"],
-            ["/tmp/one.osp", "/tmp/three.osp", "/tmp/two.osp"],
-        )
-        self.assertTrue(self.app.settings.saved)
+            self.assertEqual(
+                self.app.settings.values["recent_projects"],
+                [one, three, two],
+            )
+            self.assertTrue(self.app.settings.saved)
 
     def test_upgrade_project_data_structures_migrates_tracker_alpha_and_parent(self):
         store = make_store()

@@ -28,6 +28,7 @@
 import importlib
 import os
 import sys
+import tempfile
 import threading
 import types
 import unittest
@@ -188,12 +189,14 @@ class MainWindowTests(unittest.TestCase):
             ProjectSaveFailed=failed,
         )
 
-        self.main_window_module.MainWindow.save_project(fake_window, "/tmp/project.osp")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = os.path.join(tmpdir, "project.osp")
+            self.main_window_module.MainWindow.save_project(fake_window, project_path)
 
-        self.assertEqual(history_calls, [(self.app.project, 42)])
-        self.assertEqual(save_calls, ["recovery:/tmp/project.osp", "/tmp/project.osp"])
-        self.assertEqual(saved.calls, [("/tmp/project.osp",)])
-        self.assertEqual(failed.calls, [])
+            self.assertEqual(history_calls, [(self.app.project, 42)])
+            self.assertEqual(save_calls, [f"recovery:{project_path}", project_path])
+            self.assertEqual(saved.calls, [(project_path,)])
+            self.assertEqual(failed.calls, [])
 
     def test_open_project_missing_file_removes_recent_project_and_seeks_start(self):
         status_messages = []
@@ -234,18 +237,24 @@ class MainWindowTests(unittest.TestCase):
         self.app.setOverrideCursor = lambda cursor: None
         self.app.restoreOverrideCursor = lambda: restore_cursor.append(True)
 
-        with patch.object(self.main_window_module.QCoreApplication, "processEvents", lambda: None):
-            self.main_window_module.MainWindow.open_project(fake_window, "/tmp/missing.osp", clear_thumbnails=True)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            missing_path = os.path.join(tmpdir, "missing.osp")
+            with patch.object(self.main_window_module.QCoreApplication, "processEvents", lambda: None):
+                self.main_window_module.MainWindow.open_project(
+                    fake_window,
+                    missing_path,
+                    clear_thumbnails=True,
+                )
 
-        self.assertEqual(removed, ["/tmp/missing.osp"])
-        self.assertEqual(loaded_recent, [True])
-        self.assertTrue(status_messages)
-        self.assertIn("missing", status_messages[0][0].lower())
-        self.assertIn(("seek", 1), move_calls)
-        self.assertIn(("playhead", 1), move_calls)
-        self.assertEqual(speed_calls.calls, [(0,)])
-        self.assertEqual(pause_calls.calls, [()])
-        self.assertEqual(restore_cursor, [True])
+            self.assertEqual(removed, [missing_path])
+            self.assertEqual(loaded_recent, [True])
+            self.assertTrue(status_messages)
+            self.assertIn("missing", status_messages[0][0].lower())
+            self.assertIn(("seek", 1), move_calls)
+            self.assertIn(("playhead", 1), move_calls)
+            self.assertEqual(speed_calls.calls, [(0,)])
+            self.assertEqual(pause_calls.calls, [()])
+            self.assertEqual(restore_cursor, [True])
 
     def test_save_recovery_creates_zip_and_calls_retention(self):
         import tempfile
@@ -451,25 +460,31 @@ class MainWindowTests(unittest.TestCase):
         self.app.setOverrideCursor = lambda cursor: None
         self.app.restoreOverrideCursor = lambda: recent_calls.append("restore")
 
-        with ExitStack() as stack:
-            stack.enter_context(
-                patch.object(self.main_window_module.os.path, "exists", return_value=True)
-            )
-            stack.enter_context(
-                patch.object(self.main_window_module.QCoreApplication, "processEvents", lambda: None)
-            )
-            self.main_window_module.MainWindow.open_project(fake_window, "/tmp/existing.osp", clear_thumbnails=True)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = os.path.join(tmpdir, "existing.osp")
+            with ExitStack() as stack:
+                stack.enter_context(
+                    patch.object(self.main_window_module.os.path, "exists", return_value=True)
+                )
+                stack.enter_context(
+                    patch.object(self.main_window_module.QCoreApplication, "processEvents", lambda: None)
+                )
+                self.main_window_module.MainWindow.open_project(
+                    fake_window,
+                    project_path,
+                    clear_thumbnails=True,
+                )
 
-        self.assertEqual(load_calls, [("/tmp/existing.osp", True)])
-        self.assertEqual(history_calls, [self.app.project])
-        self.assertEqual(clear_temp, [True])
-        self.assertEqual(refresh_files.calls, [()])
-        self.assertEqual(refresh_frame.calls, [()])
-        self.assertEqual(max_size.calls, [("preview-size",)])
-        self.assertIn(("seek", 1), move_calls)
-        self.assertIn(("playhead", 1), move_calls)
-        self.assertIn("recent", recent_calls)
-        self.assertIn("restore", recent_calls)
+            self.assertEqual(load_calls, [(project_path, True)])
+            self.assertEqual(history_calls, [self.app.project])
+            self.assertEqual(clear_temp, [True])
+            self.assertEqual(refresh_files.calls, [()])
+            self.assertEqual(refresh_frame.calls, [()])
+            self.assertEqual(max_size.calls, [("preview-size",)])
+            self.assertIn(("seek", 1), move_calls)
+            self.assertIn(("playhead", 1), move_calls)
+            self.assertIn("recent", recent_calls)
+            self.assertIn("restore", recent_calls)
 
     def test_action_remove_clip_skips_locked_tracks(self):
         deleted = []
