@@ -41,6 +41,7 @@ if PATH not in sys.path:
 from PyQt5.QtWidgets import QApplication
 
 from classes.project_data import ProjectDataStore
+from classes.updates import UpdateManager
 
 
 class DummySettings:
@@ -85,9 +86,6 @@ class DummyApp(QApplication):
 
 
 def ensure_app_state(app):
-    from classes.project_data import ProjectDataStore
-    from classes.updates import UpdateManager
-
     if not hasattr(app, "settings") or app.settings is None:
         app.settings = DummySettings()
     if (
@@ -163,7 +161,7 @@ class ProjectDataTests(unittest.TestCase):
         loaded_payloads = []
         clear_waveform_action = DummyAction()
         self.app.window = types.SimpleNamespace(actionClearWaveformData=clear_waveform_action)
-        self.app.updates = types.SimpleNamespace(load=lambda payload: loaded_payloads.append(payload))
+        self.app.updates = types.SimpleNamespace(load=loaded_payloads.append)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             project_path = os.path.join(tmpdir, "example.osp")
@@ -410,8 +408,6 @@ class ProjectDataTests(unittest.TestCase):
         )
 
     def test_move_temp_paths_to_project_folder_updates_title_file_and_clip_reader(self):
-        import tempfile
-
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = os.path.abspath(tmpdir)
             old_title_dir = os.path.join(tmpdir, "working_title")

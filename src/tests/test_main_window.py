@@ -45,6 +45,9 @@ if PATH not in sys.path:
 from PyQt5.QtCore import QCoreApplication, Qt
 from PyQt5.QtWidgets import QApplication
 
+from classes.project_data import ProjectDataStore
+from classes.updates import UpdateManager
+
 QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)
 
 
@@ -89,9 +92,6 @@ class DummyApp(QApplication):
 
 
 def ensure_app_state(app):
-    from classes.project_data import ProjectDataStore
-    from classes.updates import UpdateManager
-
     if not hasattr(app, "settings") or app.settings is None:
         app.settings = DummySettings()
     if (
@@ -143,8 +143,6 @@ class MainWindowTests(unittest.TestCase):
         ensure_app_state(self.app)
 
     def test_manage_recovery_files_keeps_daily_and_historical_limits(self):
-        import tempfile
-
         with tempfile.TemporaryDirectory() as tmpdir:
             recovery_dir = os.path.join(tmpdir, "recovery")
             os.mkdir(recovery_dir)
@@ -176,7 +174,7 @@ class MainWindowTests(unittest.TestCase):
         history_calls = []
         save_calls = []
 
-        self.app.project = types.SimpleNamespace(save=lambda path: save_calls.append(path))
+        self.app.project = types.SimpleNamespace(save=save_calls.append)
         self.app.updates = types.SimpleNamespace(
             save_history=lambda project, limit: history_calls.append((project, limit))
         )
@@ -220,7 +218,7 @@ class MainWindowTests(unittest.TestCase):
             videoPreview=video_preview,
             clearSelections=lambda: move_calls.append(("clear_selections",)),
             statusBar=types.SimpleNamespace(showMessage=lambda text, ms: status_messages.append((text, ms))),
-            remove_recent_project=lambda path: removed.append(path),
+            remove_recent_project=removed.append,
             load_recent_menu=lambda: loaded_recent.append(True),
             movePlayhead=lambda frame: move_calls.append(("playhead", frame)),
             preview_thread=preview_thread,
@@ -257,8 +255,6 @@ class MainWindowTests(unittest.TestCase):
             self.assertEqual(restore_cursor, [True])
 
     def test_save_recovery_creates_zip_and_calls_retention(self):
-        import tempfile
-
         with tempfile.TemporaryDirectory() as tmpdir:
             project_path = os.path.join(tmpdir, "demo.osp")
             with open(project_path, "w", encoding="utf-8") as handle:
@@ -359,7 +355,7 @@ class MainWindowTests(unittest.TestCase):
                 patch.object(
                     self.main_window_module,
                     "track_metric_session",
-                    lambda value: tracker.append(value),
+                    tracker.append,
                 )
             )
             stack.enter_context(
@@ -455,7 +451,7 @@ class MainWindowTests(unittest.TestCase):
             needs_save=lambda: False,
             load=lambda path, clear_thumbnails: load_calls.append((path, clear_thumbnails)),
         )
-        self.app.updates = types.SimpleNamespace(load_history=lambda project: history_calls.append(project))
+        self.app.updates = types.SimpleNamespace(load_history=history_calls.append)
         self.app.window = fake_window
         self.app.setOverrideCursor = lambda cursor: None
         self.app.restoreOverrideCursor = lambda: recent_calls.append("restore")
