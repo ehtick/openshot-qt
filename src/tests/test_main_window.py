@@ -45,6 +45,7 @@ if PATH not in sys.path:
 from PyQt5.QtCore import QCoreApplication, Qt
 from PyQt5.QtWidgets import QApplication
 
+from classes import info
 from classes.project_data import ProjectDataStore
 from classes.updates import UpdateManager
 from qt_test_app import ensure_app_state as ensure_qt_app_state, get_or_create_app
@@ -115,14 +116,19 @@ class MainWindowTests(unittest.TestCase):
     def setUpClass(cls):
         app, cls._owns_app = get_or_create_app(DummyApp)
         cls.app = ensure_app_state(app)
+        cls._web_backend_patcher = patch.object(info, "WEB_BACKEND", "qwidget")
+        cls._web_backend_patcher.start()
         metrics = types.ModuleType("classes.metrics")
         metrics.track_metric_session = lambda *args, **kwargs: None
         metrics.track_metric_screen = lambda *args, **kwargs: None
         sys.modules["classes.metrics"] = metrics
+        sys.modules.pop("windows.views.timeline", None)
+        sys.modules.pop("windows.main_window", None)
         cls.main_window_module = importlib.import_module("windows.main_window")
 
     @classmethod
     def tearDownClass(cls):
+        cls._web_backend_patcher.stop()
         if getattr(cls, "_owns_app", False) and cls.app:
             cls.app.quit()
 

@@ -44,6 +44,7 @@ if PATH not in sys.path:
 from PyQt5.QtCore import QCoreApplication, QPointF, QRectF, Qt
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QApplication
+from classes import info
 from classes.updates import UpdateAction
 from qt_test_app import ensure_app_state as ensure_qt_app_state, get_or_create_app
 
@@ -87,6 +88,9 @@ class TimelineHelperTests(unittest.TestCase):
     def setUpClass(cls):
         app, cls._owns_app = get_or_create_app(DummyApp)
         cls.app = ensure_app_state(app)
+        cls._web_backend_patcher = patch.object(info, "WEB_BACKEND", "qwidget")
+        cls._web_backend_patcher.start()
+        sys.modules.pop("windows.views.timeline", None)
         cls.timeline_module = importlib.import_module("windows.views.timeline")
         cls.clip_paint_module = importlib.import_module("windows.views.timeline_backend.paint.clip")
         cls.qwidget_clip_module = importlib.import_module("windows.views.timeline_backend.qwidget.clip")
@@ -116,6 +120,7 @@ class TimelineHelperTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        cls._web_backend_patcher.stop()
         if getattr(cls, "_owns_app", False) and cls.app:
             cls.app.quit()
 
