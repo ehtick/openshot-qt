@@ -146,7 +146,9 @@ class MainWindowTests(unittest.TestCase):
             os.mkdir(recovery_dir)
 
             with patch.object(self.main_window_module.info, "RECOVERY_PATH", recovery_dir):
-                now = datetime.now()
+                # Use a fixed midday timestamp so "older today" remains on the
+                # same calendar date regardless of when CI runs the test.
+                now = datetime(2026, 3, 21, 12, 0, 0)
                 files = [
                     ("100-newest-project.zip", now),
                     ("090-older-today-project.zip", now - timedelta(hours=1)),
