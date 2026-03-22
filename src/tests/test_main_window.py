@@ -146,9 +146,17 @@ class MainWindowTests(unittest.TestCase):
             os.mkdir(recovery_dir)
 
             with patch.object(self.main_window_module.info, "RECOVERY_PATH", recovery_dir):
-                # Use a fixed midday timestamp so "older today" remains on the
-                # same calendar date regardless of when CI runs the test.
+                # Freeze the module clock so the retention logic and fixture
+                # timestamps use the same notion of "today".
                 now = datetime(2026, 3, 21, 12, 0, 0)
+
+                class FixedDateTime(datetime):
+                    @classmethod
+                    def now(cls, tz=None):
+                        if tz is not None:
+                            return tz.fromutc(now.replace(tzinfo=tz))
+                        return now
+
                 files = [
                     ("100-newest-project.zip", now),
                     ("090-older-today-project.zip", now - timedelta(hours=1)),
@@ -163,7 +171,8 @@ class MainWindowTests(unittest.TestCase):
                     os.utime(path, (ts, ts))
 
                 fake_window = types.SimpleNamespace()
-                self.main_window_module.MainWindow.manage_recovery_files(fake_window, 1, 1, "project")
+                with patch.object(self.main_window_module, "datetime", FixedDateTime):
+                    self.main_window_module.MainWindow.manage_recovery_files(fake_window, 1, 1, "project")
 
                 remaining = sorted(os.listdir(recovery_dir))
                 self.assertEqual(remaining, ["080-yesterday-project.zip", "100-newest-project.zip"])
