@@ -31,6 +31,7 @@ import uuid
 from PyQt5.QtCore import QPointF, QRectF, QTimer, Qt
 from PyQt5.QtGui import QColor
 from classes.app import get_app
+from classes.logger import log
 from classes.query import Clip, Transition, Effect
 from classes.query import Marker
 from ..colors import effect_color_qcolor
@@ -1298,6 +1299,64 @@ class KeyframeMixin:
                         changed = True
         return changed
 
+    def _count_keyframes_by_paths(self, data, paths):
+        if not isinstance(data, (dict, list)):
+            return 0
+        count = 0
+        for path in paths or ():
+            try:
+                path_tuple = tuple(path)
+            except TypeError:
+                continue
+            if not path_tuple:
+                continue
+            if self._resolve_data_path(data, path_tuple) is not None:
+                count += 1
+        return count
+
+    def _count_keyframes_in_object(self, obj, target_frame):
+        count = 0
+        if isinstance(obj, dict):
+            points = obj.get("Points")
+            if isinstance(points, list):
+                for point in points:
+                    if not isinstance(point, dict):
+                        continue
+                    co = point.get("co") if isinstance(point.get("co"), dict) else {}
+                    try:
+                        frame = int(round(float(co.get("X"))))
+                    except (TypeError, ValueError):
+                        continue
+                    if frame == target_frame:
+                        count += 1
+            for channel in ("red", "green", "blue"):
+                channel_obj = obj.get(channel)
+                if isinstance(channel_obj, (dict, list)):
+                    count += self._count_keyframes_in_object(channel_obj, target_frame)
+            for key, value in obj.items():
+                if key in ("ui", "red", "green", "blue"):
+                    continue
+                if isinstance(value, (dict, list)):
+                    count += self._count_keyframes_in_object(value, target_frame)
+        elif isinstance(obj, list):
+            for item in obj:
+                if isinstance(item, (dict, list)):
+                    count += self._count_keyframes_in_object(item, target_frame)
+        return count
+
+    def _keyframe_delete_target_label(self, marker_type, *, clip=None, transition=None, effect_id="", object_id=""):
+        marker_type = str(marker_type or "")
+        if marker_type == "transition":
+            target_id = object_id or str(getattr(transition, "id", "") or "")
+            return "transition %s" % target_id if target_id else "transition"
+        clip_id = str(getattr(clip, "id", "") or object_id or "")
+        if marker_type == "effect":
+            effect_label = "effect %s" % effect_id if effect_id else "effect"
+            if clip_id:
+                return "%s on clip %s" % (effect_label, clip_id)
+            return effect_label
+        return "clip %s" % clip_id if clip_id else "clip"
+
     def _panel_selected_keyframe_targets(self):
         targets = {}
         panel_selection = getattr(self, "_panel_selected_keyframes", {}) or {}
@@ -1378,7 +1437,9 @@ class KeyframeMixin:
             data_copy = json.loads(json.dumps(transition.data))
             paths = tuple(marker.get("data_paths") or ())
             changed = False
+            deleted_count = 0
             if paths:
+                deleted_count = self._count_keyframes_by_paths(data_copy, paths)
                 changed = self._remove_keyframes_by_paths(data_copy, paths)
                 if changed:
                     self._remove_keyframes_by_paths(transition.data, paths)
@@ -1388,6 +1449,7 @@ class KeyframeMixin:
                     frame_int = int(frame_val)
                 except (TypeError, ValueError):
                     return False
+                deleted_count = self._count_keyframes_in_object(data_copy, frame_int)
                 changed = self._remove_keyframes_in_object(data_copy, frame_int)
                 if changed:
                     self._remove_keyframes_in_object(transition.data, frame_int)
@@ -1397,6 +1459,15 @@ class KeyframeMixin:
                 data_copy,
                 only_basic_props=False,
                 ignore_refresh=False,
+            )
+            log.debug(
+                "Keyframe delete: removed %d keyframe(s) from %s",
+                max(1, deleted_count),
+                self._keyframe_delete_target_label(
+                    marker_type,
+                    transition=transition,
+                    object_id=str(marker.get("object_id") or ""),
+                ),
             )
             return True
 
@@ -1408,7 +1479,9 @@ class KeyframeMixin:
         data_copy = json.loads(json.dumps(clip.data))
         paths = tuple(marker.get("data_paths") or ())
         changed = False
+        deleted_count = 0
         if paths:
+            deleted_count = self._count_keyframes_by_paths(data_copy, paths)
             changed = self._remove_keyframes_by_paths(data_copy, paths)
             if changed:
                 self._remove_keyframes_by_paths(clip.data, paths)
@@ -1432,10 +1505,12 @@ class KeyframeMixin:
                         break
                 if effect_copy is None:
                     return False
+                deleted_count = self._count_keyframes_in_object(effect_copy, frame_int)
                 changed = self._remove_keyframes_in_object(effect_copy, frame_int)
                 if changed and effect_live is not None:
                     self._remove_keyframes_in_object(effect_live, frame_int)
             else:
+                deleted_count = self._count_keyframes_in_object(data_copy, frame_int)
                 changed = self._remove_keyframes_in_object(data_copy, frame_int)
                 if changed:
                     self._remove_keyframes_in_object(clip.data, frame_int)
@@ -1446,6 +1521,16 @@ class KeyframeMixin:
             only_basic_props=False,
             ignore_reader=True,
             ignore_refresh=False,
+        )
+        log.debug(
+            "Keyframe delete: removed %d keyframe(s) from %s",
+            max(1, deleted_count),
+            self._keyframe_delete_target_label(
+                marker_type,
+                clip=clip,
+                effect_id=str(marker.get("owner_id") or marker.get("effect_id") or ""),
+                object_id=str(marker.get("object_id") or ""),
+            ),
         )
         return True
 
@@ -1469,6 +1554,7 @@ class KeyframeMixin:
                 if not transition or not isinstance(getattr(transition, "data", None), (dict, list)):
                     continue
                 data_copy = json.loads(json.dumps(transition.data))
+                deleted_count = self._count_keyframes_by_paths(data_copy, paths)
                 if not self._remove_keyframes_by_paths(data_copy, paths):
                     continue
                 self._remove_keyframes_by_paths(transition.data, paths)
@@ -1477,6 +1563,11 @@ class KeyframeMixin:
                     only_basic_props=False,
                     ignore_refresh=False,
                 )
+                log.debug(
+                    "Keyframe panel delete: removed %d keyframe(s) from %s",
+                    max(1, deleted_count),
+                    self._keyframe_delete_target_label("transition", transition=transition, object_id=object_id),
+                )
                 changed = True
                 continue
 
@@ -1484,6 +1575,7 @@ class KeyframeMixin:
             if not clip or not isinstance(getattr(clip, "data", None), (dict, list)):
                 continue
             data_copy = json.loads(json.dumps(clip.data))
+            deleted_count = self._count_keyframes_by_paths(data_copy, paths)
             if not self._remove_keyframes_by_paths(data_copy, paths):
                 continue
             self._remove_keyframes_by_paths(clip.data, paths)
@@ -1492,6 +1584,11 @@ class KeyframeMixin:
                 only_basic_props=False,
                 ignore_reader=True,
                 ignore_refresh=False,
+            )
+            log.debug(
+                "Keyframe panel delete: removed %d keyframe(s) from %s",
+                max(1, deleted_count),
+                self._keyframe_delete_target_label("clip", clip=clip, object_id=object_id),
             )
             changed = True
 
