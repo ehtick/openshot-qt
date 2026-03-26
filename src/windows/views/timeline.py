@@ -4621,6 +4621,10 @@ class TimelineView(updates.UpdateInterface, ViewClass):
 
     def dragLeaveEvent(self, event):
         """A drag is in-progress and the user moves mouse outside of timeline"""
+        if ViewClass == TimelineWidget:
+            TimelineWidget.dragLeaveEvent(self, event)
+            return
+
         log.debug('dragLeaveEvent - Undo drop')
 
         # Accept event
@@ -4645,7 +4649,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         # Clear new clip
         self.new_item = False
         self.item_type = None
-        self.item_ids = None
+        self.item_ids = []
 
     def redraw_audio_onTimeout(self):
         """Timer is ready to redraw audio (if any)"""
