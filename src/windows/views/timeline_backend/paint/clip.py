@@ -113,6 +113,11 @@ def _scaled_time_keyframe_points(clip, clip_fps, project_fps):
     return scaled_time.get("Points", []) if isinstance(scaled_time, dict) else []
 
 
+def _has_time_curve(clip, clip_fps, project_fps=None):
+    """Return True when a clip has a multi-point time mapping curve."""
+    return len(_scaled_time_keyframe_points(clip, clip_fps, project_fps)) >= 2
+
+
 def resolve_source_frame(clip, clip_time_seconds, clip_fps, project_fps=None, fallback_frame=None):
     """Resolve a source-media frame for a clip-local timestamp.
 
@@ -304,6 +309,9 @@ class ClipPainter(BasePainter):
         overrides = getattr(self.w, "_pending_clip_overrides", {}).get(clip.id, {})
         if not isinstance(overrides, dict) or not overrides.get("scale"):
             return False
+        checker = getattr(self.w, "_is_active_resize_item", None)
+        if callable(checker):
+            return bool(checker(clip))
         return (
             getattr(self.w, "_resizing_item", None) is clip
             and getattr(self.w, "_press_hit", "") == "clip-edge"
@@ -319,6 +327,9 @@ class ClipPainter(BasePainter):
         overrides = getattr(self.w, "_pending_clip_overrides", {}).get(clip.id, {})
         if not isinstance(overrides, dict) or overrides.get("scale"):
             return False
+        checker = getattr(self.w, "_is_active_resize_item", None)
+        if callable(checker):
+            return bool(checker(clip))
         return (
             getattr(self.w, "_resizing_item", None) is clip
             and getattr(self.w, "_press_hit", "") == "clip-edge"
@@ -538,11 +549,12 @@ class ClipPainter(BasePainter):
     def _frame_for_offset(self, offset, fps):
         return _frame_for_seconds(offset, fps)
 
-    def _frame_rounding_increment(self, fps, interval_seconds):
+    def _frame_rounding_increment(self, fps, interval_seconds, clip=None, project_fps=None):
         """Return frame rounding increment based on frames-per-slot at current zoom.
 
         Keep rounding local enough to reuse nearby thumbnails while avoiding
-        visible multi-second jumps as the zoom level changes.
+        visible multi-second jumps as the zoom level changes. Use a coarser
+        half-second ceiling to reduce churn while zooming.
         """
         fps = float(fps or 0.0)
         if fps <= 0.0 or not interval_seconds or interval_seconds <= 0.0:
@@ -550,9 +562,17 @@ class ClipPainter(BasePainter):
         frames_per_slot = fps * float(interval_seconds)
         if frames_per_slot <= 1.25:
             return 1
-        # Cap rounding at roughly a quarter-second so cache reuse stays local.
-        max_increment = max(1, int(round(fps / 4.0)))
-        return max(1, min(int(round(frames_per_slot)), max_increment))
+        if clip is not None and _has_time_curve(clip, fps, project_fps):
+            # Time-mapped clips are sensitive to project-frame rounding because
+            # small changes in timeline time can map to large source-frame jumps.
+            # Keep the earlier, tighter rounding so slot thumbnails stay anchored.
+            max_increment = max(1, int(round(fps / 4.0)))
+            return max(1, min(int(round(frames_per_slot)), max_increment))
+        # Cap rounding at roughly a half-second so cache reuse stays local
+        # without rolling through nearby frames on tiny zoom changes.
+        max_increment = max(1, int(round(fps / 2.0)))
+        increment = max(1, min(int(round(frames_per_slot)), max_increment))
+        return max(1, min(increment * 2, max_increment))
 
     def _segment_timing(self, segment, clip_duration):
         segment = segment or {}
@@ -1237,15 +1257,23 @@ class ClipPainter(BasePainter):
         else:
             clip_end_frame = _frame_for_seconds(trim_start + segment_end, clip_fps)
         edge_epsilon = 1e-6
-        is_resizing_clip = (
-            getattr(self.w, "_resizing_item", None) is clip
-            and getattr(self.w, "_press_hit", "") == "clip-edge"
-        )
+        checker = getattr(self.w, "_is_active_resize_item", None)
+        if callable(checker):
+            is_resizing_clip = bool(checker(clip))
+        else:
+            is_resizing_clip = (
+                getattr(self.w, "_resizing_item", None) is clip
+                and getattr(self.w, "_press_hit", "") == "clip-edge"
+            )
         throttle_requests = is_resizing_clip and style in ("start", "start-end")
-
         pending = False
         generation = getattr(self.w, "thumbnail_generation", 0)
-        rounding = self._frame_rounding_increment(clip_fps, interval_seconds)
+        rounding = self._frame_rounding_increment(
+            clip_fps,
+            interval_seconds,
+            clip=clip,
+            project_fps=project_fps,
+        )
         static_image = self._has_static_image(clip)
         static_frame = 1 if static_image else None
 
@@ -1302,13 +1330,13 @@ class ClipPainter(BasePainter):
             else:
                 sample_time = clamped_center_time
 
+            frame = None
+            pix = None
             clip_time = trim_start + sample_time
             frame = self._frame_for_offset(clip_time, clip_fps)
-            pre_round_frame = frame
             if rounding > 1 and (style == "entire" or not is_edge):
                 frame = max(1, int(round((frame - 1) / rounding) * rounding) + 1)
             frame = min(max(frame, clip_start_frame), clip_end_frame)
-            rounded_frame = frame
             mapped_frame = resolve_source_frame(
                 clip,
                 clip_time,

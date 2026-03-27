@@ -213,6 +213,9 @@ class TimelineWidgetBase(QWidget):
         self._zoom_emit_timer.setInterval(50)
         self._zoom_emit_timer.timeout.connect(self._emit_pending_zoom)
         self._pending_zoom_emit = None
+        self._ctrl_zoom_anchor_y = None
+        self._ctrl_zoom_step_pixels = 40.0
+        self._ctrl_zooming = False
 
         # Internal flag to defer repaint scheduling from changed()
         self._suspend_changed_update = 0
@@ -264,6 +267,8 @@ class TimelineWidgetBase(QWidget):
         self._resize_edge = None
         self._resize_initial_rect = QRectF()
         self._resize_initial = {}
+        self._resize_items = []
+        self._resize_initial_map = {}
         self._timing_original_start = 0.0
         self._fixed_cursor = None
 
@@ -1879,6 +1884,58 @@ class TimelineWidgetBase(QWidget):
         else:
             event.ignore()
 
+    def _reset_ctrl_mouse_zoom(self):
+        """Reset the transient anchor used for ctrl+mouse-move zooming."""
+        self._ctrl_zoom_anchor_y = None
+        self._ctrl_zooming = False
+
+    def _start_ctrl_mouse_zoom(self, pos):
+        """Begin a ctrl+middle-button smooth zoom gesture."""
+        self._ctrl_zooming = True
+        self.mouse_dragging = True
+        self._ctrl_zoom_anchor_y = float(pos.y())
+        self._set_hover_tooltip("")
+        return True
+
+    def _handle_ctrl_mouse_zoom(self, event):
+        """Zoom the timeline smoothly while ctrl+middle-dragging vertically."""
+        modifiers = event.modifiers() if hasattr(event, "modifiers") else Qt.NoModifier
+        buttons = event.buttons() if hasattr(event, "buttons") else Qt.NoButton
+        if not self._ctrl_zooming or not (modifiers & Qt.ControlModifier) or not (buttons & Qt.MiddleButton):
+            self._reset_ctrl_mouse_zoom()
+            self.mouse_dragging = False
+            return False
+
+        pos_y = float(event.pos().y())
+        if self._ctrl_zoom_anchor_y is None:
+            self._ctrl_zoom_anchor_y = pos_y
+            self._set_hover_tooltip("")
+            event.accept()
+            return True
+
+        delta_pixels = self._ctrl_zoom_anchor_y - pos_y
+        self._ctrl_zoom_anchor_y = pos_y
+        if abs(delta_pixels) > 1e-6:
+            steps = delta_pixels / float(self._ctrl_zoom_step_pixels or 1.0)
+            self.is_auto_center = True
+            if self._apply_zoom_steps(steps, emit=False):
+                self._pending_zoom_emit = self.zoom_factor
+                self._zoom_emit_timer.start()
+
+        self._set_hover_tooltip("")
+        event.accept()
+        return True
+
+    def _finish_ctrl_mouse_zoom(self):
+        """Finish a ctrl+middle-button smooth zoom gesture."""
+        if not self._ctrl_zooming:
+            return
+        self._ctrl_zooming = False
+        self._ctrl_zoom_anchor_y = None
+        self.mouse_dragging = False
+        self._schedule_viewport_thumbnail_reset()
+        self.update()
+
     def _flush_pending_vertical_scroll(self):
         """Apply any pending vertical scroll updates triggered by the wheel."""
         delta = self._pending_vscroll_delta
@@ -2615,8 +2672,17 @@ class TimelineWidgetBase(QWidget):
         edge = 5
         for rect, _item, _selected, _type in self.geometry.iter_items(reverse=True):
             if rect.contains(pos):
-                if abs(pos.x() - rect.left()) <= edge or abs(pos.x() - rect.right()) <= edge:
-                    self.setCursor(self.cursors["resize_x"])
+                resize_edge = None
+                if abs(pos.x() - rect.left()) <= edge:
+                    resize_edge = "left"
+                elif abs(pos.x() - rect.right()) <= edge:
+                    resize_edge = "right"
+                if resize_edge:
+                    resize_items = self._resize_targets_for_item(_item, resize_edge)
+                    if resize_items:
+                        self.setCursor(self.cursors["resize_x"])
+                    else:
+                        self.setCursor(self.cursors["hand"])
                 else:
                     self.setCursor(self.cursors["hand"])
                 return
@@ -2647,6 +2713,7 @@ class TimelineWidgetBase(QWidget):
         super().mouseDoubleClickEvent(event)
 
     def mousePressEvent(self, event):
+        self._reset_ctrl_mouse_zoom()
         self._press_marker = None
         if event.button() == Qt.RightButton:
             self._last_event = event
@@ -2666,6 +2733,11 @@ class TimelineWidgetBase(QWidget):
             return
 
         if event.button() == Qt.MiddleButton:
+            modifiers = event.modifiers() if hasattr(event, "modifiers") else Qt.NoModifier
+            if modifiers & Qt.ControlModifier:
+                if self._start_ctrl_mouse_zoom(event.pos()):
+                    event.accept()
+                    return
             if self._startMiddlePan(event.pos()):
                 event.accept()
                 return
@@ -2709,6 +2781,9 @@ class TimelineWidgetBase(QWidget):
         self.events.pressed.emit(event)
 
     def leaveEvent(self, event):
+        if self._ctrl_zooming:
+            self._finish_ctrl_mouse_zoom()
+        self._reset_ctrl_mouse_zoom()
         self._set_hover_tooltip("")
         if self._toolbar_hover_key is not None or self._toolbar_pressed_inside:
             self._toolbar_hover_key = None
@@ -2834,16 +2909,25 @@ class TimelineWidgetBase(QWidget):
             if not rect.contains(pos):
                 continue
             if abs(pos.x() - rect.left()) <= edge:
-                self._press_hit = "clip-edge"
-                self._resizing_item = item
-                self._resize_edge = "left"
-                return
+                resize_items = self._resize_targets_for_item(item, "left")
+                if resize_items:
+                    self._press_hit = "clip-edge"
+                    self._resizing_item = item
+                    self._resize_items = list(resize_items)
+                    self._resize_edge = "left"
+                    return
+                break
             if abs(pos.x() - rect.right()) <= edge:
-                self._press_hit = "clip-edge"
-                self._resizing_item = item
-                self._resize_edge = "right"
-                return
+                resize_items = self._resize_targets_for_item(item, "right")
+                if resize_items:
+                    self._press_hit = "clip-edge"
+                    self._resizing_item = item
+                    self._resize_items = list(resize_items)
+                    self._resize_edge = "right"
+                    return
+                break
         self._resizing_item = None
+        self._resize_items = []
         self._resize_edge = None
         self._press_hit = self._hitTest(pos)
 
@@ -2874,6 +2958,9 @@ class TimelineWidgetBase(QWidget):
 
     def mouseMoveEvent(self, event):
         self._last_event = event
+
+        if self._handle_ctrl_mouse_zoom(event):
+            return
 
         if self.scroll_bar_dragging:
             self._set_hover_tooltip("")
@@ -2935,6 +3022,7 @@ class TimelineWidgetBase(QWidget):
 
     def mouseReleaseEvent(self, event):
         self._last_event = event
+        self._reset_ctrl_mouse_zoom()
 
         if event.button() == Qt.LeftButton and self._toolbar_pressed_key:
             button = self._get_toolbar_button(*self._toolbar_pressed_key)
@@ -2955,6 +3043,10 @@ class TimelineWidgetBase(QWidget):
 
         if event.button() == Qt.MiddleButton and self._middle_panning:
             self._finishMiddlePan()
+            return
+        if event.button() == Qt.MiddleButton and self._ctrl_zooming:
+            self._finish_ctrl_mouse_zoom()
+            event.accept()
             return
         if self.scroll_bar_dragging or self.v_scroll_bar_dragging:
             self.scroll_bar_dragging = False
