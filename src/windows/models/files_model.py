@@ -146,6 +146,7 @@ class FileFilterProxyModel(QSortFilterProxyModel):
 class FilesModel(QObject, updates.UpdateInterface):
     ModelRefreshed = pyqtSignal()
     PLACEHOLDER_PREFIX = "__genjob__:"
+    PROJECT_FILE_THUMB_ATTEMPTS = 3
 
     def _thumbnail_source_for_file(self, file, clear_cache=False):
         """Return the thumbnail/artwork source path and display name for a file."""
@@ -159,7 +160,12 @@ class FilesModel(QObject, updates.UpdateInterface):
                 fps = file.data["fps"]
                 fps_float = float(fps["num"]) / float(fps["den"])
                 thumbnail_frame = round(float(file.data['start']) * fps_float) + 1
-            thumb_source = GetThumbPath(file.id, thumbnail_frame, clear_cache=clear_cache)
+            thumb_source = GetThumbPath(
+                file.id,
+                thumbnail_frame,
+                clear_cache=clear_cache,
+                attempts=self.PROJECT_FILE_THUMB_ATTEMPTS,
+            )
         else:
             thumb_source = os.path.join(info.PATH, "images", "AudioThumbnail.svg")
 
