@@ -1153,11 +1153,12 @@ class ClipPainter(BasePainter):
             slot_start_clip_time = center_world - clip_pos
             slot_end_clip_time = slot_start_clip_time + slot_duration_seconds
 
-            # Require overlap with visible segment (lenient for boundary cases)
-            if (
-                slot_end_clip_time < segment_start - epsilon
-                or slot_start_clip_time > segment_end + epsilon
-            ):
+            # Require positive overlap with the visible segment. Boundary-only
+            # slots can oscillate in/out during smooth zoom and fight with the
+            # first real visible slot.
+            overlap_start = max(slot_start_clip_time, segment_start)
+            overlap_end = min(slot_end_clip_time, segment_end)
+            if (overlap_end - overlap_start) <= epsilon:
                 return
 
             # Slot coverage in media time
@@ -1171,9 +1172,11 @@ class ClipPainter(BasePainter):
                 ):
                     return
 
-            # X coordinate within the visible segment (lenient for boundary cases)
+            # Require positive visible width in the current segment.
             local_x = (slot_start_clip_time - segment_start) * pixels_per_second
-            if local_x > view_right + epsilon or (local_x + thumb_w) < view_left - epsilon:
+            visible_left = max(local_x, view_left)
+            visible_right = min(local_x + thumb_w, view_right)
+            if (visible_right - visible_left) <= epsilon:
                 return
 
             # Deduplicate by clip-local time to avoid overlapping slots
@@ -1250,13 +1253,16 @@ class ClipPainter(BasePainter):
         segment_offset = float(timing.get("offset", 0.0) or 0.0)
         segment_duration = float(timing.get("duration", 0.0) or 0.0)
         segment_end = segment_offset + segment_duration
+        edge_epsilon = 1e-6
         frame_duration = (1.0 / project_fps) if project_fps and project_fps > 0.0 else 0.0
+        edge_time_epsilon = max(edge_epsilon, frame_duration * 0.5) if frame_duration > 0.0 else edge_epsilon
+        segment_at_clip_start = segment_offset <= edge_time_epsilon
+        segment_at_clip_end = abs(clip_duration - segment_end) <= edge_time_epsilon
         clip_start_frame = _frame_for_seconds(trim_start + segment_offset, clip_fps)
         if frame_duration > 0.0:
             clip_end_frame = _frame_for_seconds(max(trim_start + segment_offset, trim_start + segment_end - frame_duration), clip_fps)
         else:
             clip_end_frame = _frame_for_seconds(trim_start + segment_end, clip_fps)
-        edge_epsilon = 1e-6
         checker = getattr(self.w, "_is_active_resize_item", None)
         if callable(checker):
             is_resizing_clip = bool(checker(clip))
@@ -1294,17 +1300,27 @@ class ClipPainter(BasePainter):
                 clamped_center_time = segment_offset
             elif clamped_center_time > segment_end:
                 clamped_center_time = segment_end
+            visible_slot_start = max(slot_start_time, segment_offset)
+            visible_slot_end = min(slot_end_time, segment_end)
+            visible_center_time = clamped_center_time
+            if visible_slot_end >= visible_slot_start:
+                visible_center_time = visible_slot_start + ((visible_slot_end - visible_slot_start) * 0.5)
 
             touches_start = slot_start_time <= segment_offset + edge_epsilon
             touches_end = slot_end_time >= segment_end - edge_epsilon
             is_first_slot = slot_index == 0
             is_last_slot = slot_index == (len(slots) - 1)
-            is_edge = (touches_start and is_first_slot) or (touches_end and is_last_slot)
             slot_role = "grid"
-            if touches_start and is_first_slot:
-                slot_role = "edge-start"
-            elif touches_end and is_last_slot:
-                slot_role = "edge-end"
+            is_edge = False
+            if style != "entire":
+                is_edge = (
+                    (segment_at_clip_start and touches_start and is_first_slot)
+                    or (segment_at_clip_end and touches_end and is_last_slot)
+                )
+                if segment_at_clip_start and touches_start and is_first_slot:
+                    slot_role = "edge-start"
+                elif segment_at_clip_end and touches_end and is_last_slot:
+                    slot_role = "edge-end"
 
             # For "start" and "start-end", anchor edge thumbnails to exact trim edges.
             # Keep strip/entire behavior unchanged (centered sampling).
@@ -1316,17 +1332,7 @@ class ClipPainter(BasePainter):
                 else:
                     sample_time = segment_end
             elif style == "entire":
-                # Sample the visual center of each strip thumbnail, but clamp the
-                # first/last visible slots to the actual clip edges.
-                if slot_role == "edge-start":
-                    sample_time = segment_offset
-                elif slot_role == "edge-end":
-                    if frame_duration > 0.0:
-                        sample_time = max(segment_offset, segment_end - frame_duration)
-                    else:
-                        sample_time = segment_end
-                else:
-                    sample_time = clamped_center_time
+                sample_time = visible_center_time
             else:
                 sample_time = clamped_center_time
 
@@ -1932,6 +1938,9 @@ class ClipPainter(BasePainter):
             self._thumb_pending.pop(key, None)
             self._thumb_regions.pop(key, None)
             self._thumb_missing_logged.discard(key)
+        # Edge-slot fallbacks are keyed only by clip/role, so a viewport change
+        # can make them point at the wrong first/last visible frame.
+        self._slot_fallback_cache.clear()
 
     def handle_thumbnail_ready(self, clip_id, frame, thumb_path, generation):
         clip_key = str(clip_id or "")

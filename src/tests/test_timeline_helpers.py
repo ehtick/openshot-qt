@@ -2037,7 +2037,7 @@ class TimelineHelperTests(unittest.TestCase):
 
         frames = self.collect_thumbnail_frames(clip)
 
-        self.assertEqual(frames, [1, 25, 72])
+        self.assertEqual(frames, [25, 61])
 
     def test_draw_thumbnails_entire_style_freeze_curve_maps_to_reader_frames(self):
         clip = types.SimpleNamespace(
@@ -2061,7 +2061,7 @@ class TimelineHelperTests(unittest.TestCase):
 
         frames = self.collect_thumbnail_frames(clip)
 
-        self.assertEqual(frames, [1, 25, 48])
+        self.assertEqual(frames, [25, 37])
 
     def test_draw_thumbnails_entire_style_reverse_curve_uses_reversed_reader_frames(self):
         clip = types.SimpleNamespace(
@@ -2083,7 +2083,7 @@ class TimelineHelperTests(unittest.TestCase):
 
         frames = self.collect_thumbnail_frames(clip)
 
-        self.assertEqual(frames, [72, 48, 2])
+        self.assertEqual(frames, [48, 13])
 
     def test_draw_thumbnails_entire_style_reverse_curve_with_trimmed_start_uses_trimmed_reader_frames(self):
         clip = types.SimpleNamespace(
@@ -2105,7 +2105,7 @@ class TimelineHelperTests(unittest.TestCase):
 
         frames = self.collect_thumbnail_frames(clip)
 
-        self.assertEqual(frames, [96, 49, 26])
+        self.assertEqual(frames, [84, 49])
 
     def test_draw_thumbnails_entire_style_reverse_curve_uses_reader_frame_range_in_mixed_fps_project(self):
         clip = types.SimpleNamespace(
@@ -2133,7 +2133,7 @@ class TimelineHelperTests(unittest.TestCase):
             project_fps=30.0,
         )
 
-        self.assertEqual(frames[:2], [1252, 1169])
+        self.assertEqual(frames[:2], [1169, 989])
         self.assertEqual(frames, sorted(frames, reverse=True))
         self.assertTrue(all(1 <= frame <= 1252 for frame in frames))
 
@@ -2163,7 +2163,7 @@ class TimelineHelperTests(unittest.TestCase):
             project_fps=30.0,
         )
 
-        self.assertEqual(frames, [1252, 1025, 875, 719, 570, 420, 264, 114, 2])
+        self.assertEqual(frames, [1175, 1025, 875, 719, 570, 420, 264, 114, 18])
 
     def test_draw_thumbnails_entire_style_long_retimed_clip_generates_tail_slots(self):
         clip = types.SimpleNamespace(
@@ -2265,6 +2265,28 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertEqual(interval, 2.0)
         self.assertIn(8.0, starts)
 
+    def test_expire_thumbnail_requests_clears_edge_slot_fallback_cache(self):
+        painter = self.make_clip_painter(thumbnail_style="entire", pixels_per_second=24.0, project_fps=24.0)
+        painter._thumb_pending = {
+            ("C1", 1): 3,
+            ("C1", 30): 4,
+        }
+        painter._thumb_regions = {
+            ("C1", 1): self.clip_paint_module.QRectF(0.0, 0.0, 48.0, 36.0),
+            ("C1", 30): self.clip_paint_module.QRectF(48.0, 0.0, 48.0, 36.0),
+        }
+        painter._thumb_missing_logged = {("C1", 1), ("C1", 30)}
+        painter._slot_fallback_cache = {
+            ("C1", "edge-start"): object(),
+            ("C1", "edge-end"): object(),
+        }
+
+        painter.expire_thumbnail_requests(4)
+
+        self.assertNotIn(("C1", 1), painter._thumb_pending)
+        self.assertIn(("C1", 30), painter._thumb_pending)
+        self.assertEqual(painter._slot_fallback_cache, {})
+
     def test_draw_thumbnails_start_style_reverse_curve_uses_last_reader_frame(self):
         clip = types.SimpleNamespace(
             id="C1",
@@ -2356,6 +2378,43 @@ class TimelineHelperTests(unittest.TestCase):
         pix_call = next(item for item in drawn if item[0] == "pix")
         offset = pix_call[1]
         self.assertEqual(offset.x(), 0.0)
+
+    def test_draw_thumbnails_entire_style_partial_leading_slot_uses_visible_center_sampling(self):
+        painter = self.make_clip_painter(thumbnail_style="entire", pixels_per_second=24.0, project_fps=24.0)
+        clip = types.SimpleNamespace(
+            id="C1",
+            data={
+                "file_id": "F1",
+                "start": 0.0,
+                "end": 4.0,
+                "duration": 4.0,
+                "position": 0.0,
+                "reader": {"fps": {"num": 24, "den": 1}, "duration": 4.0},
+            },
+        )
+        frames = []
+
+        def fake_get_thumbnail_pixmap(_self, clip_key, file_id, frame, rect, generation, allow_request=True):
+            frames.append(frame)
+            return None
+
+        painter._get_thumbnail_pixmap = types.MethodType(fake_get_thumbnail_pixmap, painter)
+        painter._frame_rounding_increment = lambda *args, **kwargs: 1
+        inner = self.clip_paint_module.QRectF(0, 0, 72.0, 40)
+        segment = {
+            "segment_width": 72.0,
+            "clip_width": 96.0,
+            "offset_seconds": 0.25,
+            "duration_seconds": 3.0,
+            "clip_duration": 4.0,
+            "includes_start": False,
+            "includes_end": False,
+        }
+
+        painter._draw_thumbnails(None, clip, inner, segment)
+
+        self.assertGreaterEqual(len(frames), 1)
+        self.assertEqual(frames[0], 28)
 
     def test_trim_preview_freezes_edge_thumbnail_styles(self):
         for style in ("start", "start-end"):
