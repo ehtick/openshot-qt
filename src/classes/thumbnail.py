@@ -31,6 +31,7 @@ import openshot
 import socket
 import time
 import shutil
+from datetime import datetime
 from requests import get
 from threading import Thread
 from classes import info
@@ -47,6 +48,11 @@ from socketserver import ThreadingMixIn
 #  http://127.0.0.1:33723/thumbnails/9ATJTBQ71V/1/
 #  http://127.0.0.1:33723/thumbnails/9ATJTBQ71V/1
 REGEX_THUMBNAIL_URL = re.compile(r"/thumbnails/(?P<file_id>.+?)/(?P<file_frame>\d+)/*(?P<only_path>path)?/*(?P<no_cache>no-cache)?")
+THUMBNAIL_CACHE_VERSION = "20260327000000"
+THUMBNAIL_CACHE_VERSION_TS = datetime.strptime(
+    THUMBNAIL_CACHE_VERSION,
+    "%Y%m%d%H%M%S",
+).timestamp()
 
 
 def GetThumbPath(file_id, thumbnail_frame, clear_cache=False):
@@ -118,6 +124,14 @@ def GenerateThumbnail(file_path, thumb_path, thumbnail_frame, width, height, mas
     reader.GetFrame(thumbnail_frame).Thumbnail(thumb_path, round(width * scale), round(height * scale), mask, overlay, "#000", False, "png", 85, rotate)
     reader.Close()
     clip.Close()
+
+
+def ThumbnailCacheIsStale(thumb_path):
+    """Return True when an on-disk thumbnail predates the current cache format."""
+    try:
+        return os.path.getmtime(thumb_path) < THUMBNAIL_CACHE_VERSION_TS
+    except OSError:
+        return True
 
 
 class httpThumbnailServer(ThreadingMixIn, HTTPServer):
@@ -245,13 +259,8 @@ class httpThumbnailHandler(BaseHTTPRequestHandler):
             # Try with ID and frame # in filename (for backwards compatibility)
             thumb_path = os.path.join(info.THUMBNAIL_PATH, "%s-%s.png" % (file_id, file_frame))
 
-        if not os.path.exists(thumb_path) or no_cache:
+        if not os.path.exists(thumb_path) or no_cache or ThumbnailCacheIsStale(thumb_path):
             # Generate thumbnail (since we can't find it)
-
-            # Determine if video overlay should be applied to thumbnail
-            overlay_path = ""
-            if file.data["media_type"] == "video":
-                overlay_path = os.path.join(info.IMAGES_PATH, "overlay.png")
 
             # Create thumbnail image
             GenerateThumbnail(
@@ -260,7 +269,7 @@ class httpThumbnailHandler(BaseHTTPRequestHandler):
                 file_frame,
                 98, 64,
                 mask_path,
-                overlay_path)
+                "")
 
         # Send message back to client
         if os.path.exists(thumb_path):
