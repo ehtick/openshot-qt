@@ -271,6 +271,64 @@ class TimelineHelperTests(unittest.TestCase):
 
         return Helper()
 
+    def make_qwidget_drag_move_helper(self):
+        qwidget_clip_module = self.qwidget_clip_module
+
+        class GeometryStub:
+            def __init__(self, helper):
+                self.helper = helper
+                self.updated_rects = {}
+
+            def calc_item_rect(self, item):
+                data = item.data if isinstance(item.data, dict) else {}
+                position = float(data.get("position", 0.0) or 0.0)
+                start = float(data.get("start", 0.0) or 0.0)
+                end = float(data.get("end", start) or start)
+                return QRectF(position * 24.0, 0.0, max(0.0, end - start) * 24.0, 10.0)
+
+            def update_item_rect(self, item, rect):
+                self.updated_rects[item.id] = QRectF(rect)
+
+        class Helper(qwidget_clip_module.ClipInteractionMixin):
+            def __init__(self):
+                self._drag_commit_in_progress = False
+                self.dragging_items = []
+                self._drag_threshold_met = True
+                self._drag_press_pos = QPointF()
+                self._drag_layer_idx_start = 0
+                self.drag_bbox = QRectF()
+                self.drag_clip_offset = 0.0
+                self.pixels_per_second = 24.0
+                self.fps_float = 24.0
+                self.enable_snapping = False
+                self._pending_clip_overrides = {}
+                self._pending_transition_overrides = {}
+                self._drag_initial = {}
+                self._drag_moved = False
+                self.track_list = [types.SimpleNamespace(data={"number": 1})]
+                self._track_num_from_index = {0: 1}
+                self._last_event = types.SimpleNamespace(
+                    pos=lambda: QPointF(0.0, 0.0),
+                    modifiers=lambda: Qt.NoModifier,
+                )
+                self.geometry = GeometryStub(self)
+                self.panel_shifts = []
+                self.update_calls = 0
+
+            def _track_index_at_viewport_y(self, *_args, **_kwargs):
+                return 0
+
+            def _nearest_unlocked_track_index(self, index):
+                return index
+
+            def _panel_shift_item(self, item, delta_sec, frame_delta):
+                self.panel_shifts.append((item.id, float(delta_sec), int(frame_delta)))
+
+            def update(self):
+                self.update_calls += 1
+
+        return Helper()
+
     def make_qwidget_finish_resize_helper(self):
         qwidget_clip_module = self.qwidget_clip_module
 
@@ -282,15 +340,22 @@ class TimelineHelperTests(unittest.TestCase):
                 self._resize_results = {}
                 self._resize_edge = "right"
                 self._snap_keyframe_seconds = []
+                self._suspend_changed_update = 0
+                self._suspend_keyframe_rebuild = False
                 self._pending_clip_overrides = {}
                 self._pending_transition_overrides = {}
                 self._preserve_overrides_once = False
+                self._preserve_overrides_during_batch = False
+                self._keyframes_dirty = False
+                self._dragging_panel_keyframes = False
+                self._dragging_keyframe = False
                 self.enable_timing = False
                 self.clip_updates = []
                 self.transition_updates = []
                 self.trim_preview_disabled = []
                 self.refresh_calls = []
                 self.waveform_refresh_calls = []
+                self.refresh_keyframe_calls = 0
                 self.snap_reset_calls = 0
                 self.project_duration_updates = 0
                 self.changed_calls = 0
@@ -340,8 +405,12 @@ class TimelineHelperTests(unittest.TestCase):
 
             def changed(self, _value):
                 self.changed_calls += 1
+                preserve_overrides = self._preserve_overrides_once or self._preserve_overrides_during_batch
                 if self._preserve_overrides_once:
                     self._preserve_overrides_once = False
+                if not preserve_overrides:
+                    self._pending_clip_overrides.clear()
+                    self._pending_transition_overrides.clear()
 
             def _release_cursor(self):
                 self.release_calls += 1
@@ -354,6 +423,9 @@ class TimelineHelperTests(unittest.TestCase):
 
             def update(self):
                 self.update_calls += 1
+
+            def _refresh_keyframe_markers(self):
+                self.refresh_keyframe_calls += 1
 
             def _commit_resized_clip(self, clip, start, end, position, context, transaction_id, ignore_refresh):
                 self.retime_calls.append(
@@ -840,6 +912,16 @@ class TimelineHelperTests(unittest.TestCase):
 
             def update(self):
                 self.update_calls += 1
+
+        return Helper()
+
+    def make_qwidget_keyframe_position_helper(self):
+        qwidget_keyframe_module = self.qwidget_keyframe_module
+
+        class Helper(qwidget_keyframe_module.KeyframeMixin):
+            def __init__(self):
+                self._pending_clip_overrides = {}
+                self._pending_transition_overrides = {}
 
         return Helper()
 
@@ -1546,6 +1628,22 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertFalse(helper.mouse_dragging)
         self.assertEqual(helper.release_calls, 1)
 
+    def test_qwidget_transition_keyframe_base_position_uses_pending_override(self):
+        helper = self.make_qwidget_keyframe_position_helper()
+        transition = types.SimpleNamespace(
+            id="T1",
+            data={"id": "T1", "position": 4.0, "start": 0.0, "end": 1.0},
+        )
+        helper._pending_transition_overrides["T1"] = {"position": 6.5}
+
+        with patch.object(self.qwidget_keyframe_module, "Transition", type(transition)):
+            position = self.qwidget_keyframe_module.KeyframeMixin._keyframe_base_position(
+                helper,
+                {"transition": transition},
+            )
+
+        self.assertEqual(position, 6.5)
+
     def test_qwidget_finish_clip_drag_single_transition_keeps_auto_direction(self):
         helper = self.make_qwidget_finish_drag_helper()
 
@@ -1619,6 +1717,39 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertEqual(transition_payload["id"], "T1")
         self.assertNotIn("_auto_transition", clip_payload)
         self.assertNotIn("_auto_direction", transition_payload)
+
+    def test_qwidget_drag_move_preserves_shared_edge_alignment_for_off_frame_selection(self):
+        helper = self.make_qwidget_drag_move_helper()
+
+        clip_a = types.SimpleNamespace(
+            id="A",
+            data={"id": "A", "position": 0.01, "layer": 1, "start": 0.0, "end": 0.59},
+        )
+        clip_b = types.SimpleNamespace(
+            id="B",
+            data={"id": "B", "position": 0.49, "layer": 1, "start": 0.0, "end": 0.11},
+        )
+        helper.dragging_items = [clip_a, clip_b]
+        helper._drag_initial = {
+            "A": {"position": 0.01, "index": 0, "position_frames": 0},
+            "B": {"position": 0.49, "index": 0, "position_frames": 12},
+        }
+        helper.drag_bbox = QRectF(clip_a.data["position"] * 24.0, 0.0, 0.59 * 24.0, 10.0)
+        helper._last_event = types.SimpleNamespace(
+            pos=lambda: QPointF(helper.drag_bbox.x() + 1.0, 0.0),
+            modifiers=lambda: Qt.NoModifier,
+        )
+
+        initial_right_a = clip_a.data["position"] + (clip_a.data["end"] - clip_a.data["start"])
+        initial_right_b = clip_b.data["position"] + (clip_b.data["end"] - clip_b.data["start"])
+        self.assertAlmostEqual(initial_right_a, initial_right_b)
+
+        self.qwidget_clip_module.ClipInteractionMixin._dragMove(helper)
+
+        moved_right_a = clip_a.data["position"] + (clip_a.data["end"] - clip_a.data["start"])
+        moved_right_b = clip_b.data["position"] + (clip_b.data["end"] - clip_b.data["start"])
+        self.assertAlmostEqual(moved_right_a, moved_right_b)
+        self.assertAlmostEqual(moved_right_a - initial_right_a, 1.0 / 24.0)
 
     def test_qwidget_cursor_uses_razor_cursor_for_items_when_enabled(self):
         helper = self.make_qwidget_cursor_helper()
@@ -1879,9 +2010,10 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertEqual([entry["id"] for entry in helper.clip_updates], ["A", "B"])
         self.assertEqual(helper.clip_updates[0]["override_keys"], ["A", "B"])
         self.assertEqual(helper.clip_updates[1]["override_keys"], ["A", "B"])
-        self.assertTrue(helper._preserve_overrides_once)
-        self.assertEqual(helper._pending_clip_overrides, {"A": {"position": 1.0}, "B": {"position": 4.0}})
-        self.assertEqual(helper.changed_calls, 0)
+        self.assertFalse(helper._preserve_overrides_once)
+        self.assertEqual(helper._pending_clip_overrides, {})
+        self.assertEqual(helper.changed_calls, 1)
+        self.assertEqual(helper.refresh_keyframe_calls, 1)
 
     def test_qwidget_finish_item_resize_batches_multi_retime_commits(self):
         helper = self.make_qwidget_finish_resize_helper()
@@ -1936,7 +2068,8 @@ class TimelineHelperTests(unittest.TestCase):
             helper.waveform_refresh_calls,
             [(["A", "B"], helper.clip_updates[0]["kwargs"]["transaction_id"])],
         )
-        self.assertEqual(helper.changed_calls, 0)
+        self.assertEqual(helper.changed_calls, 1)
+        self.assertEqual(helper.refresh_keyframe_calls, 1)
 
     def test_qwidget_finish_item_resize_preserves_shared_right_edge_after_snapping(self):
         helper = self.make_qwidget_finish_resize_helper()

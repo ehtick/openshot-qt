@@ -328,9 +328,11 @@ class TimelineWidgetBase(QWidget):
         self._active_keyframe_marker = None
         self._press_keyframe_clear = True
         self._press_effect_icon = None
+        self._suspend_keyframe_rebuild = False
         self._pending_clip_overrides = {}
         self._pending_transition_overrides = {}
         self._preserve_overrides_once = False
+        self._preserve_overrides_during_batch = False
         self._drag_payload = None
         self._drag_preview_items = []
         self._drag_commit_in_progress = False
@@ -811,9 +813,13 @@ class TimelineWidgetBase(QWidget):
         # for exactly one backend-driven refresh. This avoids rebuilding
         # keyframes/geometry against committed data while stale preview state is
         # still being torn down.
-        preserve_overrides = getattr(self, "_preserve_overrides_once", False)
+        preserve_overrides = (
+            getattr(self, "_preserve_overrides_once", False)
+            or getattr(self, "_preserve_overrides_during_batch", False)
+        )
         if preserve_overrides:
-            self._preserve_overrides_once = False
+            if getattr(self, "_preserve_overrides_once", False):
+                self._preserve_overrides_once = False
         else:
             self._pending_clip_overrides.clear()
             self._pending_transition_overrides.clear()

@@ -210,14 +210,9 @@ class ClipInteractionMixin:
         """
         End a resize gesture's preview state.
 
-        When a backend refresh is already in flight, keep the preview overrides
-        alive for the next `changed()` call. That refresh will clear them after
-        geometry/keyframes have been rebuilt from the committed data.
+        Resize commits are now batched, so once the saves complete we can drop
+        all preview overrides immediately and rebuild from committed data.
         """
-        if backend_refresh_requested:
-            self._preserve_overrides_once = True
-            return
-
         for candidate in resize_items:
             self._clear_resize_preview_overrides(candidate)
         self.changed(None)
@@ -906,15 +901,10 @@ class ClipInteractionMixin:
 
             # New values
             if frame_offset is not None:
-                start_frame = info.get("position_frames")
-                if start_frame is None:
-                    start_frame = int(round(start_pos_sec * fps))
-                new_frame = max(0, start_frame + frame_offset)
-                new_pos_sec = new_frame / fps
+                new_pos_sec = start_pos_sec + (frame_offset / fps)
             else:
                 new_pos_sec = start_pos_sec + delta_sec
             new_pos_sec = max(0.0, new_pos_sec)
-            new_pos_sec = self._snap_time(new_pos_sec)
             new_idx = start_idx + delta_idx
             new_idx = max(0, min(new_idx, len(self.track_list) - 1))
             unlocked_idx = self._nearest_unlocked_track_index(new_idx)
@@ -950,11 +940,7 @@ class ClipInteractionMixin:
             # already snapped to the final frame-aligned position.
             applied_delta_sec = new_pos_sec - start_pos_sec
             if fps > 0.0:
-                start_frame_for_item = info.get("position_frames")
-                if start_frame_for_item is None:
-                    start_frame_for_item = int(round(start_pos_sec * fps))
-                new_frame_for_item = int(round(new_pos_sec * fps))
-                applied_frame_delta = new_frame_for_item - start_frame_for_item
+                applied_frame_delta = int(round(applied_delta_sec * fps))
             else:
                 applied_frame_delta = 0
             # Always apply panel shift, even for 0 delta. When snapping returns to
@@ -1521,62 +1507,72 @@ class ClipInteractionMixin:
         self._resize_items = []
         self._resize_initial_map = {}
         self._resize_results = {}
+        self._keyframes_dirty = True
+        suspend_keyframe_rebuild = (
+            len(resize_items) > 1
+            and any(isinstance(candidate, Transition) for candidate in resize_items)
+        )
+        if suspend_keyframe_rebuild:
+            self._suspend_keyframe_rebuild = True
         transaction_id = str(uuid.uuid4())
         total = len(resize_items)
         waveform_clips = []
         requested_backend_refresh = False
-        for idx, candidate in enumerate(resize_items):
-            result = resize_results.get(candidate.id)
-            if not isinstance(result, dict):
-                continue
-            start = result["start"]
-            end = result["end"]
-            position = result["position"]
-            setattr(self.win, "_trim_refresh_pending", True)
-            ignore_refresh = idx < total - 1
-            if not ignore_refresh:
-                requested_backend_refresh = True
-            if isinstance(candidate, Clip):
-                context = resize_initial_map.get(candidate.id, {})
-                audio_data = candidate.data.get("ui", {}).get("audio_data")
-                has_waveform = audio_data not in (None, [])
-                if self._commit_resized_clip(
-                    candidate,
-                    start,
-                    end,
-                    position,
-                    context,
-                    transaction_id,
-                    ignore_refresh,
-                ) and has_waveform:
-                    waveform_clips.append(candidate.id)
-            else:
-                context = resize_initial_map.get(candidate.id, {})
-                static_mask = bool(context.get("static_mask"))
-                transition_data = json.loads(json.dumps(candidate.data))
-                start, end, position = self._normalize_resize_commit_bounds(start, end, position)
-                transition_data["position"] = position
-                transition_data["start"] = start
-                transition_data["end"] = end
-                transition_data["duration"] = self._snap_time(transition_data["end"] - transition_data["start"])
-                transition_data["_auto_direction"] = static_mask
-                # update_transition_data() can synchronously notify listeners.
-                # Drop the live resize override first so keyframe rebuilds use
-                # the committed transition timing instead of preview scaling.
-                self._pending_transition_overrides.pop(candidate.id, None)
-                self.update_transition_data(
-                    transition_data,
-                    only_basic_props=True,
-                    ignore_refresh=ignore_refresh,
-                    transaction_id=transaction_id,
-                )
-                candidate.data = transition_data
+        self._suspend_changed_update += 1
+        self._preserve_overrides_during_batch = True
+        try:
+            for idx, candidate in enumerate(resize_items):
+                result = resize_results.get(candidate.id)
+                if not isinstance(result, dict):
+                    continue
+                start = result["start"]
+                end = result["end"]
+                position = result["position"]
+                setattr(self.win, "_trim_refresh_pending", True)
+                ignore_refresh = idx < total - 1
+                if not ignore_refresh:
+                    requested_backend_refresh = True
+                if isinstance(candidate, Clip):
+                    context = resize_initial_map.get(candidate.id, {})
+                    audio_data = candidate.data.get("ui", {}).get("audio_data")
+                    has_waveform = audio_data not in (None, [])
+                    if self._commit_resized_clip(
+                        candidate,
+                        start,
+                        end,
+                        position,
+                        context,
+                        transaction_id,
+                        ignore_refresh,
+                    ) and has_waveform:
+                        waveform_clips.append(candidate.id)
+                else:
+                    context = resize_initial_map.get(candidate.id, {})
+                    static_mask = bool(context.get("static_mask"))
+                    transition_data = json.loads(json.dumps(candidate.data))
+                    start, end, position = self._normalize_resize_commit_bounds(start, end, position)
+                    transition_data["position"] = position
+                    transition_data["start"] = start
+                    transition_data["end"] = end
+                    transition_data["duration"] = self._snap_time(transition_data["end"] - transition_data["start"])
+                    transition_data["_auto_direction"] = static_mask
+                    self.update_transition_data(
+                        transition_data,
+                        only_basic_props=True,
+                        ignore_refresh=ignore_refresh,
+                        transaction_id=transaction_id,
+                    )
+                    candidate.data = transition_data
 
-            if isinstance(candidate, (Clip, Transition)) and hasattr(self, "RefreshTrimmedTimelineItem"):
-                self.RefreshTrimmedTimelineItem(json.dumps(candidate.data), resize_edge)
+                if isinstance(candidate, (Clip, Transition)) and hasattr(self, "RefreshTrimmedTimelineItem"):
+                    self.RefreshTrimmedTimelineItem(json.dumps(candidate.data), resize_edge)
 
-            if isinstance(candidate, Clip):
-                self._set_trim_thumbnail_suspension(False, candidate.id)
+                if isinstance(candidate, Clip):
+                    self._set_trim_thumbnail_suspension(False, candidate.id)
+        finally:
+            self._preserve_overrides_during_batch = False
+            self._suspend_changed_update = max(0, self._suspend_changed_update - 1)
+            self._suspend_keyframe_rebuild = False
 
         self._snap_keyframe_seconds = []
         self.snap.reset()
@@ -1585,6 +1581,11 @@ class ClipInteractionMixin:
         if waveform_clips and hasattr(self, "Show_Waveform_Triggered"):
             self.Show_Waveform_Triggered(waveform_clips, transaction_id=transaction_id)
         self._finalize_resize_preview_state(resize_items, requested_backend_refresh)
+        if hasattr(self, "_refresh_keyframe_markers") and not self._dragging_panel_keyframes and not self._dragging_keyframe:
+            self._refresh_keyframe_markers()
+        else:
+            self._keyframes_dirty = True
+        self.update()
         self._release_cursor()
         if self._last_event:
             self._updateCursor(self._last_event.pos())
