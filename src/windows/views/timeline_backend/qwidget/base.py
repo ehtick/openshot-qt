@@ -2671,20 +2671,16 @@ class TimelineWidgetBase(QWidget):
         # Clip/transition edges and drags (transitions prioritized)
         edge = 5
         for rect, _item, _selected, _type in self.geometry.iter_items(reverse=True):
-            if rect.contains(pos):
-                resize_edge = None
-                if abs(pos.x() - rect.left()) <= edge:
-                    resize_edge = "left"
-                elif abs(pos.x() - rect.right()) <= edge:
-                    resize_edge = "right"
-                if resize_edge:
-                    resize_items = self._resize_targets_for_item(_item, resize_edge)
-                    if resize_items:
-                        self.setCursor(self.cursors["resize_x"])
-                    else:
-                        self.setCursor(self.cursors["hand"])
+            resize_edge = self._item_resize_edge_at(rect, pos, edge=edge)
+            if resize_edge:
+                resize_items = self._resize_targets_for_item(_item, resize_edge)
+                if resize_items:
+                    self.setCursor(self.cursors["resize_x"])
                 else:
                     self.setCursor(self.cursors["hand"])
+                return
+            if rect.contains(pos):
+                self.setCursor(self.cursors["hand"])
                 return
 
         # Track menu icons
@@ -2906,9 +2902,8 @@ class TimelineWidgetBase(QWidget):
         self._press_effect_icon = None
         edge = 5
         for rect, item, _selected, _type in self.geometry.iter_items(reverse=True):
-            if not rect.contains(pos):
-                continue
-            if abs(pos.x() - rect.left()) <= edge:
+            resize_edge = self._item_resize_edge_at(rect, pos, edge=edge)
+            if resize_edge == "left":
                 resize_items = self._resize_targets_for_item(item, "left")
                 if resize_items:
                     self._press_hit = "clip-edge"
@@ -2917,7 +2912,7 @@ class TimelineWidgetBase(QWidget):
                     self._resize_edge = "left"
                     return
                 break
-            if abs(pos.x() - rect.right()) <= edge:
+            if resize_edge == "right":
                 resize_items = self._resize_targets_for_item(item, "right")
                 if resize_items:
                     self._press_hit = "clip-edge"
@@ -2930,6 +2925,20 @@ class TimelineWidgetBase(QWidget):
         self._resize_items = []
         self._resize_edge = None
         self._press_hit = self._hitTest(pos)
+
+    def _item_resize_edge_at(self, rect, pos, edge=5):
+        """Return the clip/transition edge under *pos* without requiring interior hits."""
+        if not isinstance(rect, QRectF) or rect.isNull():
+            return None
+        if pos.y() < rect.top() or pos.y() > rect.bottom():
+            return None
+
+        left_distance = abs(pos.x() - rect.left())
+        right_distance = abs(pos.x() - rect.right())
+        nearest = min(left_distance, right_distance)
+        if nearest > edge:
+            return None
+        return "left" if left_distance <= right_distance else "right"
 
     def _panel_track_at_pos(self, pos):
         """Return track number when *pos* lies within any keyframe panel area."""

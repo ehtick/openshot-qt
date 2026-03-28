@@ -69,7 +69,9 @@ class ClipInteractionMixin:
     def _resize_edge_tolerance(self):
         fps = self._positive_float(getattr(self, "fps_float", None))
         if fps:
-            return max(1e-6, 0.5 / fps)
+            # Allow one-frame drift so mixed clip/transition selections keep
+            # behaving as a shared edge after commit quantization.
+            return max(1e-6, (1.0 / fps) + 1e-9)
         return 1e-6
 
     def _resize_targets_for_item(self, item, edge):
@@ -204,6 +206,27 @@ class ClipInteractionMixin:
             item_id for item_id in ignore_ids if item_id not in resized_ids
         }
 
+    def _normalize_resize_commit_bounds(self, start, end, position):
+        """
+        Quantize resize results while preserving the snapped outer right edge.
+
+        Snapping ``position``, ``start``, and ``end`` independently can move
+        the item's timeline right edge by a frame, which breaks later
+        multi-selection shared-edge detection. Snap the absolute right edge
+        once, then derive ``end`` from the snapped left-side values.
+        """
+        snapped_position = self._snap_time(position)
+        snapped_start = self._snap_time(start)
+        snapped_right = self._snap_time(position + max(0.0, end - start))
+
+        fps = float(getattr(self, "fps_float", 0.0) or 0.0)
+        min_len = (1.0 / fps) if fps > 0.0 else 0.0
+        snapped_span = max(min_len, snapped_right - snapped_position)
+        snapped_end = self._snap_time(snapped_start + snapped_span)
+        if min_len > 0.0 and snapped_end - snapped_start < min_len:
+            snapped_end = snapped_start + min_len
+        return snapped_start, snapped_end, snapped_position
+
     def _commit_resized_clip(self, clip, start, end, position, context, transaction_id, ignore_refresh):
         """Persist a resized clip, batching retime commits the same way as trims."""
         if self.enable_timing:
@@ -228,9 +251,10 @@ class ClipInteractionMixin:
             )
             return True
 
-        clip.data["start"] = self._snap_time(start)
-        clip.data["end"] = self._snap_time(end)
-        clip.data["position"] = self._snap_time(position)
+        start, end, position = self._normalize_resize_commit_bounds(start, end, position)
+        clip.data["start"] = start
+        clip.data["end"] = end
+        clip.data["position"] = position
         self.update_clip_data(
             clip.data,
             only_basic_props=True,
@@ -1079,7 +1103,7 @@ class ClipInteractionMixin:
             self._startItemResize()
         elif self._press_hit == "timeline-handle":
             self._startProjectResize()
-        else:
+        elif self._press_hit == "handle":
             self._resize_start = self.track_name_width
 
     def _resizeMove(self):
@@ -1087,7 +1111,7 @@ class ClipInteractionMixin:
             self._itemResizeMove()
         elif self._press_hit == "timeline-handle":
             self._projectResizeMove()
-        else:
+        elif self._press_hit == "handle":
             new_width = max(40, self._last_event.pos().x())
             if new_width != self.track_name_width:
                 self.track_name_width = new_width
@@ -1216,14 +1240,36 @@ class ClipInteractionMixin:
         self._resize_results = {}
         preview_item = self._resize_preview_focus_item()
         preview_result = None
+        primary_item = self._resizing_item if self._resizing_item in resize_items else resize_items[0]
+        primary_context = self._resize_initial_map.get(getattr(primary_item, "id", None))
+        shared_edge_seconds = None
+        primary_result = None
+        if primary_context:
+            if isinstance(primary_item, Transition):
+                primary_result = self._compute_transition_resize(primary_item, primary_context)
+            else:
+                primary_result = self._compute_clip_resize(primary_item, primary_context)
+            _rect, start, end, position = primary_result
+            shared_edge_seconds = self._resize_result_edge_seconds(start, end, position)
+
         for item in resize_items:
             context = self._resize_initial_map.get(item.id)
             if not context:
                 continue
-            if isinstance(item, Transition):
-                rect, start, end, position = self._compute_transition_resize(item, context)
+            if item is primary_item and primary_result is not None:
+                rect, start, end, position = primary_result
+            elif isinstance(item, Transition):
+                rect, start, end, position = self._compute_transition_resize(
+                    item,
+                    context,
+                    target_edge_seconds=shared_edge_seconds,
+                )
             else:
-                rect, start, end, position = self._compute_clip_resize(item, context)
+                rect, start, end, position = self._compute_clip_resize(
+                    item,
+                    context,
+                    target_edge_seconds=shared_edge_seconds,
+                )
 
             self._resize_results[item.id] = {
                 "start": start,
@@ -1273,7 +1319,12 @@ class ClipInteractionMixin:
                     timeline.PreviewTransitionFrame(str(item_id), max(1, frame))
         self.update()
 
-    def _compute_transition_resize(self, item, context=None):
+    def _resize_result_edge_seconds(self, start, end, position):
+        if getattr(self, "_resize_edge", None) == "left":
+            return position
+        return position + max(0.0, end - start)
+
+    def _compute_transition_resize(self, item, context=None, target_edge_seconds=None):
         event = self._last_event
         pps = self.pixels_per_second
         min_len = 1.0 / self.fps_float
@@ -1294,8 +1345,11 @@ class ClipInteractionMixin:
         static_mask = bool(context.get("static_mask"))
 
         if self._resize_edge == "left":
-            delta_sec = (event.pos().x() - rect.left()) / pps
-            if self.enable_snapping:
+            if target_edge_seconds is not None:
+                delta_sec = target_edge_seconds - pos
+            else:
+                delta_sec = (event.pos().x() - rect.left()) / pps
+            if target_edge_seconds is None and self.enable_snapping:
                 delta_sec = self.snap.snap_edge(pos, delta_sec)
             max_delta = width - min_len
             if delta_sec > max_delta:
@@ -1311,8 +1365,11 @@ class ClipInteractionMixin:
                     new_start = start + (new_position - pos)
             rect_left = self.track_name_width + new_position * pps
         else:
-            delta_sec = (event.pos().x() - rect.right()) / pps
-            if self.enable_snapping:
+            if target_edge_seconds is not None:
+                delta_sec = target_edge_seconds - (pos + width)
+            else:
+                delta_sec = (event.pos().x() - rect.right()) / pps
+            if target_edge_seconds is None and self.enable_snapping:
                 delta_sec = self.snap.snap_edge(pos + width, delta_sec)
             min_delta = -(width - min_len)
             if delta_sec < min_delta:
@@ -1326,7 +1383,7 @@ class ClipInteractionMixin:
         geom_rect = QRectF(rect_left, world_rect.y(), rect_width, world_rect.height())
         return geom_rect, new_start, new_end, new_position
 
-    def _compute_clip_resize(self, item, context=None):
+    def _compute_clip_resize(self, item, context=None, target_edge_seconds=None):
         event = self._last_event
         pps = float(self.pixels_per_second or 0.0)
         if context is None:
@@ -1352,16 +1409,18 @@ class ClipInteractionMixin:
         single_image_resize = bool(context.get("clip_is_single_image", False))
         overflow_enabled = allow_left_overflow and single_image_resize and not self.enable_timing
 
-        if event is None or pps <= 0.0:
+        if target_edge_seconds is None and (event is None or pps <= 0.0):
             geom_rect = QRectF(world_rect)
             return geom_rect, start, end, pos
 
-        cursor_sec = self._seconds_from_x(event.pos().x())
+        cursor_sec = target_edge_seconds
+        if cursor_sec is None:
+            cursor_sec = self._seconds_from_x(event.pos().x())
         clip_span = max(end - start, min_len)
 
         if self._resize_edge == "left":
             delta_sec = cursor_sec - pos
-            if self.enable_snapping:
+            if target_edge_seconds is None and self.enable_snapping:
                 delta_sec = self._snap_trim_delta(delta_sec, edge="left", initial=initial)
             if overflow_enabled and max_duration is not None:
                 extra_capacity = max(0.0, max_duration - end)
@@ -1395,7 +1454,7 @@ class ClipInteractionMixin:
         else:
             timeline_right = pos + clip_span
             delta_sec = cursor_sec - timeline_right
-            if self.enable_snapping:
+            if target_edge_seconds is None and self.enable_snapping:
                 delta_sec = self._snap_trim_delta(delta_sec, edge="right", initial=initial)
             new_end = end + delta_sec
             new_start = start
@@ -1484,9 +1543,10 @@ class ClipInteractionMixin:
                 context = resize_initial_map.get(candidate.id, {})
                 static_mask = bool(context.get("static_mask"))
                 transition_data = json.loads(json.dumps(candidate.data))
-                transition_data["position"] = self._snap_time(position)
-                transition_data["start"] = self._snap_time(start)
-                transition_data["end"] = self._snap_time(end)
+                start, end, position = self._normalize_resize_commit_bounds(start, end, position)
+                transition_data["position"] = position
+                transition_data["start"] = start
+                transition_data["end"] = end
                 transition_data["duration"] = self._snap_time(transition_data["end"] - transition_data["start"])
                 transition_data["_auto_direction"] = static_mask
                 self.update_transition_data(

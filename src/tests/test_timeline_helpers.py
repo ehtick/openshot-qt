@@ -93,6 +93,8 @@ class TimelineHelperTests(unittest.TestCase):
         sys.modules.pop("windows.views.timeline", None)
         cls.timeline_module = importlib.import_module("windows.views.timeline")
         cls.qwidget_base_module = importlib.import_module("windows.views.timeline_backend.qwidget.base")
+        cls.geometry_clip_module = importlib.import_module("windows.views.timeline_backend.geometry.clip")
+        cls.geometry_transition_module = importlib.import_module("windows.views.timeline_backend.geometry.transition")
         cls.clip_paint_module = importlib.import_module("windows.views.timeline_backend.paint.clip")
         cls.qwidget_clip_module = importlib.import_module("windows.views.timeline_backend.qwidget.clip")
         cls.qwidget_keyframe_module = importlib.import_module("windows.views.timeline_backend.qwidget.keyframe")
@@ -480,10 +482,10 @@ class TimelineHelperTests(unittest.TestCase):
                     )
                 )
 
-            def _compute_clip_resize(self, item, context=None):
+            def _compute_clip_resize(self, item, context=None, target_edge_seconds=None):
                 return QRectF(), context["initial"]["start"], context["initial"]["end"] + 1.0, context["initial"]["position"]
 
-            def _compute_transition_resize(self, item, context=None):
+            def _compute_transition_resize(self, item, context=None, target_edge_seconds=None):
                 return QRectF(), context["initial"]["start"], context["initial"]["end"] + 1.0, context["initial"]["position"]
 
             def _apply_resize_preview_override(self, item, context, start, end, position):
@@ -500,6 +502,55 @@ class TimelineHelperTests(unittest.TestCase):
 
             def _is_active_resize_item(self, item):
                 return qwidget_clip_module.ClipInteractionMixin._is_active_resize_item(self, item)
+
+        return Helper()
+
+    def make_qwidget_shared_resize_math_helper(self):
+        qwidget_clip_module = self.qwidget_clip_module
+
+        class GeometryStub:
+            def __init__(self, helper):
+                self.helper = helper
+
+            def update_item_rect(self, item, rect):
+                self.helper.updated_rects.append((item.id, rect))
+
+        class Helper(qwidget_clip_module.ClipInteractionMixin):
+            def __init__(self):
+                self._resize_items = []
+                self._resize_initial_map = {}
+                self._resize_results = {}
+                self._resizing_item = None
+                self._resize_edge = "left"
+                self._press_hit = "clip-edge"
+                self._keyframes_dirty = False
+                self.enable_timing = False
+                self.enable_snapping = False
+                self.fps_float = 30.0
+                self.pixels_per_second = 30.0
+                self.track_name_width = 0.0
+                self.updated_rects = []
+                self.update_calls = 0
+                self.preview_calls = []
+                self.transition_preview_calls = []
+                self._last_event = None
+                self.geometry = GeometryStub(self)
+                self.win = types.SimpleNamespace(timeline=None)
+
+            def _seconds_from_x(self, value):
+                return float(value) / float(self.pixels_per_second or 1.0)
+
+            def _snap_trim_delta(self, delta_seconds, edge=None, initial=None):
+                return float(delta_seconds)
+
+            def _resize_preview_focus_item(self):
+                return None
+
+            def _apply_resize_preview_override(self, item, context, start, end, position):
+                return None
+
+            def update(self):
+                self.update_calls += 1
 
         return Helper()
 
@@ -596,9 +647,16 @@ class TimelineHelperTests(unittest.TestCase):
             def _hitTest(self, pos):
                 return "clip"
 
+            def _item_resize_edge_at(self, rect, pos, edge=5):
+                return qwidget_base_module.TimelineWidgetBase._item_resize_edge_at(
+                    self, rect, pos, edge=edge
+                )
+
         return Helper(), EventStub
 
     def make_qwidget_cursor_helper(self):
+        qwidget_base_module = self.qwidget_base_module
+
         class GeometryStub:
             def __init__(self):
                 self.items = []
@@ -672,6 +730,11 @@ class TimelineHelperTests(unittest.TestCase):
 
             def _track_menu_rect(self, rect):
                 return QRectF()
+
+            def _item_resize_edge_at(self, rect, pos, edge=5):
+                return qwidget_base_module.TimelineWidgetBase._item_resize_edge_at(
+                    self, rect, pos, edge=edge
+                )
 
         return Helper()
 
@@ -1481,6 +1544,87 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertIs(helper.cursor_value, helper.cursors["hand"])
         self.assertFalse(helper.unset_cursor_called)
 
+    def test_qwidget_cursor_uses_resize_cursor_on_exact_item_boundary(self):
+        helper = self.make_qwidget_cursor_helper()
+        helper.geometry.items = [(QRectF(10.0, 10.0, 40.0, 20.0), object(), True, "transition")]
+        helper._resize_targets_for_item = lambda _item, _edge: ["selected"]
+
+        self.qwidget_base_module.TimelineWidgetBase._updateCursor(helper, QPointF(50.0, 20.0))
+
+        self.assertIs(helper.cursor_value, helper.cursors["resize_x"])
+        self.assertFalse(helper.unset_cursor_called)
+
+    def test_qwidget_resize_move_ignores_non_handle_press_hits(self):
+        helper = types.SimpleNamespace(
+            _press_hit="clip",
+            _resizing_item=None,
+            _last_event=types.SimpleNamespace(pos=lambda: QPointF(320.0, 20.0)),
+            track_name_width=140.0,
+            changed_calls=[],
+            _itemResizeMove=lambda: (_ for _ in ()).throw(AssertionError("clip resize should not run")),
+            _projectResizeMove=lambda: (_ for _ in ()).throw(AssertionError("project resize should not run")),
+            changed=lambda value: helper.changed_calls.append(value),
+        )
+
+        self.qwidget_clip_module.ClipInteractionMixin._resizeMove(helper)
+
+        self.assertEqual(helper.track_name_width, 140.0)
+        self.assertEqual(helper.changed_calls, [])
+
+    def test_clip_geometry_marks_string_selected_ids_for_numeric_clip_ids(self):
+        module = self.geometry_clip_module
+
+        class Helper(module.ClipGeometryMixin):
+            def __init__(self):
+                self.widget = types.SimpleNamespace(
+                    track_name_width=140.0,
+                    pixels_per_second=10.0,
+                    ruler_height=40.0,
+                    vertical_factor=48.0,
+                    normalize_track_number=lambda value: value,
+                )
+                self.clip_entries = []
+                self._clip_starts = []
+                self._clip_max_rights = []
+
+        clip = types.SimpleNamespace(id=42, data={"position": 1.0, "start": 0.0, "end": 3.0, "layer": 0})
+        helper = Helper()
+        ctx = {"track_offsets": {0: 0.0}, "spacing": 56.0, "top_margin": 0.0}
+        win = types.SimpleNamespace(selected_clips=["42"])
+
+        with patch.object(module.Clip, "filter", return_value=[clip]):
+            helper._populate_clip_rects({0: 0}, ctx, win)
+
+        self.assertEqual(len(helper.clip_entries), 1)
+        self.assertTrue(helper.clip_entries[0].selected)
+
+    def test_transition_geometry_marks_string_selected_ids_for_numeric_transition_ids(self):
+        module = self.geometry_transition_module
+
+        class Helper(module.TransitionGeometryMixin):
+            def __init__(self):
+                self.widget = types.SimpleNamespace(
+                    track_name_width=140.0,
+                    pixels_per_second=10.0,
+                    ruler_height=40.0,
+                    vertical_factor=48.0,
+                    normalize_track_number=lambda value: value,
+                )
+                self.transition_entries = []
+                self._transition_starts = []
+                self._transition_max_rights = []
+
+        transition = types.SimpleNamespace(id=7, data={"position": 2.0, "start": 0.0, "end": 2.0, "layer": 0})
+        helper = Helper()
+        ctx = {"track_offsets": {0: 0.0}, "spacing": 56.0, "top_margin": 0.0}
+        win = types.SimpleNamespace(selected_transitions=["7"])
+
+        with patch.object(module.Transition, "filter", return_value=[transition]):
+            helper._populate_transition_rects({0: 0}, ctx, win)
+
+        self.assertEqual(len(helper.transition_entries), 1)
+        self.assertTrue(helper.transition_entries[0].selected)
+
     def test_qwidget_ctrl_mouse_zoom_starts_on_ctrl_middle_press(self):
         helper, event_cls = self.make_qwidget_ctrl_zoom_helper()
         pos = QPointF(20.0, 120.0)
@@ -1562,6 +1706,41 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertEqual(helper.preview_calls, [("B", 97)])
         self.assertEqual(helper.transition_preview_calls, [])
         self.assertEqual(helper.update_calls, 1)
+
+    def test_qwidget_group_resize_preview_uses_shared_left_edge_for_mixed_items(self):
+        helper = self.make_qwidget_shared_resize_math_helper()
+        class DummyTransition:
+            def __init__(self, item_id, data):
+                self.id = item_id
+                self.data = data
+
+        clip = types.SimpleNamespace(id="C1", data={"position": 55.0, "start": 0.0, "end": 2.0})
+        transition = DummyTransition("T1", {"position": 55.0, "start": 0.5, "end": 2.5})
+        helper._resize_items = [transition, clip]
+        helper._resizing_item = transition
+        helper._resize_initial_map = {
+            "T1": {
+                "initial": {"position": 55.0, "start": 0.5, "end": 2.5, "duration": 2.0},
+                "world_rect": QRectF(55.0 * 30.0, 0.0, 60.0, 40.0),
+                "rect": QRectF(55.0 * 30.0, 0.0, 60.0, 40.0),
+                "static_mask": False,
+            },
+            "C1": {
+                "initial": {"position": 55.0, "start": 0.0, "end": 2.0, "duration": 2.0},
+                "world_rect": QRectF(55.0 * 30.0, 50.0, 60.0, 40.0),
+                "rect": QRectF(55.0 * 30.0, 50.0, 60.0, 40.0),
+                "max_duration": 10.0,
+                "allow_left_overflow": True,
+                "clip_is_single_image": True,
+            },
+        }
+        helper._last_event = types.SimpleNamespace(pos=lambda: QPointF((54.766666666666666 * 30.0), 10.0))
+
+        with patch.object(self.qwidget_clip_module, "Transition", DummyTransition):
+            self.qwidget_clip_module.ClipInteractionMixin._itemResizeMove(helper)
+
+        self.assertAlmostEqual(helper._resize_results["T1"]["position"], 54.766666666666666)
+        self.assertAlmostEqual(helper._resize_results["C1"]["position"], 54.766666666666666)
 
     def test_qwidget_finish_item_resize_preserves_group_overrides_until_final_refresh(self):
         helper = self.make_qwidget_finish_resize_helper()
@@ -1653,6 +1832,48 @@ class TimelineHelperTests(unittest.TestCase):
         )
         self.assertEqual(helper.changed_calls, 1)
 
+    def test_qwidget_finish_item_resize_preserves_shared_right_edge_after_snapping(self):
+        helper = self.make_qwidget_finish_resize_helper()
+        frame = 1.0 / 24.0
+
+        class DummyClip:
+            def __init__(self, item_id, data):
+                self.id = item_id
+                self.data = data
+
+        class DummyTransition:
+            def __init__(self, item_id, data):
+                self.id = item_id
+                self.data = data
+
+        clip = DummyClip("C1", {"id": "C1", "position": 0.0, "start": 0.0, "end": frame, "ui": {}})
+        transition = DummyTransition(
+            "T1",
+            {"id": "T1", "position": 0.0, "start": frame / 2.0, "end": frame * 1.5, "duration": frame},
+        )
+        helper._resizing_item = clip
+        helper._resize_edge = "left"
+        helper._resize_items = [clip, transition]
+        helper._resize_initial_map = {
+            "C1": {"initial": {"start": 0.0, "end": frame, "position": 0.0}},
+            "T1": {"initial": {"start": frame / 2.0, "end": frame * 1.5, "position": 0.0}, "static_mask": False},
+        }
+        helper._resize_results = {
+            "C1": {"start": 0.0, "end": frame, "position": 0.0},
+            "T1": {"start": frame / 2.0, "end": frame * 1.5, "position": 0.0},
+        }
+        helper._snap_time = lambda value: round(value * 24.0) / 24.0
+
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(self.qwidget_clip_module, "Clip", DummyClip))
+            stack.enter_context(patch.object(self.qwidget_clip_module, "Transition", DummyTransition))
+            self.qwidget_clip_module.ClipInteractionMixin._finishItemResize(helper)
+
+        clip_right = clip.data["position"] + (clip.data["end"] - clip.data["start"])
+        transition_right = transition.data["position"] + (transition.data["end"] - transition.data["start"])
+        self.assertAlmostEqual(clip_right, transition_right)
+        self.assertEqual(clip_right, frame)
+
     def test_qwidget_active_resize_item_helper_matches_group_members(self):
         helper = self.make_qwidget_group_resize_preview_helper()
         clip_a = types.SimpleNamespace(id="A", data={})
@@ -1696,6 +1917,47 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertEqual([item.id for item in left_targets], ["A", "B"])
         self.assertEqual([item.id for item in right_targets], ["B", "C"])
 
+    def test_qwidget_resize_targets_include_mixed_clip_and_transition_on_shared_edge(self):
+        Helper = self.make_qwidget_resize_target_helper()
+        transition_a = types.SimpleNamespace(id="T1", data={"position": 2.0, "start": 0.0, "end": 3.0})
+        clip = types.SimpleNamespace(id="C1", data={"position": 2.0, "start": 1.0, "end": 4.0})
+        transition_b = types.SimpleNamespace(id="T2", data={"position": 2.0, "start": 0.0, "end": 5.0})
+        helper = Helper([
+            (QRectF(), transition_a, True, "transition"),
+            (QRectF(), clip, True, "clip"),
+            (QRectF(), transition_b, True, "transition"),
+        ])
+
+        targets = self.qwidget_clip_module.ClipInteractionMixin._resize_targets_for_item(
+            helper, transition_a, "left"
+        )
+
+        self.assertEqual([item.id for item in targets], ["T1", "C1", "T2"])
+
+    def test_qwidget_resize_targets_tolerate_one_frame_mixed_edge_drift(self):
+        Helper = self.make_qwidget_resize_target_helper()
+        helper = Helper([
+            (
+                QRectF(),
+                types.SimpleNamespace(id="T1", data={"position": 0.0, "start": 0.0, "end": 5.0}),
+                True,
+                "transition",
+            ),
+            (
+                QRectF(),
+                types.SimpleNamespace(id="C1", data={"position": 0.0, "start": 0.0, "end": 5.0 + (1.0 / 30.0)}),
+                True,
+                "clip",
+            ),
+        ])
+        helper.fps_float = 30.0
+
+        targets = self.qwidget_clip_module.ClipInteractionMixin._resize_targets_for_item(
+            helper, helper.geometry.items[0][1], "right"
+        )
+
+        self.assertEqual([item.id for item in targets], ["T1", "C1"])
+
     def test_qwidget_resize_targets_reject_interior_edge_in_multi_selection(self):
         Helper = self.make_qwidget_resize_target_helper()
         left = types.SimpleNamespace(id="L", data={"position": 1.0, "start": 0.0, "end": 3.0})
@@ -1736,6 +1998,18 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertEqual(helper._press_hit, "clip-edge")
         self.assertEqual(helper._resize_edge, "left")
         self.assertEqual([item.id for item in helper._resize_items], ["A", "B"])
+
+    def test_qwidget_assign_press_target_accepts_exact_right_boundary_edge_hit(self):
+        target = types.SimpleNamespace(id="A")
+        helper, event_cls = self.make_qwidget_assign_press_helper(resize_items=[target])
+        item = types.SimpleNamespace(id="A", data={"position": 1.0, "start": 0.0, "end": 3.0})
+        helper.geometry.items = [(QRectF(10.0, 10.0, 40.0, 20.0), item, True, "clip")]
+
+        self.qwidget_base_module.TimelineWidgetBase._assign_press_target(helper, event_cls(50.0, 20.0))
+
+        self.assertEqual(helper._press_hit, "clip-edge")
+        self.assertEqual(helper._resize_edge, "right")
+        self.assertEqual([item.id for item in helper._resize_items], ["A"])
 
     def test_slice_triggered_keep_both_splits_transition_and_updates_duration(self):
         helper = self.make_slice_helper()
