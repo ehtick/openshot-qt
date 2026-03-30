@@ -462,6 +462,17 @@ class TimelineHelperTests(unittest.TestCase):
             def start(self):
                 self.started += 1
 
+        class DeltaStub:
+            def __init__(self, y=0.0, is_null=False):
+                self._y = float(y)
+                self._is_null = bool(is_null)
+
+            def y(self):
+                return self._y
+
+            def isNull(self):
+                return self._is_null
+
         class EventStub:
             def __init__(self, y, modifiers=Qt.ControlModifier, buttons=Qt.MiddleButton):
                 self._pos = QPointF(20.0, float(y))
@@ -481,16 +492,44 @@ class TimelineHelperTests(unittest.TestCase):
             def accept(self):
                 self.accepted = True
 
+        class WheelEventStub:
+            def __init__(self, delta, modifiers=Qt.ControlModifier, pixel_delta=None):
+                self._modifiers = modifiers
+                self._angle_delta = DeltaStub(delta, is_null=False)
+                if pixel_delta is None:
+                    self._pixel_delta = DeltaStub(0.0, is_null=True)
+                else:
+                    self._pixel_delta = DeltaStub(pixel_delta, is_null=False)
+                self.accepted = False
+                self.ignored = False
+
+            def modifiers(self):
+                return self._modifiers
+
+            def pixelDelta(self):
+                return self._pixel_delta
+
+            def angleDelta(self):
+                return self._angle_delta
+
+            def accept(self):
+                self.accepted = True
+
+            def ignore(self):
+                self.ignored = True
+
         class Helper:
             def __init__(self):
                 self._ctrl_zoom_anchor_y = None
                 self._ctrl_zoom_step_pixels = 40.0
                 self._ctrl_zooming = False
+                self._zoom_playhead_anchor = None
                 self._pending_zoom_emit = None
                 self._zoom_emit_timer = TimerStub()
                 self.zoom_factor = 15.0
                 self.is_auto_center = False
                 self.zoom_steps = []
+                self.capture_calls = 0
                 self.tooltip_values = []
                 self.mouse_dragging = False
                 self.viewport_reset_calls = 0
@@ -504,6 +543,10 @@ class TimelineHelperTests(unittest.TestCase):
 
             def _finish_ctrl_mouse_zoom(self):
                 return qwidget_base_module.TimelineWidgetBase._finish_ctrl_mouse_zoom(self)
+
+            def _capture_playhead_zoom_anchor(self):
+                self.capture_calls += 1
+                self._zoom_playhead_anchor = ("captured", 0.25)
 
             def _apply_zoom_steps(self, steps, emit):
                 self.zoom_steps.append((steps, emit))
@@ -519,7 +562,7 @@ class TimelineHelperTests(unittest.TestCase):
             def update(self):
                 self.update_calls += 1
 
-        return Helper(), EventStub
+        return Helper(), EventStub, WheelEventStub
 
     def make_qwidget_group_resize_preview_helper(self):
         qwidget_clip_module = self.qwidget_clip_module
@@ -1852,7 +1895,7 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertTrue(helper.transition_entries[0].selected)
 
     def test_qwidget_ctrl_mouse_zoom_starts_on_ctrl_middle_press(self):
-        helper, event_cls = self.make_qwidget_ctrl_zoom_helper()
+        helper, event_cls, _wheel_event_cls = self.make_qwidget_ctrl_zoom_helper()
         pos = QPointF(20.0, 120.0)
 
         started = self.qwidget_base_module.TimelineWidgetBase._start_ctrl_mouse_zoom(helper, pos)
@@ -1864,7 +1907,7 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertEqual(helper.zoom_steps, [])
 
     def test_qwidget_ctrl_mouse_zoom_moves_up_to_zoom_in(self):
-        helper, event_cls = self.make_qwidget_ctrl_zoom_helper()
+        helper, event_cls, _wheel_event_cls = self.make_qwidget_ctrl_zoom_helper()
         helper._ctrl_zooming = True
         helper._ctrl_zoom_anchor_y = 120.0
         event = event_cls(100.0)
@@ -1874,15 +1917,16 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertTrue(handled)
         self.assertTrue(event.accepted)
         self.assertEqual(helper._ctrl_zoom_anchor_y, 100.0)
+        self.assertEqual(helper.capture_calls, 1)
         self.assertEqual(len(helper.zoom_steps), 1)
         self.assertAlmostEqual(helper.zoom_steps[0][0], 0.5)
         self.assertFalse(helper.zoom_steps[0][1])
-        self.assertTrue(helper.is_auto_center)
+        self.assertFalse(helper.is_auto_center)
         self.assertEqual(helper._pending_zoom_emit, 12.0)
         self.assertEqual(helper._zoom_emit_timer.started, 1)
 
     def test_qwidget_ctrl_mouse_zoom_requires_middle_button_and_ctrl(self):
-        helper, event_cls = self.make_qwidget_ctrl_zoom_helper()
+        helper, event_cls, _wheel_event_cls = self.make_qwidget_ctrl_zoom_helper()
         helper._ctrl_zooming = True
         helper._ctrl_zoom_anchor_y = 120.0
         event = event_cls(90.0, buttons=Qt.LeftButton)
@@ -1896,7 +1940,7 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertEqual(helper.zoom_steps, [])
 
     def test_qwidget_ctrl_mouse_zoom_finish_releases_cursor(self):
-        helper, _event_cls = self.make_qwidget_ctrl_zoom_helper()
+        helper, _event_cls, _wheel_event_cls = self.make_qwidget_ctrl_zoom_helper()
         helper._ctrl_zooming = True
         helper._ctrl_zoom_anchor_y = 120.0
         helper.mouse_dragging = True
@@ -1908,6 +1952,70 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertFalse(helper.mouse_dragging)
         self.assertEqual(helper.viewport_reset_calls, 1)
         self.assertEqual(helper.update_calls, 1)
+
+    def test_qwidget_ctrl_wheel_zoom_preserves_viewport_anchor(self):
+        helper, _event_cls, wheel_event_cls = self.make_qwidget_ctrl_zoom_helper()
+        event = wheel_event_cls(120.0)
+
+        self.qwidget_base_module.TimelineWidgetBase.wheelEvent(helper, event)
+
+        self.assertTrue(event.accepted)
+        self.assertFalse(event.ignored)
+        self.assertEqual(helper.capture_calls, 1)
+        self.assertEqual(helper.zoom_steps, [(1.0, False)])
+        self.assertFalse(helper.is_auto_center)
+        self.assertEqual(helper._pending_zoom_emit, 12.0)
+        self.assertEqual(helper._zoom_emit_timer.started, 1)
+
+    def test_qwidget_set_zoom_factor_keeps_playhead_at_existing_viewport_ratio(self):
+        helper = types.SimpleNamespace()
+        helper.zoom_factor = 10.0
+        helper._zoom_playhead_anchor = (4.0, 0.75)
+        helper._external_zoom_span = None
+        helper._suspend_changed_update = 0
+        helper.scrollbar_position = [0.20, 0.60, 400.0, 100.0]
+        helper.pixels_per_second = 20.0
+        helper.is_auto_center = True
+        helper.fps_float = 24.0
+        helper.current_frame = 97
+        helper.win = types.SimpleNamespace(sliderZoomWidget=None)
+        helper.changed = lambda _value: None
+        helper.update = lambda: None
+        helper._emit_zoom_signals = lambda _positions: None
+        helper._schedule_viewport_thumbnail_reset = lambda: None
+        helper._clamp_zoom_factor = lambda value: self.qwidget_base_module.TimelineWidgetBase._clamp_zoom_factor(helper, value)
+        helper._current_project_duration = lambda: 10.0
+        helper._center_on_seconds = lambda *args, **kwargs: None
+
+        app = types.SimpleNamespace(project=types.SimpleNamespace(get=lambda key: 100.0 if key == "tick_pixels" else None))
+        with patch.object(self.qwidget_base_module, "get_app", return_value=app):
+            self.qwidget_base_module.TimelineWidgetBase.setZoomFactor(helper, 5.0, emit=False)
+
+        self.assertAlmostEqual(helper.scrollbar_position[0], 0.025)
+        self.assertAlmostEqual(helper.scrollbar_position[1], 0.525)
+        self.assertAlmostEqual(helper.h_scroll_offset, 5.0)
+        self.assertIsNone(helper._zoom_playhead_anchor)
+
+    def test_qwidget_new_item_snap_uses_timeline_space_when_scrolled(self):
+        recorded = {}
+        helper = types.SimpleNamespace()
+        helper.enable_snapping = True
+        helper.track_name_width = 140.0
+        helper.pixels_per_second = 10.0
+        helper.drag_bbox = QRectF(0.0, 20.0, 10.0, 30.0)
+        helper._snap_ignore_ids = set()
+        helper.geometry = types.SimpleNamespace(ensure=lambda: None)
+        helper._snap_time = lambda value: value
+        helper._viewport_offsets = lambda: (80.0, 0.0)
+        def snap_dx(delta):
+            recorded["bbox_x"] = helper.drag_bbox.x()
+            return delta
+        helper.snap = types.SimpleNamespace(snap_dx=snap_dx)
+
+        result = self.qwidget_base_module.TimelineWidgetBase._snap_new_item_start(helper, 5.0, 2.0)
+
+        self.assertAlmostEqual(result, 5.0)
+        self.assertAlmostEqual(recorded["bbox_x"], 190.0)
 
     def test_qwidget_group_resize_preview_updates_all_resize_items(self):
         helper = self.make_qwidget_group_resize_preview_helper()
