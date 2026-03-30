@@ -53,6 +53,23 @@ from classes.qt_types import model_index_sibling_at_column
 import openshot
 
 
+IMPORT_READER_MAX_SIZE = 128
+
+
+def inspect_media(path, max_width=0, max_height=0):
+    """Inspect media using the shared libopenshot reader-selection logic."""
+    reader = openshot.Clip.CreateReader(path, False)
+    if not reader:
+        raise RuntimeError(f"No reader available for path: {path}")
+    if max_width > 0 and max_height > 0 and hasattr(reader, "SetMaxDecodeSize"):
+        reader.SetMaxDecodeSize(int(max_width), int(max_height))
+    reader.Open()
+    try:
+        return json.loads(reader.Json()), float(reader.info.duration or 0.0)
+    finally:
+        reader.Close()
+
+
 class SingleColumnProxyModel(QSortFilterProxyModel):
     """Proxy that exposes only the first column for ListView accessibility"""
 
@@ -368,12 +385,12 @@ class FilesModel(QObject, updates.UpdateInterface):
                 continue
 
             try:
-                # Load filepath in libopenshot clip object (which will try multiple readers to open it)
-                clip = openshot.Clip(filepath)
-
-                # Get the JSON for the clip's internal reader
-                reader = clip.Reader()
-                file_data = json.loads(reader.Json())
+                # Inspect the file with a lightweight temporary reader.
+                file_data, _media_duration = inspect_media(
+                    filepath,
+                    max_width=IMPORT_READER_MAX_SIZE,
+                    max_height=IMPORT_READER_MAX_SIZE,
+                )
 
                 # Determine media type
                 file_data["media_type"] = get_media_type(file_data)
@@ -399,9 +416,12 @@ class FilesModel(QObject, updates.UpdateInterface):
                     new_path = seq_info.get("path")
 
                     # Load image sequence (to determine duration and video_length)
-                    clip = openshot.Clip(new_path)
-                    new_file.data = json.loads(clip.Reader().Json())
-                    if clip and clip.info.duration > 0.0:
+                    new_file.data, media_duration = inspect_media(
+                        new_path,
+                        max_width=IMPORT_READER_MAX_SIZE,
+                        max_height=IMPORT_READER_MAX_SIZE,
+                    )
+                    if media_duration > 0.0:
                         # Update file details
                         new_file.data["media_type"] = "video"
                         duration = new_file.data["duration"]

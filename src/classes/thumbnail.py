@@ -54,6 +54,7 @@ THUMBNAIL_CACHE_VERSION_TS = datetime.strptime(
     "%Y%m%d%H%M%S",
 ).timestamp()
 THUMBNAIL_PREWARM_FPS = 4
+THUMBNAIL_DECODE_SCALE = 3.0
 
 
 def GetThumbDeviceScale():
@@ -210,25 +211,10 @@ def GetThumbPath(file_id, thumbnail_frame, clear_cache=False, attempts=1):
 
 def GenerateThumbnail(file_path, thumb_path, thumbnail_frame, width, height, mask, overlay):
     """Create thumbnail image, and check for rotate metadata (if any)"""
-    # Create a clip object and get the reader
-    try:
-        clip = openshot.Clip(file_path)
-        reader = clip.Reader()
-    except RuntimeError:
-        # Any failure calling Reader (i.e. file missing or corrupt) use placeholder thumbnail
-        not_found_path = os.path.join(info.IMAGES_PATH, "NotFound@2x.png")
-        shutil.copyfile(not_found_path, thumb_path)
-        log.warning(f"Failed to generate thumbnail for missing file: {file_path}")
-        return
-
     try:
         scale = GetThumbDeviceScale()
     except Exception:
         scale = 1.0
-
-    if scale > 1.0:
-        clip.scale_x.AddPoint(1.0, 1.0 * scale)
-        clip.scale_y.AddPoint(1.0, 1.0 * scale)
 
     # Create thumbnail folder (if needed)
     parent_path = os.path.dirname(thumb_path)
@@ -237,8 +223,16 @@ def GenerateThumbnail(file_path, thumb_path, thumbnail_frame, width, height, mas
 
     thumb_width = round(width * scale)
     thumb_height = round(height * scale)
+    decode_width = max(thumb_width, round(thumb_width * THUMBNAIL_DECODE_SCALE))
+    decode_height = max(thumb_height, round(thumb_height * THUMBNAIL_DECODE_SCALE))
 
+    reader = None
     try:
+        reader = openshot.Clip.CreateReader(file_path, False)
+        if not reader:
+            raise RuntimeError("No reader available for thumbnail generation")
+        if reader and hasattr(reader, "SetMaxDecodeSize"):
+            reader.SetMaxDecodeSize(decode_width, decode_height)
         reader.Open()
 
         # Get the 'rotate' metadata (if any)
@@ -265,12 +259,17 @@ def GenerateThumbnail(file_path, thumb_path, thumbnail_frame, width, height, mas
             rotate,
             openshot.SCALE_CROP,
         )
+    except RuntimeError:
+        # Any failure opening the reader (i.e. file missing or corrupt) use placeholder thumbnail
+        not_found_path = os.path.join(info.IMAGES_PATH, "NotFound@2x.png")
+        shutil.copyfile(not_found_path, thumb_path)
+        log.warning(f"Failed to generate thumbnail for missing file: {file_path}")
     finally:
-        try:
-            reader.Close()
-        except Exception:
-            pass
-        clip.Close()
+        if reader:
+            try:
+                reader.Close()
+            except Exception:
+                pass
 
 
 def ThumbnailCacheIsStale(thumb_path):
