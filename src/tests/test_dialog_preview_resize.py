@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from PyQt5.QtCore import QRect, QSize
 from PyQt5.QtWidgets import QApplication
+import openshot
 
 
 PATH = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -113,6 +114,22 @@ class DialogPreviewResizeTests(unittest.TestCase):
 
         self.assertEqual(size, QSize(900, 500))
 
+    def test_cutting_target_preview_max_size_uses_project_floor_for_single_image_media(self):
+        fake = types.SimpleNamespace(
+            videoPreview=DummyVideoPreview(QRect(0, 0, 900, 500)),
+            devicePixelRatioF=lambda: 1.0,
+            width=64,
+            height=64,
+            reader_data={"media_type": "image"},
+            file=types.SimpleNamespace(data={"media_type": "image"}),
+        )
+        fake_app = types.SimpleNamespace(project=types.SimpleNamespace(get=lambda key: {"width": 1920, "height": 1080}.get(key, 0)))
+
+        with patch("windows.cutting.get_app", return_value=fake_app):
+            size = Cutting._target_preview_max_size(fake)
+
+        self.assertEqual(size, QSize(900, 500))
+
     def test_cutting_apply_dynamic_preview_max_size_refreshes_when_size_changes(self):
         calls = []
         timeline = types.SimpleNamespace(
@@ -136,6 +153,38 @@ class DialogPreviewResizeTests(unittest.TestCase):
         self.assertEqual(fake.PauseSignal.calls, 1)
         self.assertEqual(fake.refreshFrameSignal.calls, 1)
         self.assertEqual(calls, [("set", 640, 360), ("clear", True)])
+
+    def test_cutting_apply_dynamic_preview_max_size_resumes_playback_when_was_playing(self):
+        calls = []
+        timeline = types.SimpleNamespace(
+            preview_width=320,
+            preview_height=180,
+            SetMaxSize=lambda w, h: calls.append(("set", w, h)),
+            ClearAllCache=lambda deep: calls.append(("clear", deep)),
+        )
+        player = types.SimpleNamespace(
+            Mode=lambda: openshot.PLAYBACK_PLAY,
+            Speed=lambda: 1.0,
+        )
+        fake = types.SimpleNamespace(
+            initialized=True,
+            r=timeline,
+            preview_thread=types.SimpleNamespace(player=player),
+            _target_preview_max_size=lambda: QSize(640, 360),
+            _select_reader_data_for_size=lambda size: {"path": "/source.mp4"},
+            reader_data={"path": "/source.mp4"},
+            PauseSignal=DummySignal(),
+            refreshFrameSignal=DummySignal(),
+        )
+        play_calls = []
+        fake.btnPlay_clicked = lambda force=None: play_calls.append(force)
+
+        with patch("windows.cutting.QTimer.singleShot", side_effect=lambda delay, fn: fn()):
+            Cutting._apply_dynamic_preview_max_size(fake)
+
+        self.assertEqual(fake.PauseSignal.calls, 1)
+        self.assertEqual(fake.refreshFrameSignal.calls, 1)
+        self.assertEqual(play_calls, ["play"])
 
     def test_cutting_build_preview_timeline_uses_source_dimensions(self):
         timeline_args = []
@@ -202,6 +251,78 @@ class DialogPreviewResizeTests(unittest.TestCase):
 
         self.assertEqual(timeline_args[0][0:2], (3840, 2160))
         self.assertEqual(timeline_setmax, [(640, 360)])
+
+    def test_cutting_build_preview_timeline_uses_project_floor_for_single_image_media(self):
+        timeline_args = []
+        clip_payloads = []
+
+        class FakeTimeline:
+            def __init__(self, width, height, fps, sample_rate, channels, channel_layout):
+                timeline_args.append((width, height, fps, sample_rate, channels, channel_layout))
+                self.info = types.SimpleNamespace()
+
+            def SetMaxSize(self, width, height):
+                self.max_size = (width, height)
+
+            def AddClip(self, clip):
+                self.clip = clip
+
+            def Open(self):
+                pass
+
+        class FakeClipReaderInfo:
+            has_video = True
+            has_audio = False
+
+        class FakeClipReader:
+            info = FakeClipReaderInfo()
+
+        class FakeClip:
+            def __init__(self, path):
+                self.path = path
+                self.reader = FakeClipReader()
+                self.display = None
+
+            def SetJson(self, payload):
+                clip_payloads.append(payload)
+                self.payload = payload
+
+            def Start(self, value):
+                self.start = value
+
+            def End(self, value):
+                self.end = value
+
+            def Reader(self):
+                return self.reader
+
+        fake = types.SimpleNamespace(
+            width=64,
+            height=64,
+            fps_num=30,
+            fps_den=1,
+            sample_rate=48000,
+            channels=2,
+            channel_layout=3,
+            file=types.SimpleNamespace(
+                absolute_path=lambda: "/emoji.svg",
+                data={"start": 0.0, "duration": 5.0, "media_type": "image"},
+            ),
+            video_length=150,
+            source_reader_data={"path": "/emoji.svg", "media_type": "image"},
+            proxy_reader_data={"path": ""},
+        )
+        fake_app = types.SimpleNamespace(project=types.SimpleNamespace(get=lambda key: {"width": 1920, "height": 1080}.get(key, 0)))
+
+        with patch("windows.cutting.openshot.Timeline", FakeTimeline), \
+             patch("windows.cutting.openshot.Clip", FakeClip), \
+             patch("windows.cutting.openshot.Fraction", side_effect=lambda num, den: (num, den)), \
+             patch("windows.cutting.openshot.FRAME_DISPLAY_CLIP", 7), \
+             patch("windows.cutting.get_app", return_value=fake_app):
+            Cutting._build_preview_timeline(fake, {"path": "/emoji.svg", "media_type": "image"}, QSize(640, 360))
+
+        self.assertEqual(timeline_args[0][0:2], (1920, 1080))
+        self.assertEqual(clip_payloads, [])
 
 
 if __name__ == "__main__":

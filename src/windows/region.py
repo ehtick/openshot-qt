@@ -37,6 +37,7 @@ import openshot  # Python module for libopenshot (required video editing module 
 
 from classes import info, ui_util, time_parts, qt_types, updates
 from classes.app import get_app
+from classes.clip_utils import is_single_image_media
 from classes.logger import log
 from classes.metrics import *
 from classes.proxy_service import dialog_preview_reader_data
@@ -245,12 +246,14 @@ class SelectRegion(QDialog):
         self.file = file
         self.reader_data = dialog_preview_reader_data(file) if file else {}
         self.file_path = str(self.reader_data.get("path") or "")
+        is_single_image = bool(is_single_image_media(self.reader_data) or is_single_image_media(getattr(file, "data", {})))
 
         # Create region clip with Reader
         if clip:
             if self.file_path:
                 self.clip = openshot.Clip(self.file_path)
-                self.clip.SetJson(json.dumps({"reader": self.reader_data}))
+                if not is_single_image:
+                    self.clip.SetJson(json.dumps({"reader": self.reader_data}))
             else:
                 self.clip = openshot.Clip(clip.Reader())
             self.clip.Open()
@@ -265,7 +268,7 @@ class SelectRegion(QDialog):
                 else:
                     source_path = str(getattr(file, "data", {}).get("path", ""))
             self.clip = openshot.Clip(source_path)
-            if self.reader_data:
+            if self.reader_data and not is_single_image:
                 self.clip.SetJson(json.dumps({"reader": self.reader_data}))
             self.clip.Open()
         self.clip.Id(get_app().project.generate_id())
@@ -417,6 +420,12 @@ class SelectRegion(QDialog):
 
         source_width = int(getattr(self, "width", 0) or 0)
         source_height = int(getattr(self, "height", 0) or 0)
+        file_data = getattr(getattr(self, "file", None), "data", {})
+        if is_single_image_media(getattr(self, "reader_data", {})) or is_single_image_media(file_data):
+            project = getattr(get_app(), "project", None)
+            if project:
+                source_width = max(source_width, int(project.get("width") or 0))
+                source_height = max(source_height, int(project.get("height") or 0))
         if source_width > 0 and source_height > 0:
             source_size = QSize(source_width, source_height)
             if requested.width() > source_width or requested.height() > source_height:

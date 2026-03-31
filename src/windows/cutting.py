@@ -37,6 +37,7 @@ import openshot  # Python module for libopenshot (required video editing module 
 
 from classes import info, ui_util, time_parts
 from classes.app import get_app
+from classes.clip_utils import is_single_image_media
 from classes.logger import log
 from classes.metrics import track_metric_screen
 from classes.proxy_service import dialog_preview_reader_data
@@ -244,6 +245,12 @@ class Cutting(QDialog):
 
         source_width = int(getattr(self, "width", 0) or 0)
         source_height = int(getattr(self, "height", 0) or 0)
+        file_data = getattr(getattr(self, "file", None), "data", {})
+        if is_single_image_media(getattr(self, "reader_data", {})) or is_single_image_media(file_data):
+            project = getattr(get_app(), "project", None)
+            if project:
+                source_width = max(source_width, int(project.get("width") or 0))
+                source_height = max(source_height, int(project.get("height") or 0))
         if source_width > 0 and source_height > 0:
             source_size = QSize(source_width, source_height)
             if requested.width() > source_width or requested.height() > source_height:
@@ -279,6 +286,7 @@ class Cutting(QDialog):
     def _build_preview_timeline(self, reader_data, max_size):
         self.reader_data = reader_data
         self.file_path = str(reader_data.get("path") or self.file.absolute_path() or "")
+        is_single_image = bool(is_single_image_media(reader_data) or is_single_image_media(getattr(self.file, "data", {})))
         source_path = str(getattr(self.source_reader_data, "get", lambda *_: "")("path") or "")
         proxy_path = str(getattr(self.proxy_reader_data, "get", lambda *_: "")("path") or "")
         if self.file_path and self.file_path == proxy_path and proxy_path != source_path:
@@ -293,9 +301,17 @@ class Cutting(QDialog):
             int(reader_data.get("height", 0) or 0),
         )
 
+        base_width = max(2, int(getattr(self, "width", 0) or max_size.width() or 2))
+        base_height = max(2, int(getattr(self, "height", 0) or max_size.height() or 2))
+        if is_single_image:
+            project = getattr(get_app(), "project", None)
+            if project:
+                base_width = max(base_width, int(project.get("width") or 0))
+                base_height = max(base_height, int(project.get("height") or 0))
+
         self.r = openshot.Timeline(
-            max(2, int(getattr(self, "width", 0) or max_size.width() or 2)),
-            max(2, int(getattr(self, "height", 0) or max_size.height() or 2)),
+            base_width,
+            base_height,
             openshot.Fraction(self.fps_num, self.fps_den),
             self.sample_rate,
             self.channels,
@@ -304,7 +320,8 @@ class Cutting(QDialog):
         self.r.SetMaxSize(max_size.width(), max_size.height())
 
         self.clip = openshot.Clip(self.file_path)
-        self.clip.SetJson(json.dumps({"reader": self.reader_data}))
+        if not is_single_image:
+            self.clip.SetJson(json.dumps({"reader": self.reader_data}))
         self.clip.Start(self.file.data.get("start", 0.0))
         self.clip.End(self.file.data.get("end", self.file.data.get("duration", 0.0)))
 
@@ -322,6 +339,15 @@ class Cutting(QDialog):
         old_preview_parent = getattr(self, "preview_parent", None)
         old_timeline = getattr(self, "r", None)
         old_clip = getattr(self, "clip", None)
+        was_playing = False
+        try:
+            was_playing = (
+                getattr(self, "preview_thread", None) is not None
+                and self.preview_thread.player.Mode() == openshot.PLAYBACK_PLAY
+                and self.preview_thread.player.Speed() != 0.0
+            )
+        except Exception:
+            was_playing = False
 
         self.initialized = False
         if old_preview_parent:
@@ -337,6 +363,8 @@ class Cutting(QDialog):
         self.preview_thread = self.preview_parent.worker
         self.initialized = True
         self.LoadTimelineAndSeekSignal.emit(current_frame)
+        if was_playing:
+            QTimer.singleShot(0, lambda: self.btnPlay_clicked(force="play"))
 
         if old_timeline:
             try:
@@ -366,10 +394,22 @@ class Cutting(QDialog):
         if previous_width == new_size.width() and previous_height == new_size.height():
             return
 
+        was_playing = False
+        try:
+            was_playing = (
+                getattr(self, "preview_thread", None) is not None
+                and self.preview_thread.player.Mode() == openshot.PLAYBACK_PLAY
+                and self.preview_thread.player.Speed() != 0.0
+            )
+        except Exception:
+            was_playing = False
+
         self.PauseSignal.emit()
         self.r.SetMaxSize(new_size.width(), new_size.height())
         self.r.ClearAllCache(True)
         self.refreshFrameSignal.emit()
+        if was_playing:
+            QTimer.singleShot(0, lambda: self.btnPlay_clicked(force="play"))
 
     def eventFilter(self, obj, event):
         if event.type() == event.KeyPress and obj is self.txtName:
