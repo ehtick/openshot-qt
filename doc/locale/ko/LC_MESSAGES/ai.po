@@ -176,8 +176,8 @@ msgid ""
 "Start ComfyUI, then open :guilabel:`Edit->Preferences->Advanced` and set :"
 "guilabel:`ComfyUI URL`."
 msgstr ""
-"ComfyUI를 시작한 다음 :guilabel:`Edit->Preferences->Advanced`를 열고 :"
-"guilabel:`ComfyUI URL`을 설정하세요."
+"ComfyUI를 시작한 다음 :guilabel:`Edit->Preferences->Advanced` 를 열고 :"
+"guilabel:`ComfyUI URL` 을 설정하세요."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:64
@@ -194,7 +194,7 @@ msgid ""
 msgstr ""
 "전체 단계별 서버 설정 가이드는 OpenShot 위키의 `ComfyUI: Advanced AI Setup "
 "Guide <https://github.com/OpenShot/openshot-qt/wiki/ComfyUI:-Advanced-AI-"
-"Setup-Guide>`_를 참조하세요."
+"Setup-Guide>`_ 를 참조하세요."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:69
@@ -454,8 +454,8 @@ msgid ""
 "OpenShot reads built-in templates from ``comfyui/``. It also loads custom "
 "user templates from ``~/.openshot_qt/comfyui/``."
 msgstr ""
-"OpenShot은 ``comfyui/``에서 내장 템플릿을 읽습니다. 또한 ``~/.openshot_qt/"
-"comfyui/``에서 사용자 정의 사용자 템플릿을 로드합니다."
+"OpenShot은 ``comfyui/`` 에서 내장 템플릿을 읽습니다. 또한 ``~/.openshot_qt/"
+"comfyui/`` 에서 사용자 정의 사용자 템플릿을 로드합니다."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:144
@@ -837,7 +837,7 @@ msgid ""
 "with the progress bar and choosing :guilabel:`Cancel Job`."
 msgstr ""
 "진행률 표시줄이 있는 생성된 프로젝트 파일을 마우스 오른쪽 버튼으로 클릭하고 :"
-"guilabel:`작업 취소`를 선택하여 활성 작업을 취소할 수 있습니다."
+"guilabel:`작업 취소` 를 선택하여 활성 작업을 취소할 수 있습니다."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:266
@@ -856,8 +856,8 @@ msgid ""
 "Each subsection describes why you might use it, how to run it, and key "
 "details."
 msgstr ""
-"아래 섹션은 ``comfyui/``에 내장된 JSON 템플릿에 직접 매핑됩니다. 각 하위 섹션"
-"에는 이를 사용하는 이유, 실행 방법 및 주요 세부 정보가 설명되어 있습니다."
+"아래 섹션은 ``comfyui/`` 에 내장된 JSON 템플릿에 직접 매핑됩니다. 각 하위 섹"
+"션에는 이를 사용하는 이유, 실행 방법 및 주요 세부 정보가 설명되어 있습니다."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:275
@@ -889,8 +889,8 @@ msgid ""
 "Details: Uses ``comfyui/txt2img-basic.json`` with ``sd_xl_base_1.0."
 "safetensors``."
 msgstr ""
-"세부 정보: ``sd_xl_base_1.0.safetensors``와 함께 ``comfyui/txt2img-basic."
-"json``을 사용합니다."
+"세부 정보: ``sd_xl_base_1.0.safetensors`` 와 함께 ``comfyui/txt2img-basic."
+"json`` 을 사용합니다."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:285
@@ -917,7 +917,7 @@ msgid ""
 "Details: Uses ``comfyui/txt2video-svd.json`` with WAN video generation "
 "models."
 msgstr ""
-"세부 정보: WAN 비디오 생성 모델과 함께 ``comfyui/txt2video-svd.json``을 사용"
+"세부 정보: WAN 비디오 생성 모델과 함께 ``comfyui/txt2video-svd.json`` 을 사용"
 "합니다."
 
 # Translated with gpt-4.1-mini
@@ -946,7 +946,7 @@ msgid ""
 "models."
 msgstr ""
 "세부 정보: Stable Audio Open 모델과 함께 ``comfyui/txt2audio-stable-open."
-"json``을 사용합니다."
+"json`` 을 사용합니다."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:299
@@ -974,7 +974,7 @@ msgid ""
 "checkpoint."
 msgstr ""
 "세부 정보: Ace-Step 1.5 체크포인트와 함께 ``comfyui/txt2music-ace-step.json``"
-"을 사용합니다."
+" 을 사용합니다."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:306
@@ -1006,8 +1006,8 @@ msgid ""
 "Details: Uses ``comfyui/img2img-basic.json`` with ``sd_xl_base_1.0."
 "safetensors``."
 msgstr ""
-"세부 정보: ``sd_xl_base_1.0.safetensors``와 함께 ``comfyui/img2img-basic."
-"json``을 사용합니다."
+"세부 정보: ``sd_xl_base_1.0.safetensors`` 와 함께 ``comfyui/img2img-basic."
+"json`` 을 사용합니다."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:316
@@ -1026,7 +1026,7 @@ msgid ""
 "`Depth` on an image, then generate."
 msgstr ""
 "방법: 이미지에서 :guilabel:`Enhance with AI` -> :guilabel:`Extract` -> :"
-"guilabel:`Depth`를 선택한 후 생성하세요."
+"guilabel:`Depth` 를 선택한 후 생성하세요."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:320
@@ -1034,8 +1034,8 @@ msgid ""
 "Details: Uses ``comfyui/image-extract-depth.json`` with "
 "``DepthAnythingV2Preprocessor``."
 msgstr ""
-"세부사항: ``DepthAnythingV2Preprocessor``가 포함된 ``comfyui/image-extract-"
-"depth.json``을 사용합니다."
+"세부사항: ``DepthAnythingV2Preprocessor`` 가 포함된 ``comfyui/image-extract-"
+"depth.json`` 을 사용합니다."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:323
@@ -1054,7 +1054,7 @@ msgid ""
 "`Lines` on an image, then generate."
 msgstr ""
 "방법: 이미지에서 :guilabel:`Enhance with AI` -> :guilabel:`Extract` -> :"
-"guilabel:`Lines`를 선택한 후 생성하세요."
+"guilabel:`Lines` 를 선택한 후 생성하세요."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:327
@@ -1062,8 +1062,8 @@ msgid ""
 "Details: Uses ``comfyui/image-extract-lines.json`` with "
 "``LineArtPreprocessor``."
 msgstr ""
-"세부사항: ``LineArtPreprocessor``가 포함된 ``comfyui/image-extract-lines."
-"json``을 사용합니다."
+"세부사항: ``LineArtPreprocessor`` 가 포함된 ``comfyui/image-extract-lines."
+"json`` 을 사용합니다."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:330
@@ -1090,7 +1090,7 @@ msgid ""
 "Details: Uses ``comfyui/img2video-wan.json`` with WAN 2.2 image-to-video "
 "models."
 msgstr ""
-"세부사항: WAN 2.2 이미지-비디오 모델과 함께 ``comfyui/img2video-wan.json``을 "
+"세부사항: WAN 2.2 이미지-비디오 모델과 함께 ``comfyui/img2video-wan.json`` 을 "
 "사용합니다."
 
 # Translated with gpt-4.1-mini
@@ -1125,7 +1125,7 @@ msgstr ""
 "``DepthAnythingV2Preprocessor`` 깊이 및 Canny 에지 제어, 그리고 "
 "``wan2.1_vace_1.3B_fp16.safetensors``, ``wan_2.1_vae.safetensors``, "
 "``umt5_xxl_fp8_e4m3fn_scaled.safetensors`` 모델을 포함한 ``comfyui/"
-"video2video-basic.json``을 사용합니다."
+"video2video-basic.json`` 을 사용합니다."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:344
@@ -1144,7 +1144,7 @@ msgid ""
 "`Depth` on a video, then generate."
 msgstr ""
 "방법: 비디오에서 :guilabel:`Enhance with AI` -> :guilabel:`Extract` -> :"
-"guilabel:`Depth`를 선택한 후 생성하세요."
+"guilabel:`Depth` 를 선택한 후 생성하세요."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:348
@@ -1152,8 +1152,8 @@ msgid ""
 "Details: Uses ``comfyui/video-extract-depth.json`` with "
 "``DepthAnythingV2Preprocessor`` and preserves the source frame rate."
 msgstr ""
-"세부사항: ``DepthAnythingV2Preprocessor``가 포함된 ``comfyui/video-extract-"
-"depth.json``을 사용하며 원본 프레임 속도를 유지합니다."
+"세부사항: ``DepthAnythingV2Preprocessor`` 가 포함된 ``comfyui/video-extract-"
+"depth.json`` 을 사용하며 원본 프레임 속도를 유지합니다."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:351
@@ -1172,7 +1172,7 @@ msgid ""
 "`Lines` on a video, then generate."
 msgstr ""
 "방법: 비디오에서 :guilabel:`Enhance with AI` -> :guilabel:`Extract` -> :"
-"guilabel:`Lines`를 선택한 후 생성하세요."
+"guilabel:`Lines` 를 선택한 후 생성하세요."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:355
@@ -1180,8 +1180,8 @@ msgid ""
 "Details: Uses ``comfyui/video-extract-lines.json`` with "
 "``LineArtPreprocessor`` and preserves the source frame rate."
 msgstr ""
-"세부사항: ``LineArtPreprocessor``가 포함된 ``comfyui/video-extract-lines."
-"json``을 사용하며 원본 프레임 속도를 유지합니다."
+"세부사항: ``LineArtPreprocessor`` 가 포함된 ``comfyui/video-extract-lines."
+"json`` 을 사용하며 원본 프레임 속도를 유지합니다."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:358
@@ -1208,8 +1208,8 @@ msgid ""
 "Details: Uses ``comfyui/upscale-realesrgan-x4.json`` with "
 "``RealESRGAN_x4plus.safetensors``."
 msgstr ""
-"세부 정보: ``RealESRGAN_x4plus.safetensors``와 함께 ``comfyui/upscale-"
-"realesrgan-x4.json``을 사용합니다."
+"세부 정보: ``RealESRGAN_x4plus.safetensors`` 와 함께 ``comfyui/upscale-"
+"realesrgan-x4.json`` 을 사용합니다."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:365
@@ -1236,8 +1236,8 @@ msgid ""
 "Details: Uses ``comfyui/video-upscale-gan.json`` with ``RealESRGAN_x4plus."
 "safetensors``."
 msgstr ""
-"세부 정보: ``RealESRGAN_x4plus.safetensors``와 함께 ``comfyui/video-upscale-"
-"gan.json``을 사용합니다."
+"세부 정보: ``RealESRGAN_x4plus.safetensors`` 와 함께 ``comfyui/video-upscale-"
+"gan.json`` 을 사용합니다."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:372
@@ -1264,8 +1264,8 @@ msgid ""
 "Details: Uses ``comfyui/video-frame-interpolation-rife2x.json`` with "
 "``rife47.pth``."
 msgstr ""
-"세부 정보: ``rife47.pth``와 함께 ``comfyui/video-frame-interpolation-rife2x."
-"json``을 사용합니다."
+"세부 정보: ``rife47.pth`` 와 함께 ``comfyui/video-frame-interpolation-rife2x."
+"json`` 을 사용합니다."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:379
@@ -1293,7 +1293,7 @@ msgstr ""
 msgid ""
 "Details: Uses ``comfyui/video-segment-scenes-transnet.json`` with TransNetV2."
 msgstr ""
-"세부 정보: TransNetV2와 함께 ``comfyui/video-segment-scenes-transnet.json``"
+"세부 정보: TransNetV2와 함께 ``comfyui/video-segment-scenes-transnet.json`` "
 "을 사용합니다."
 
 # Translated with gpt-4.1-mini
@@ -1320,7 +1320,7 @@ msgstr ""
 msgid ""
 "Details: Uses ``comfyui/video-whisper-srt.json`` and creates SRT output."
 msgstr ""
-"세부 정보: ``comfyui/video-whisper-srt.json``을 사용하고 SRT 출력을 생성합니"
+"세부 정보: ``comfyui/video-whisper-srt.json`` 을 사용하고 SRT 출력을 생성합니"
 "다."
 
 # Translated with gpt-4.1-mini
@@ -1358,7 +1358,7 @@ msgid ""
 "Details: Uses ``comfyui/image-blur-anything-sam2.json`` with SAM2 image "
 "segmentation."
 msgstr ""
-"세부 정보: SAM2 이미지 분할과 함께 ``comfyui/image-blur-anything-sam2.json``"
+"세부 정보: SAM2 이미지 분할과 함께 ``comfyui/image-blur-anything-sam2.json`` "
 "을 사용합니다."
 
 # Translated with gpt-4.1-mini
@@ -1378,7 +1378,7 @@ msgid ""
 "segmentation."
 msgstr ""
 "세부 정보: SAM2 이미지 분할과 함께 ``comfyui/image-highlight-anything-sam2."
-"json``을 사용합니다."
+"json`` 을 사용합니다."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:413
@@ -1396,7 +1396,7 @@ msgid ""
 "Details: Uses ``comfyui/image-mask-anything-sam2.json`` with SAM2 image "
 "segmentation."
 msgstr ""
-"세부 정보: SAM2 이미지 분할과 함께 ``comfyui/image-mask-anything-sam2.json``"
+"세부 정보: SAM2 이미지 분할과 함께 ``comfyui/image-mask-anything-sam2.json`` "
 "을 사용합니다."
 
 # Translated with gpt-4.1-mini
@@ -1420,7 +1420,7 @@ msgid ""
 "Details: Uses ``comfyui/video-blur-anything-sam2.json`` with SAM2 video "
 "tracking."
 msgstr ""
-"세부 정보: SAM2 비디오 추적과 함께 ``comfyui/video-blur-anything-sam2.json``"
+"세부 정보: SAM2 비디오 추적과 함께 ``comfyui/video-blur-anything-sam2.json`` "
 "을 사용합니다."
 
 # Translated with gpt-4.1-mini
@@ -1440,7 +1440,7 @@ msgid ""
 "tracking."
 msgstr ""
 "세부 정보: SAM2 비디오 추적과 함께 ``comfyui/video-highlight-anything-sam2."
-"json``을 사용합니다."
+"json`` 을 사용합니다."
 
 # Translated with gpt-4.1-mini
 #: ../ai.rst:434
@@ -1458,7 +1458,7 @@ msgid ""
 "Details: Uses ``comfyui/video-mask-anything-sam2.json`` with SAM2 video "
 "tracking."
 msgstr ""
-"세부 정보: SAM2 비디오 추적과 함께 ``comfyui/video-mask-anything-sam2.json``"
+"세부 정보: SAM2 비디오 추적과 함께 ``comfyui/video-mask-anything-sam2.json`` "
 "을 사용합니다."
 
 # Translated with gpt-4.1-mini
