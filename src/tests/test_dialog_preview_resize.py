@@ -38,6 +38,8 @@ ensure_app_state(app, DummySettings, extra_attrs={"window": types.SimpleNamespac
 
 from windows.cutting import Cutting
 from windows.region import SelectRegion
+from windows.preview_thread import PlayerWorker
+from windows.video_widget import VideoWidget
 
 
 class DummySignal:
@@ -185,6 +187,50 @@ class DialogPreviewResizeTests(unittest.TestCase):
         self.assertEqual(fake.PauseSignal.calls, 1)
         self.assertEqual(fake.refreshFrameSignal.calls, 1)
         self.assertEqual(play_calls, ["play"])
+
+    def test_cutting_preview_ready_seeks_frame_one_without_preroll(self):
+        seek_calls = []
+        fake = types.SimpleNamespace(
+            is_preview_mode=True,
+            preview_thread=types.SimpleNamespace(Seek=lambda frame, start_preroll=True: seek_calls.append((frame, start_preroll))),
+            _preview_autoplay_active=False,
+            SeekSignal=DummySignal(),
+        )
+
+        Cutting._preview_ready(fake)
+
+        self.assertEqual(seek_calls, [(1, False)])
+
+    def test_player_worker_play_honors_pending_seek_preroll_flag(self):
+        applied = []
+        player = types.SimpleNamespace(Play=lambda: applied.append(("play",)))
+        worker = types.SimpleNamespace(
+            parent=types.SimpleNamespace(initialized=True),
+            player=player,
+            _take_pending_seek=lambda: (1, False),
+            _apply_seek=lambda frame, start_preroll: applied.append((frame, start_preroll)),
+        )
+
+        PlayerWorker.Play(worker)
+
+        self.assertEqual(applied, [(1, False), ("play",)])
+
+    def test_video_widget_resize_event_skips_pause_for_dialog_preview(self):
+        pause_calls = []
+        timer_calls = []
+        fake = types.SimpleNamespace(
+            delayed_size=None,
+            size=lambda: QSize(640, 360),
+            delayed_resize_timer=types.SimpleNamespace(start=lambda: timer_calls.append("start")),
+            watch_project=False,
+            win=types.SimpleNamespace(PauseSignal=types.SimpleNamespace(emit=lambda: pause_calls.append("pause"))),
+        )
+        event = types.SimpleNamespace(accept=lambda: None)
+
+        VideoWidget.resizeEvent(fake, event)
+
+        self.assertEqual(timer_calls, ["start"])
+        self.assertEqual(pause_calls, [])
 
     def test_cutting_build_preview_timeline_uses_source_dimensions(self):
         timeline_args = []

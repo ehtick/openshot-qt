@@ -509,8 +509,11 @@ class Cutting(QDialog):
     def _start_preview_autoplay(self):
         if not self._preview_autoplay_active or not self.is_preview_mode:
             return
+        if not getattr(self, "initialized", False):
+            QTimer.singleShot(120, lambda: Cutting._start_preview_autoplay(self))
+            return
         if not getattr(self, "preview_thread", None):
-            QTimer.singleShot(120, self._start_preview_autoplay)
+            QTimer.singleShot(120, lambda: Cutting._start_preview_autoplay(self))
             return
         if self._preview_autoplay_attempts >= 30:
             self._preview_autoplay_active = False
@@ -519,25 +522,17 @@ class Cutting(QDialog):
         self._preview_autoplay_attempts += 1
         self.btnPlay_clicked(force="play")
 
-        is_playing = False
-        try:
-            is_playing = (
-                self.preview_thread.player.Mode() == openshot.PLAYBACK_PLAY
-                and self.preview_thread.player.Speed() != 0.0
-            )
-        except Exception:
-            is_playing = False
-
-        if is_playing:
-            self._preview_autoplay_active = False
-            return
-
-        QTimer.singleShot(120, self._start_preview_autoplay)
+        QTimer.singleShot(120, lambda: Cutting._start_preview_autoplay(self))
 
     def _preview_ready(self):
         if not self.is_preview_mode:
             return
-        self.SeekSignal.emit(1)
+        if getattr(self, "preview_thread", None):
+            # Startup preview should show frame 1 immediately without waiting for
+            # preroll/cache work before the first autoplay attempt.
+            self.preview_thread.Seek(1, False)
+        else:
+            self.SeekSignal.emit(1)
         if self._preview_autoplay_active:
             QTimer.singleShot(0, self._start_preview_autoplay)
 
@@ -550,14 +545,14 @@ class Cutting(QDialog):
         if mode == play_mode and not self.btnPlay.isChecked():
             self.btnPlay.setChecked(True)
             ui_util.setup_icon(self, self.btnPlay, "actionPlay", "media-playback-pause")
+        if mode == play_mode and self._preview_autoplay_active and self._preview_autoplay_attempts > 0:
+            self._preview_autoplay_active = False
         elif mode in (paused_mode, stop_mode) and self.btnPlay.isChecked():
             self.btnPlay.setChecked(False)
             ui_util.setup_icon(self, self.btnPlay, "actionPlay", "media-playback-start")
 
         if not self.is_preview_mode or not self._preview_autoplay_active:
             return
-        if paused_mode is not None and mode == paused_mode:
-            QTimer.singleShot(0, self._start_preview_autoplay)
 
     def sliderVideo_valueChanged(self, new_frame):
         if self.preview_thread and not self.sliderIgnoreSignal:
