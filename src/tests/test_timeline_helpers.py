@@ -3234,6 +3234,70 @@ class TimelineHelperTests(unittest.TestCase):
 
         self.assertIn(("C1", 1), helper.clip_painter.thumb_cache)
 
+    def test_reset_drag_preview_invalidates_preview_clip_cache(self):
+        invalidated = []
+        helper = types.SimpleNamespace(
+            clip_painter=types.SimpleNamespace(
+                invalidate_clip_thumbnails=lambda clip_id: invalidated.append(clip_id)
+            ),
+            _drag_preview_items=[
+                {"type": "clip", "source_id": "F1"},
+                {"type": "clip", "model": types.SimpleNamespace(id="preview-clip-F2")},
+                {"type": "transition", "source_id": "T1"},
+            ],
+            _drag_payload={"type": "clip", "ids": ["F1"]},
+            item_ids=["preview-1"],
+            new_item=True,
+            item_type="clip",
+            drag_bbox=self.clip_paint_module.QRectF(1.0, 2.0, 3.0, 4.0),
+            _set_drag_preview_thumbnail_suspension=lambda enabled: None,
+            update=lambda: None,
+        )
+        helper._invalidate_drag_preview_cache = lambda: self.qwidget_base_module.TimelineWidgetBase._invalidate_drag_preview_cache(helper)
+
+        self.qwidget_base_module.TimelineWidgetBase._reset_drag_preview(helper)
+
+        self.assertEqual(invalidated, ["preview-clip-F1", "preview-clip-F2"])
+        self.assertEqual(helper._drag_preview_items, [])
+        self.assertEqual(helper._drag_payload, None)
+        self.assertEqual(helper.item_ids, [])
+        self.assertFalse(helper.new_item)
+        self.assertIsNone(helper.item_type)
+        self.assertTrue(helper.drag_bbox.isNull())
+
+    def test_thumbnail_updated_invalidates_only_qwidget_clip_cache(self):
+        invalidated = []
+        thumb_requests = []
+        updates = []
+        run_js_calls = []
+        clip = types.SimpleNamespace(id="C1", data={"file_id": "F1"})
+        helper = types.SimpleNamespace(
+            clip_painter=types.SimpleNamespace(
+                invalidate_clip_thumbnails=lambda clip_id: invalidated.append(clip_id)
+            ),
+            update=lambda: updates.append(True),
+            run_js=lambda code: run_js_calls.append(code),
+        )
+
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(self.timeline_module, "ViewClass", self.timeline_module.TimelineWidget))
+            stack.enter_context(patch.object(self.timeline_module.Clip, "filter", return_value=[clip]))
+            stack.enter_context(
+                patch.object(
+                    self.timeline_module,
+                    "GetThumbPath",
+                    side_effect=lambda file_id, frame, clear_cache=False: thumb_requests.append(
+                        (file_id, frame, clear_cache)
+                    ),
+                )
+            )
+            self.timeline_module.TimelineView.Thumbnail_Updated(helper, "C1", 1)
+
+        self.assertEqual(thumb_requests, [("F1", 1, True)])
+        self.assertEqual(invalidated, ["C1"])
+        self.assertEqual(updates, [True])
+        self.assertEqual(run_js_calls, [])
+
     def test_compute_clip_resize_timing_left_edge_allows_growth_past_timeline_zero(self):
         helper = self.make_qwidget_clip_helper()
         helper.enable_timing = True

@@ -1666,7 +1666,24 @@ class TimelineWidgetBase(QWidget):
         # set, so mark it dirty so the next repaint reflects the new state.
         self.geometry.mark_dirty()
 
+    def _invalidate_drag_preview_cache(self):
+        """Drop cached thumbnail/render state for transient drag preview clips."""
+        clip_painter = getattr(self, "clip_painter", None)
+        if not clip_painter:
+            return
+        for entry in self._drag_preview_items or []:
+            if not isinstance(entry, dict) or entry.get("type") != "clip":
+                continue
+            model = entry.get("model")
+            clip_id = str(getattr(model, "id", "") or "")
+            if not clip_id:
+                source_id = entry.get("source_id")
+                clip_id = f"preview-clip-{source_id}" if source_id is not None else ""
+            if clip_id:
+                clip_painter.invalidate_clip_thumbnails(clip_id)
+
     def _reset_drag_preview(self):
+        self._invalidate_drag_preview_cache()
         self._set_drag_preview_thumbnail_suspension(False)
         self._drag_preview_items = []
         self._drag_payload = None
@@ -1732,6 +1749,7 @@ class TimelineWidgetBase(QWidget):
         self._select_added_items(preview_type)
 
         self._update_project_duration()
+        self._invalidate_drag_preview_cache()
         self._drag_preview_items = []
         self._drag_payload = None
         self._set_drag_preview_thumbnail_suspension(False)
