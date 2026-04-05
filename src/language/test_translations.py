@@ -32,8 +32,8 @@ import shutil
 import os
 import re
 import fnmatch
+import subprocess
 import sys
-from subprocess import run
 from PyQt5.QtCore import QTranslator, QCoreApplication  # type: ignore
 from collections import Counter
 from typing import Any, Dict, List, Optional, Tuple
@@ -426,8 +426,15 @@ def process_doc_po(path: str) -> int:
         errors.append(f"{path}: path is outside trusted locale roots")
         return len(errors)
 
-    msgfmt = run(
-        [msgfmt_path, '--check', '--check-format', '--output-file=/dev/null', trusted_path],
+    msgfmt_args = [
+        msgfmt_path,
+        '--check',
+        '--check-format',
+        '--output-file=/dev/null',
+        trusted_path,
+    ]
+    msgfmt = subprocess.run(
+        msgfmt_args,
         capture_output=True,
         text=True,
         check=False,

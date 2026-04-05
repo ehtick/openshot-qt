@@ -3298,9 +3298,13 @@ class TimelineHelperTests(unittest.TestCase):
 
     def test_reset_drag_preview_invalidates_preview_clip_cache(self):
         invalidated = []
+
+        def invalidate_clip_thumbnails(clip_id):
+            invalidated.append(clip_id)
+
         helper = types.SimpleNamespace(
             clip_painter=types.SimpleNamespace(
-                invalidate_clip_thumbnails=lambda clip_id: invalidated.append(clip_id)
+                invalidate_clip_thumbnails=invalidate_clip_thumbnails
             ),
             _drag_preview_items=[
                 {"type": "clip", "source_id": "F1"},
@@ -3332,13 +3336,20 @@ class TimelineHelperTests(unittest.TestCase):
         thumb_requests = []
         updates = []
         run_js_calls = []
+
+        def invalidate_clip_thumbnails(clip_id):
+            invalidated.append(clip_id)
+
+        def run_js(code):
+            run_js_calls.append(code)
+
         clip = types.SimpleNamespace(id="C1", data={"file_id": "F1"})
         helper = types.SimpleNamespace(
             clip_painter=types.SimpleNamespace(
-                invalidate_clip_thumbnails=lambda clip_id: invalidated.append(clip_id)
+                invalidate_clip_thumbnails=invalidate_clip_thumbnails
             ),
             update=lambda: updates.append(True),
-            run_js=lambda code: run_js_calls.append(code),
+            run_js=run_js,
         )
 
         with ExitStack() as stack:
