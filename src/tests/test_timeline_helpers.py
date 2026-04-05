@@ -458,9 +458,14 @@ class TimelineHelperTests(unittest.TestCase):
         class TimerStub:
             def __init__(self):
                 self.started = 0
+                self.active = False
 
-            def start(self):
+            def start(self, *_args):
                 self.started += 1
+                self.active = True
+
+            def isActive(self):
+                return self.active
 
         class DeltaStub:
             def __init__(self, y=0.0, is_null=False):
@@ -524,7 +529,11 @@ class TimelineHelperTests(unittest.TestCase):
                 self._ctrl_zoom_step_pixels = 40.0
                 self._ctrl_zooming = False
                 self._zoom_playhead_anchor = None
+                self._pending_hscroll_delta = 0.0
+                self._pending_vscroll_delta = 0.0
                 self._pending_zoom_emit = None
+                self._hscroll_timer = TimerStub()
+                self._vscroll_timer = TimerStub()
                 self._zoom_emit_timer = TimerStub()
                 self.zoom_factor = 15.0
                 self.is_auto_center = False
@@ -534,6 +543,12 @@ class TimelineHelperTests(unittest.TestCase):
                 self.mouse_dragging = False
                 self.viewport_reset_calls = 0
                 self.update_calls = 0
+                self.scrollbar_position = [0.20, 0.60, 400.0, 100.0]
+                self.v_scrollbar_position = [0.0, 0.0, 0.0, 0.0]
+                self.h_scroll_offset = 80.0
+                self.scrollbar_updates = 0
+                self.timeline_scrolled = []
+                self.geometry = types.SimpleNamespace(mark_dirty=self._mark_dirty)
 
             def _reset_ctrl_mouse_zoom(self):
                 return qwidget_base_module.TimelineWidgetBase._reset_ctrl_mouse_zoom(self)
@@ -558,6 +573,12 @@ class TimelineHelperTests(unittest.TestCase):
 
             def _schedule_viewport_thumbnail_reset(self):
                 self.viewport_reset_calls += 1
+
+            def _update_scrollbar_handles(self):
+                self.scrollbar_updates += 1
+
+            def _mark_dirty(self):
+                self.geometry_marked_dirty = getattr(self, "geometry_marked_dirty", 0) + 1
 
             def update(self):
                 self.update_calls += 1
@@ -1975,6 +1996,38 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertFalse(helper.is_auto_center)
         self.assertEqual(helper._pending_zoom_emit, 12.0)
         self.assertEqual(helper._zoom_emit_timer.started, 1)
+
+    def test_qwidget_shift_wheel_scrolls_horizontally(self):
+        helper, _event_cls, wheel_event_cls = self.make_qwidget_ctrl_zoom_helper()
+        event = wheel_event_cls(-120.0, modifiers=Qt.ShiftModifier)
+        app = types.SimpleNamespace(
+            window=types.SimpleNamespace(
+                TimelineScrolled=types.SimpleNamespace(
+                    emit=lambda positions: helper.timeline_scrolled.append(list(positions))
+                )
+            )
+        )
+
+        with patch.object(self.qwidget_base_module, "get_app", return_value=app):
+            self.qwidget_base_module.TimelineWidgetBase.wheelEvent(helper, event)
+            helper._hscroll_timer.active = False
+            self.qwidget_base_module.TimelineWidgetBase._flush_pending_horizontal_scroll(helper)
+
+        self.assertTrue(event.accepted)
+        self.assertFalse(event.ignored)
+        self.assertEqual(helper._hscroll_timer.started, 1)
+        self.assertAlmostEqual(helper.scrollbar_position[0], 0.24)
+        self.assertAlmostEqual(helper.scrollbar_position[1], 0.64)
+        self.assertAlmostEqual(helper.h_scroll_offset, 96.0)
+        self.assertFalse(helper.is_auto_center)
+        self.assertEqual(helper.geometry_marked_dirty, 1)
+        self.assertEqual(helper.scrollbar_updates, 1)
+        self.assertEqual(helper.viewport_reset_calls, 1)
+        self.assertEqual(helper.update_calls, 1)
+        self.assertEqual(len(helper.timeline_scrolled), 1)
+        self.assertAlmostEqual(helper.timeline_scrolled[0][0], 0.24)
+        self.assertAlmostEqual(helper.timeline_scrolled[0][1], 0.64)
+        self.assertEqual(helper.timeline_scrolled[0][2:], [400.0, 100.0])
 
     def test_qwidget_set_zoom_factor_keeps_playhead_at_existing_viewport_ratio(self):
         helper = types.SimpleNamespace()
