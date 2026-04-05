@@ -42,7 +42,7 @@ if PATH not in sys.path:
     sys.path.append(PATH)
 
 from PyQt5.QtCore import QCoreApplication, QPointF, QRectF, Qt
-from PyQt5.QtGui import QColor
+from PyQt5.QtGui import QColor, QCursor
 from PyQt5.QtWidgets import QApplication
 from classes import info
 from classes.updates import UpdateAction
@@ -1803,6 +1803,15 @@ class TimelineHelperTests(unittest.TestCase):
 
         self.assertIs(helper.cursor_value, helper.cursors["razor"])
         self.assertFalse(helper.unset_cursor_called)
+
+    def test_qwidget_razor_cursor_hotspot_matches_web_alignment(self):
+        helper = types.SimpleNamespace()
+
+        cursor = self.qwidget_base_module.TimelineWidgetBase._load_razor_cursor(helper)
+
+        self.assertIsInstance(cursor, QCursor)
+        self.assertEqual(cursor.hotSpot().x(), 0)
+        self.assertEqual(cursor.hotSpot().y(), 2)
 
     def test_qwidget_cursor_keeps_hand_cursor_for_items_when_razor_disabled(self):
         helper = self.make_qwidget_cursor_helper()

@@ -731,7 +731,9 @@ class TimelineWidgetBase(QWidget):
         pixmap = QPixmap(asset_path)
         if pixmap.isNull():
             return QCursor(Qt.CrossCursor)
-        hot_x = min(max(pixmap.width() // 2, 0), max(0, pixmap.width() - 1))
+        # Match the web timeline hotspot, which uses the asset's top-left
+        # corner as the active cursor position.
+        hot_x = 0
         hot_y = min(2, max(0, pixmap.height() - 1))
         return QCursor(pixmap, hot_x, hot_y)
 
