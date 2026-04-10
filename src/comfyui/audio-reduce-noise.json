@@ -1,6 +1,6 @@
 {
   "template_id": "audio-reduce-noise",
-  "name": "Reduce Noise...",
+  "name": "Reduce Noise",
   "menu_category": "enhance",
   "menu_order": 5,
   "input_type": "audio",
