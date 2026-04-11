@@ -1315,6 +1315,19 @@ def _patch_enums_for_qt6():
                     except Exception:
                         pass
 
+    QFont = getattr(QtGui, "QFont", None)
+    if QFont:
+        weight_enum = getattr(QFont, "Weight", None)
+        if weight_enum:
+            for name, val in vars(weight_enum).items():
+                if name.startswith("_"):
+                    continue
+                if not hasattr(QFont, name):
+                    try:
+                        setattr(QFont, name, val)
+                    except Exception:
+                        pass
+
     QWebEngineSettings = None
     if QtWebEngineCore:
         QWebEngineSettings = getattr(QtWebEngineCore, "QWebEngineSettings", None)
