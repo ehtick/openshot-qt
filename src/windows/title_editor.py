@@ -41,10 +41,11 @@ import time
 from xml.dom import minidom
 
 from qt_api import Qt, pyqtSlot, QTimer, pyqtSignal, QRect, QPoint, QSize, QEvent
+from qt_api import get_font_dialog_selection
 from qt_api import QFontDatabase, QColor, QIcon, QFont, QFontInfo, QPixmap, QPainter
 from qt_api import (
     QWidget,
-    QMessageBox, QDialog, QColorDialog, QFontDialog,
+    QMessageBox, QDialog, QColorDialog,
     QPushButton, QLineEdit, QLabel, QDialogButtonBox
 )
 
@@ -650,7 +651,7 @@ class TitleEditor(QDialog):
         oldfont = self.qfont
 
         # Get font from user
-        font, ok = QFontDialog.getFont(oldfont, self, _("Change Font"))
+        font, ok = get_font_dialog_selection(oldfont, self, _("Change Font"))
 
         # Update SVG font
         if ok and font is not oldfont:

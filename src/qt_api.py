@@ -139,6 +139,23 @@ def clear_override_cursor():
         pass
 
 
+def get_font_dialog_selection(initial_font=None, parent=None, title=""):
+    """Return (font, accepted) from a font dialog across bindings."""
+    QFontDialog = getattr(QtWidgets, "QFontDialog", None)
+    if QFontDialog is None:
+        raise RuntimeError("QFontDialog is unavailable")
+
+    # PySide6 has been unreliable with the static getFont() overloads here.
+    # Use an instance dialog consistently across bindings.
+    dialog = QFontDialog(initial_font, parent) if initial_font is not None else QFontDialog(parent)
+    if title:
+        dialog.setWindowTitle(title)
+    exec_fn = getattr(dialog, "exec", None) or getattr(dialog, "exec_", None)
+    accepted = bool(exec_fn and exec_fn())
+    selected_font = dialog.selectedFont() if accepted else initial_font
+    return selected_font, accepted
+
+
 def make_filter_regex(pattern: str, case_insensitive: bool = True):
     """Create a cross-binding regex for QSortFilterProxyModel filters."""
     if QT_API in ("pyqt6", "pyside6") and QRegularExpression is not None:

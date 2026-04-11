@@ -33,6 +33,7 @@ import uuid
 
 from qt_api import Qt, QRectF, QLocale, pyqtSignal, pyqtSlot, QEvent, QPoint, QPointF
 from qt_api import isdeleted
+from qt_api import get_font_dialog_selection
 from qt_api import (
     QIcon, QColor, QBrush, QPen, QPalette, QPixmap,
     QPainter, QPainterPath, QLinearGradient, QFont, QFontInfo, QCursor,
@@ -40,7 +41,7 @@ from qt_api import (
 from qt_api import (
     QTableView, QAbstractItemView, QSizePolicy,
     QHeaderView, QItemDelegate, QStyle, QLabel,
-    QPushButton, QHBoxLayout, QFrame, QFontDialog
+    QPushButton, QHBoxLayout, QFrame
 )
 
 from classes.logger import log
@@ -613,7 +614,7 @@ class PropertiesTableView(QTableView):
                 # Get font from user
                 current_font_name = cur_property[1].get("memo", "sans")
                 current_font = QFont(current_font_name)
-                font, ok = QFontDialog.getFont(current_font, self.win, _("Change Font"))
+                font, ok = get_font_dialog_selection(current_font, self.win, _("Change Font"))
 
                 # Update font
                 if ok and font:
@@ -1003,7 +1004,7 @@ class PropertiesTableView(QTableView):
                 # Get font from user
                 current_font_name = cur_property[1].get("memo", "sans")
                 current_font = QFont(current_font_name)
-                font, ok = QFontDialog.getFont(current_font, self.win, _("Change Font"))
+                font, ok = get_font_dialog_selection(current_font, self.win, _("Change Font"))
 
                 # Update font
                 if ok and font:
