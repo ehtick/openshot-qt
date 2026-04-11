@@ -3374,7 +3374,7 @@ class TimelineWidgetBase(QWidget):
             placeholder = menu.addAction(message)
             placeholder.setEnabled(False)
 
-        global_pos = self.mapToGlobal(pos)
+        global_pos = self.mapToGlobal(pos.toPoint() if hasattr(pos, "toPoint") else pos)
         menu.exec_(global_pos)
         return bool(menu.actions())
 
