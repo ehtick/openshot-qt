@@ -650,7 +650,7 @@ class TitleEditor(QDialog):
         oldfont = self.qfont
 
         # Get font from user
-        font, ok = QFontDialog.getFont(oldfont, caption=("Change Font"))
+        font, ok = QFontDialog.getFont(oldfont, self, _("Change Font"))
 
         # Update SVG font
         if ok and font is not oldfont:

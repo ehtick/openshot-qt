@@ -74,7 +74,6 @@ class CreditsModel():
         self.model.setHorizontalHeaderLabels(["", "", _("Name"), _("Email"), _("Website")])
 
         for person in self.credits_list:
-            log.debug("Processing details for %s", person)
 
             # Remove any person string keys that explicitly contain a value of None
             for field in ["name", "email", "website"]:

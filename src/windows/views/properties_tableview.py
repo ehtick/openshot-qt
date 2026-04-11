@@ -613,7 +613,7 @@ class PropertiesTableView(QTableView):
                 # Get font from user
                 current_font_name = cur_property[1].get("memo", "sans")
                 current_font = QFont(current_font_name)
-                font, ok = QFontDialog.getFont(current_font, caption=("Change Font"))
+                font, ok = QFontDialog.getFont(current_font, self.win, _("Change Font"))
 
                 # Update font
                 if ok and font:
@@ -1003,7 +1003,7 @@ class PropertiesTableView(QTableView):
                 # Get font from user
                 current_font_name = cur_property[1].get("memo", "sans")
                 current_font = QFont(current_font_name)
-                font, ok = QFontDialog.getFont(current_font, caption=("Change Font"))
+                font, ok = QFontDialog.getFont(current_font, self.win, _("Change Font"))
 
                 # Update font
                 if ok and font:
