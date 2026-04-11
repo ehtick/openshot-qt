@@ -1302,6 +1302,19 @@ def _patch_enums_for_qt6():
         except Exception:
             pass
 
+    QStyle = getattr(QtWidgets, "QStyle", None)
+    if QStyle:
+        sub_element = getattr(QStyle, "SubElement", None)
+        if sub_element:
+            for name, val in vars(sub_element).items():
+                if name.startswith("_"):
+                    continue
+                if not hasattr(QStyle, name):
+                    try:
+                        setattr(QStyle, name, val)
+                    except Exception:
+                        pass
+
     QWebEngineSettings = None
     if QtWebEngineCore:
         QWebEngineSettings = getattr(QtWebEngineCore, "QWebEngineSettings", None)

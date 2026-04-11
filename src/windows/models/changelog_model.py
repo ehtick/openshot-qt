@@ -27,6 +27,7 @@
 
 from qt_api import Qt, QSortFilterProxyModel, QItemSelectionModel
 from qt_api import QStandardItemModel, QStandardItem
+from qt_api import get_proxy_filter_regex, regex_is_empty, regex_matches
 
 from classes.logger import log
 from classes.app import get_app
@@ -41,11 +42,12 @@ class ChangelogFilterProxyModel(QSortFilterProxyModel):
     """Proxy class used for sorting and filtering changelog entries"""
 
     def filterAcceptsRow(self, sourceRow, sourceParent):
-        if not self.filterRegExp().isEmpty():
+        regex = get_proxy_filter_regex(self)
+        if not regex_is_empty(regex):
             model = self.sourceModel()
             for column in range(4):
                 index = model.index(sourceRow, column, sourceParent)
-                if self.filterRegExp().indexIn(str(model.data(index))) >= 0:
+                if regex_matches(regex, str(model.data(index))):
                     return True
             return False
         return True
