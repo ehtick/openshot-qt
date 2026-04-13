@@ -32,7 +32,7 @@ import uuid
 
 from qt_api import (
     Qt, QCoreApplication, QMutex, QTimer,
-    pyqtSignal, QPoint, QPointF, QSize, QSizeF, QRect, QRectF, QLineF,
+    pyqtSignal, pyqtSlot, QPoint, QPointF, QSize, QSizeF, QRect, QRectF, QLineF,
 )
 from qt_api import QT_API
 from qt_api import modifiers_has
@@ -769,6 +769,7 @@ class VideoWidget(QWidget, updates.UpdateInterface):
         # Always round up to next whole integer value
         return viewport_rect.toAlignedRect()
 
+    @pyqtSlot(QImage)
     def present(self, image, *args):
         """ Present the current frame """
 

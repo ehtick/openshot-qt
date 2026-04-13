@@ -31,7 +31,7 @@ import math
 
 from qt_api import QObject, QThread, QTimer, pyqtSlot, pyqtSignal, QCoreApplication
 from qt_api import QMessageBox
-from qt_api import unwrapinstance, wrapinstance
+from qt_api import unwrapinstance, wrapinstance, _is_android_runtime
 import openshot  # Python module for libopenshot (required video editing module installed separately)
 
 from classes.app import get_app
@@ -339,9 +339,17 @@ class PlayerWorker(QObject):
 
         # Get the address of the player's renderer (a QObject that emits signals when frames are ready)
         self.renderer_address = self.player.GetRendererQObject()
-        self.player.SetQWidget(unwrapinstance(self.videoPreview))
-        self.renderer = wrapinstance(self.renderer_address, QObject)
-        self.videoPreview.connectSignals(self.renderer)
+        self.renderer = None
+
+        if _is_android_runtime():
+            # Pass widget directly; C++ delivers frames via QMetaObject::invokeMethod.
+            self.player.SetQWidget(self.videoPreview)
+        else:
+            # Pass raw pointer; connect C++ present() signal to Python slot.
+            self.player.SetQWidget(unwrapinstance(self.videoPreview))
+            self.renderer = wrapinstance(self.renderer_address, QObject)
+            if self.renderer is not None:
+                self.videoPreview.connectSignals(self.renderer)
 
     def kill(self):
         """ Kill this thread """
