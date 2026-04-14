@@ -137,7 +137,7 @@ class Preferences(QDialog):
 
         self._apply_tab_order()
 
-    def txtSearch_changed(self):
+    def txtSearch_changed(self, *_args):
         """textChanged event handler for search box"""
         log.info("Search for %s", self.txtSearch.text())
 

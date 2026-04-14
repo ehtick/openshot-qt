@@ -410,7 +410,7 @@ class Export(QDialog):
         self.progressExportVideo.setFormat(percentage_string)
         self.setWindowTitle("%s %s" % (percentage_string, title_message))
 
-    def updateChannels(self):
+    def updateChannels(self, *_args):
         """Update the # of channels to match the channel layout"""
         log.info("updateChannels")
         channels = self.txtChannels.value()
@@ -430,8 +430,14 @@ class Export(QDialog):
         # Update channels to match layout
         self.txtChannels.setValue(channels)
 
-    def updateFrameRate(self, set_limits=True):
+    def updateFrameRate(self, set_limits=True, *_args):
         """Callback for changing the frame rate"""
+        # Qt change signals may pass the new value/index. Treat those as
+        # signal payloads, not as the internal set_limits flag.
+        if not isinstance(set_limits, bool):
+            _args = (set_limits,) + _args
+            set_limits = True
+
         self.update_frame_rate_display()
 
         # Adjust the main timeline reader
