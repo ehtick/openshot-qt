@@ -112,7 +112,7 @@ def _resolve_live_owner(owner):
         if not isdeleted(owner):
             return owner
     except Exception:
-        pass
+        return get_app().window
     return get_app().window
 
 

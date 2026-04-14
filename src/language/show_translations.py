@@ -33,12 +33,12 @@ import fnmatch
 import sys
 
 try:
-    from PyQt6.QtCore import QCoreApplication, QLibraryInfo, QLocale, QTranslator  # type: ignore
+    from PyQt6.QtCore import QCoreApplication, QLocale, QTranslator  # type: ignore
 except ImportError:
     try:
-        from PySide6.QtCore import QCoreApplication, QLibraryInfo, QLocale, QTranslator  # type: ignore
+        from PySide6.QtCore import QCoreApplication, QLocale, QTranslator  # type: ignore
     except ImportError:
-        from PyQt5.QtCore import QCoreApplication, QLibraryInfo, QLocale, QTranslator  # type: ignore
+        from PyQt5.QtCore import QCoreApplication, QLocale, QTranslator  # type: ignore
 
 
 # Get the absolute path of this project

@@ -249,7 +249,7 @@ class DialogPreviewResizeTests(unittest.TestCase):
         )
         fake_app = types.SimpleNamespace(
             _tr=lambda text: text,
-            get_settings=lambda: DummySettings(),
+            get_settings=DummySettings,
             updates=fake_updates,
             window=fake_window,
         )

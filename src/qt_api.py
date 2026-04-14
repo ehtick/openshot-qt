@@ -259,8 +259,8 @@ class _AndroidFilePicker:
                     return
                 try:
                     picker._mActivity.unregisterActivityResultListener(self)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("qt_api: failed to unregister storage permission listener: %s", exc, exc_info=True)
                 picker._perm_listener = None
                 # Open the picker regardless — user may have granted or denied
                 picker._launch_picker()
@@ -2510,7 +2510,7 @@ def ensure_binding():
 
 def __getattr__(name):
     """Lazy attribute forwarding so `from qt_api import QIcon` works."""
-    global QByteArray, QDir, QLibraryInfo, QSignalTransition, QState, QStateMachine
+    global QSignalTransition, QState, QStateMachine
     if QT_API is None:
         _select_binding()
     # Expose common QtCore symbols directly

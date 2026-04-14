@@ -239,7 +239,7 @@ class TitleEditor(QDialog):
         """Display pixmap of SVG on UI thread"""
         self.lblPreviewLabel.setPixmap(display_pixmap)
 
-    def txtLine_changed(self, txtWidget):
+    def txtLine_changed(self, txtWidget, *_args):
 
         # Loop through child widgets (and remove them)
         text_list = []
