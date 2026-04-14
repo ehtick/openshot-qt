@@ -28,6 +28,7 @@
 import html
 import os
 import re
+import urllib.parse
 
 from classes import info
 from classes.app import get_app
@@ -141,18 +142,33 @@ def normalize_path(path_value):
     return path_value.replace("\\", "/")
 
 
+def _is_uri(path_value) -> bool:
+    """Return True when path_value is a URI (has a scheme other than 'file'), not a local path."""
+    parsed = urllib.parse.urlparse(str(path_value))
+    return bool(parsed.scheme) and parsed.scheme.lower() not in ("", "file")
+
+
 def normalized_local_path(path_value):
-    """Return a normalized local filesystem path for storage/display."""
+    """Return a normalized local filesystem path for storage/display.
+
+    URIs (e.g. Android content:// handles) are returned unchanged because
+    os.path operations are meaningless on opaque URI strings.
+    """
     if not path_value:
         return ""
+    if _is_uri(path_value):
+        return path_value
     return os.path.normpath(os.path.abspath(path_value))
 
 
 def comparable_local_path(path_value):
-    """Return a normalized local path suitable for equality checks."""
+    """Return a normalized path suitable for equality checks.
+
+    URIs are returned as-is (case-sensitive); local paths go through normcase.
+    """
     normalized = normalized_local_path(path_value)
-    if not normalized:
-        return ""
+    if not normalized or _is_uri(normalized):
+        return normalized
     return os.path.normcase(normalized)
 
 

@@ -136,8 +136,9 @@ def clear_override_cursor():
         pass
 
 
-# Module-level reference keeps the picker alive until the callback fires.
+# Module-level references keep pickers alive until the callback fires.
 _active_picker = None
+_active_save_picker = None
 
 # Lazily created on the main thread; used to post callbacks from background threads.
 _callback_bridge = None
@@ -286,6 +287,7 @@ class _AndroidFilePicker:
         intent.addCategory(Intent.CATEGORY_OPENABLE)
         intent.setType("*/*")
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         intent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
         if self._allow_multiple:
             intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, True)
@@ -338,6 +340,16 @@ class _AndroidFilePicker:
                 cache_dir = picker._mActivity.getCacheDir().getAbsolutePath()
                 on_complete = picker._on_complete
 
+                # Take persistable read+write permissions so content:// URIs remain
+                # accessible across app restarts (needed for Recent Projects save/load).
+                read_write = (Intent.FLAG_GRANT_READ_URI_PERMISSION
+                              | Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                for uri in uris:
+                    try:
+                        resolver.takePersistableUriPermission(uri, read_write)
+                    except Exception:
+                        pass
+
                 # The bridge was created on the Qt main thread (in show_open_file_dialog).
                 # Do NOT call _get_callback_bridge() here — this runs on the Android main thread.
                 bridge = _callback_bridge
@@ -350,7 +362,10 @@ class _AndroidFilePicker:
                                                    self._OpenableColumns, self._File,
                                                    self._FileOutputStream)
                         if path:
-                            urls.append(QtCore.QUrl.fromLocalFile(path))
+                            if path.startswith("content://"):
+                                urls.append(QtCore.QUrl(path))
+                            else:
+                                urls.append(QtCore.QUrl.fromLocalFile(path))
                     bridge.call(lambda: on_complete(urls))
 
                 threading.Thread(target=_resolve_and_complete, daemon=True).start()
@@ -363,22 +378,33 @@ class _AndroidFilePicker:
             self._on_complete([])
 
     def _resolve_uri(self, resolver, uri_str, cache_dir, OpenableColumns, File, FileOutputStream):
-        """Return a local file path for a content URI.
+        """Return a local file path (or content:// URI) for a content URI.
 
-        With MANAGE_EXTERNAL_STORAGE granted, resolves media documents URIs
-        (content://com.android.providers.media.documents/document/TYPE:ID) by
-        re-querying MediaStore directly — the DocumentsProvider URI itself does
-        not expose _data, but the corresponding MediaStore row does.
+        Resolution is attempted in order, falling through on failure:
 
-        Falls back to stream-copying into app cache when the permission is absent
-        or the URI is not a local MediaStore entry (e.g. Google Drive).
+        1. MediaStore path for com.android.providers.media.documents URIs
+           (requires MANAGE_EXTERNAL_STORAGE; fast, no copy).
+        2. External-storage document ID decoding for
+           com.android.externalstorage.documents URIs — the document ID
+           encodes the path as "primary:relative/path".
+        3. Downloads document ID decoding for
+           com.android.providers.downloads.documents URIs — modern Android
+           encodes the path as "raw:/absolute/path".
+        4. _data column query via ContentResolver (works for local files
+           when MANAGE_EXTERNAL_STORAGE is granted).
+        5. For .osp project files with no resolvable local path: return the
+           content:// URI directly so reads/writes use ContentResolver.
+        6. Stream-copy into app cache (media files that must have a real path
+           for libopenshot, or cloud files like Google Drive).
         """
         import os
         autoclass = self._autoclass
 
-        # --- Attempt 1: MediaStore path via document ID (fast, no copy) ---
-        # Only applies to com.android.providers.media.documents URIs where the
-        # document ID encodes a MediaStore type and row ID (e.g. "video:126").
+        def _accessible(path):
+            """Return path if it is a readable local file, else None."""
+            return path if (path and os.path.isfile(path) and os.access(path, os.R_OK)) else None
+
+        # --- Attempt 1: MediaStore path via document ID ---
         if "com.android.providers.media.documents" in uri_str:
             try:
                 Environment = autoclass("android.os.Environment")
@@ -408,15 +434,69 @@ class _AndroidFilePicker:
                                     if cursor.moveToFirst():
                                         idx = cursor.getColumnIndex("_data")
                                         if idx >= 0:
-                                            path = cursor.getString(idx)
-                                            if path and os.path.isfile(path) and os.access(path, os.R_OK):
+                                            path = _accessible(cursor.getString(idx))
+                                            if path:
                                                 return path
                                 finally:
                                     cursor.close()
             except Exception:
                 pass
 
-        # --- Attempt 2: stream copy into app cache ---
+        # --- Attempt 2: External-storage document ID decoding ---
+        # Document ID format: "primary:relative/path" or "<uuid>:relative/path"
+        if "com.android.externalstorage.documents" in uri_str:
+            try:
+                DocumentsContract = autoclass("android.provider.DocumentsContract")
+                Uri = autoclass("android.net.Uri")
+                uri_obj = Uri.parse(uri_str)
+                doc_id = DocumentsContract.getDocumentId(uri_obj)
+                if ":" in doc_id:
+                    volume, rel_path = doc_id.split(":", 1)
+                    if volume.lower() == "primary":
+                        Environment = autoclass("android.os.Environment")
+                        base = Environment.getExternalStorageDirectory().getAbsolutePath()
+                        path = _accessible(os.path.join(base, rel_path))
+                        if path:
+                            return path
+            except Exception:
+                pass
+
+        # --- Attempt 3: Downloads document ID decoding ---
+        # Modern Android encodes the path as "raw:/absolute/path".
+        if "com.android.providers.downloads.documents" in uri_str:
+            try:
+                DocumentsContract = autoclass("android.provider.DocumentsContract")
+                Uri = autoclass("android.net.Uri")
+                uri_obj = Uri.parse(uri_str)
+                doc_id = DocumentsContract.getDocumentId(uri_obj)
+                if doc_id.startswith("raw:"):
+                    path = _accessible(doc_id[4:])
+                    if path:
+                        return path
+            except Exception:
+                pass
+
+        # --- Attempt 4: _data column query (any URI, requires MANAGE_EXTERNAL_STORAGE) ---
+        try:
+            Environment = autoclass("android.os.Environment")
+            if Environment.isExternalStorageManager():
+                Uri = autoclass("android.net.Uri")
+                uri_obj = Uri.parse(uri_str)
+                cursor = resolver.query(uri_obj, ["_data"], None, None, None)
+                if cursor is not None:
+                    try:
+                        if cursor.moveToFirst():
+                            idx = cursor.getColumnIndex("_data")
+                            if idx >= 0:
+                                path = _accessible(cursor.getString(idx))
+                                if path:
+                                    return path
+                    finally:
+                        cursor.close()
+        except Exception:
+            pass
+
+        # --- Query display name to determine file type for fallback ---
         display_name = ""
         try:
             Uri = autoclass("android.net.Uri")
@@ -434,8 +514,16 @@ class _AndroidFilePicker:
             pass
 
         suffix = os.path.splitext(display_name)[1]
-        # Use a deterministic name derived from the URI so the same source file always maps
-        # to the same cache path — this lets the existing duplicate-skip logic work correctly.
+
+        # --- Attempt 5: For project files without a resolvable local path ---
+        # Return the content:// URI directly; read_file_text/write_file_text handle it
+        # so saves go back to the source file (e.g. Google Drive, restricted storage).
+        if suffix.lower() == ".osp":
+            return uri_str
+
+        # --- Attempt 6: Stream-copy into app cache ---
+        # Required for media files: libopenshot needs a real filesystem path.
+        # Also used for cloud files (Google Drive) of any type.
         import hashlib
         uri_hash = hashlib.sha1(uri_str.encode()).hexdigest()[:16]
         dest_path = os.path.join(cache_dir, f"openshot_import_{uri_hash}{suffix}")
@@ -460,6 +548,236 @@ class _AndroidFilePicker:
             return dest_path
         except Exception:
             return None
+
+
+class _AndroidSavePicker:
+    """Launches Android's ACTION_CREATE_DOCUMENT intent so the user picks a save location.
+
+    Calls on_complete(uri_string) on the Qt main thread when done.
+    uri_string is a content:// URI on success or "" if the user cancelled.
+
+    After the user confirms, the display name is queried and, if the required
+    extension (self._extension) is missing, DocumentsContract.renameDocument is
+    used to append it before delivering the URI to the callback.
+    """
+
+    _RC_SAVE_PICKER = 10444
+
+    def __init__(self, on_complete, suggested_name="untitled", mime_type="*/*",
+                 extension=".osp"):
+        self._on_complete = on_complete
+        self._suggested_name = suggested_name
+        self._mime_type = mime_type
+        self._extension = extension.lower()
+        self._listener = None
+        self._mActivity = None
+        self._autoclass = None
+
+    def open(self):
+        try:
+            from jnius import autoclass, PythonJavaClass, java_method  # type: ignore
+        except Exception:
+            self._on_complete("")
+            return
+
+        self._autoclass = autoclass
+        PythonActivity = autoclass("org.kivy.android.PythonActivity")
+        self._mActivity = PythonActivity.mActivity
+        Intent = autoclass("android.content.Intent")
+        Activity = autoclass("android.app.Activity")
+        Bundle = autoclass("android.os.Bundle")
+
+        intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
+        intent.addCategory(Intent.CATEGORY_OPENABLE)
+        intent.setType(self._mime_type)
+        intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        intent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+
+        # Use Bundle.putString to set EXTRA_TITLE — Intent.putExtra is heavily
+        # overloaded and jnius may silently pick the wrong overload when both
+        # arguments are strings (e.g. resolving to putExtra(String,Serializable)
+        # instead of putExtra(String,String)), causing the prefill to be ignored.
+        extras = Bundle()
+        extras.putString("android.intent.extra.TITLE", self._suggested_name)
+        intent.putExtras(extras)
+
+        picker = self
+
+        class _Listener(PythonJavaClass):
+            __javainterfaces__ = ["org/kivy/android/PythonActivity$ActivityResultListener"]
+            __javacontext__ = "app"
+
+            def __init__(self):
+                super().__init__()
+                self._Activity = Activity
+
+            @java_method("(IILandroid/content/Intent;)V")
+            def onActivityResult(self, request_code, result_code, data):
+                if request_code != picker._RC_SAVE_PICKER:
+                    return
+                try:
+                    picker._mActivity.unregisterActivityResultListener(self)
+                except Exception:
+                    pass
+
+                uri_str = ""
+                if result_code == self._Activity.RESULT_OK and data is not None:
+                    try:
+                        uri = data.getData()
+                        if uri is not None:
+                            uri_str = uri.toString()
+                            # Enforce the required file extension.
+                            # Query the display name; rename via DocumentsContract if needed.
+                            if picker._extension:
+                                try:
+                                    autoclass = picker._autoclass
+                                    resolver = picker._mActivity.getContentResolver()
+                                    OpenableColumns = autoclass("android.provider.OpenableColumns")
+                                    cursor = resolver.query(uri, None, None, None, None)
+                                    display_name = ""
+                                    if cursor is not None:
+                                        try:
+                                            if cursor.moveToFirst():
+                                                idx = cursor.getColumnIndex(
+                                                    OpenableColumns.DISPLAY_NAME)
+                                                if idx >= 0:
+                                                    display_name = cursor.getString(idx) or ""
+                                        finally:
+                                            cursor.close()
+                                    display_name = display_name.strip()
+                                    if display_name and not display_name.lower().endswith(
+                                            picker._extension):
+                                        new_name = display_name + picker._extension
+                                        DocumentsContract = autoclass(
+                                            "android.provider.DocumentsContract")
+                                        new_uri = DocumentsContract.renameDocument(
+                                            resolver, uri, new_name)
+                                        if new_uri is not None:
+                                            uri_str = new_uri.toString()
+                                except Exception:
+                                    pass  # Keep original URI if rename fails
+                    except Exception:
+                        pass
+
+                # Deliver result on the Qt main thread via the callback bridge.
+                bridge = _callback_bridge
+                on_complete = picker._on_complete
+                bridge.call(lambda: on_complete(uri_str))
+
+        try:
+            self._listener = _Listener()
+            self._mActivity.registerActivityResultListener(self._listener)
+            self._mActivity.startActivityForResult(intent, self._RC_SAVE_PICKER)
+        except Exception:
+            self._on_complete("")
+
+
+def read_from_content_uri(uri_str):
+    """Read the UTF-8 text content of an Android content:// URI via ContentResolver.openInputStream.
+
+    Returns the decoded string on success, raises IOError on failure.
+    """
+    try:
+        from jnius import autoclass  # type: ignore
+        PythonActivity = autoclass("org.kivy.android.PythonActivity")
+        mActivity = PythonActivity.mActivity
+        resolver = mActivity.getContentResolver()
+        Uri = autoclass("android.net.Uri")
+        uri_obj = Uri.parse(uri_str)
+        input_stream = resolver.openInputStream(uri_obj)
+        if input_stream is None:
+            raise IOError("ContentResolver returned null InputStream for %s" % uri_str)
+        chunks = []
+        buf = bytearray(64 * 1024)
+        try:
+            while True:
+                count = input_stream.read(buf)
+                if count == -1:
+                    break
+                chunks.append(bytes(buf[:count]))
+        finally:
+            input_stream.close()
+        return b"".join(chunks).decode("utf-8")
+    except Exception as exc:
+        raise IOError("Failed to read from content URI %s: %s" % (uri_str, exc)) from exc
+
+
+def write_to_content_uri(uri_str, content):
+    """Write a UTF-8 string to an Android content:// URI via ContentResolver.openOutputStream.
+
+    Raises IOError on failure.  Should only be called from a background thread
+    so the Qt main thread is never blocked by I/O.
+    """
+    try:
+        from jnius import autoclass  # type: ignore
+        PythonActivity = autoclass("org.kivy.android.PythonActivity")
+        mActivity = PythonActivity.mActivity
+        resolver = mActivity.getContentResolver()
+        Uri = autoclass("android.net.Uri")
+        uri_obj = Uri.parse(uri_str)
+        # "wt" mode truncates the file before writing (Android default is append).
+        output_stream = resolver.openOutputStream(uri_obj, "wt")
+        if output_stream is None:
+            raise IOError("ContentResolver returned null OutputStream for %s" % uri_str)
+        try:
+            data = bytearray(content.encode("utf-8"))
+            output_stream.write(data)
+            output_stream.flush()
+        finally:
+            output_stream.close()
+    except Exception as exc:
+        raise IOError("Failed to write to content URI %s: %s" % (uri_str, exc)) from exc
+
+
+def is_content_uri(path) -> bool:
+    """Return True when *path* is an Android content:// URI rather than a local filesystem path."""
+    return str(path).startswith("content://")
+
+
+def file_exists(path) -> bool:
+    """Return True when *path* is accessible: a local file that exists, or a content:// URI."""
+    return is_content_uri(path) or os.path.exists(path)
+
+
+def read_file_text(path) -> str:
+    """Read UTF-8 text from *path* — works transparently for local paths and content:// URIs."""
+    if is_content_uri(path):
+        return read_from_content_uri(path)
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def write_file_text(path, content: str) -> None:
+    """Write UTF-8 text to *path* — works transparently for local paths and content:// URIs."""
+    if is_content_uri(path):
+        write_to_content_uri(path, content)
+    else:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+
+def ensure_extension(path: str, ext: str = ".osp") -> str:
+    """Append *ext* to *path* if the path does not already end with it.
+
+    Safe for content:// URIs — the extension is enforced at save time by
+    _AndroidSavePicker, so the URI is returned unchanged.
+    """
+    if not path or is_content_uri(path):
+        return path
+    if not path.lower().endswith(ext.lower()):
+        return path + ext
+    return path
+
+
+def path_basename(path: str) -> str:
+    """Return the filename component of *path*.
+
+    Returns an empty string for content:// URIs (which have no meaningful
+    basename) so callers can fall back to a sensible default.
+    """
+    if not path or is_content_uri(path):
+        return ""
+    return os.path.basename(path)
 
 
 def request_android_storage_permission_if_needed():
@@ -514,6 +832,36 @@ def show_open_file_dialog(parent, caption, directory, file_filter, on_complete, 
         dir_url = QtCore.QUrl.fromLocalFile(directory) if directory else QtCore.QUrl()
         urls, _ = QFileDialog.getOpenFileUrls(parent, caption, dir_url, file_filter)
         on_complete(urls)
+
+
+def show_save_file_dialog(parent, caption, suggested_name, mime_type, on_complete, directory=""):
+    """Show a file-save dialog and call on_complete(path_or_uri) with the result.
+
+    on_complete receives a non-empty string on success:
+      - On Android: a content:// URI string (write via write_to_content_uri).
+      - On desktop: a local filesystem path.
+    on_complete receives "" if the user cancels.
+
+    ``directory`` is used on desktop only as the initial folder; Android ignores it
+    (the suggested_name filename is passed via EXTRA_TITLE instead).
+
+    On desktop this is synchronous (on_complete is called before returning).
+    On Android ACTION_CREATE_DOCUMENT is launched and on_complete is called
+    asynchronously on the Qt main thread when the user confirms the save location.
+    """
+    if _is_android_runtime():
+        global _active_save_picker
+        # Ensure the callback bridge is created on the Qt main thread.
+        _get_callback_bridge()
+        _active_save_picker = _AndroidSavePicker(on_complete, suggested_name=suggested_name,
+                                                  mime_type=mime_type)
+        _active_save_picker.open()
+    else:
+        import os as _os
+        QFileDialog = getattr(QtWidgets, "QFileDialog", None)
+        initial_path = _os.path.join(directory, suggested_name) if directory else suggested_name
+        path, _ = QFileDialog.getSaveFileName(parent, caption, initial_path)
+        on_complete(path or "")
 
 
 def get_font_dialog_selection(initial_font=None, parent=None, title=""):

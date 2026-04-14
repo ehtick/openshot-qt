@@ -27,6 +27,7 @@
 
 import os
 import shutil
+import urllib.parse
 from classes import info
 from classes.logger import log
 
@@ -35,6 +36,11 @@ def get_assets_path(file_path=None, create_paths=True):
     """Get and/or create the current assets path. This path is used for thumbnail and blender files,
     and is unique to each project. For example: `Project1.osp` would use `Project1_assets` folder."""
     if not file_path:
+        return info.USER_PATH
+
+    # URIs (e.g. Android content:// handles) are not local filesystem paths.
+    # Keep all project assets in the app's user storage directory instead.
+    if urllib.parse.urlparse(str(file_path)).scheme not in ("", "file"):
         return info.USER_PATH
 
     file_abs = os.path.abspath(str(file_path))

@@ -45,7 +45,7 @@ from qt_api import (
     Qt, pyqtSignal, pyqtSlot, QCoreApplication, QTimer, QDateTime, QFileInfo, QEvent, QUrl, QLocale
 )
 from qt_api import QIcon, QCursor, QKeySequence, QTextCursor
-from qt_api import show_open_file_dialog
+from qt_api import show_open_file_dialog, show_save_file_dialog, file_exists, ensure_extension, path_basename
 from qt_api import (
     QMainWindow, QWidget, QDockWidget,
     QMessageBox, QDialog, QFileDialog, QInputDialog,
@@ -700,7 +700,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         app.setOverrideCursor(QCursor(Qt.WaitCursor))
 
         try:
-            if os.path.exists(file_path):
+            if file_exists(file_path):
                 # Clear any previous thumbnails
                 if clear_thumbnails:
                     self.clear_temporary_files()
@@ -783,6 +783,24 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         s = app.get_settings()
         recommended_folder = s.getDefaultPath(s.actionType.LOAD)
 
+        def _show_open_dialog():
+            def _on_file_selected(qurl_list):
+                if not qurl_list:
+                    return
+                file_path = qurl_list[0].toLocalFile() or qurl_list[0].toString()
+                if file_path:
+                    s.setDefaultPath(s.actionType.LOAD, file_path)
+                    self.OpenProjectSignal.emit(file_path)
+
+            show_open_file_dialog(
+                self,
+                _("Open Project..."),
+                recommended_folder,
+                _("OpenShot Project (*.osp)"),
+                _on_file_selected,
+                allow_multiple=False,
+            )
+
         # Do we have unsaved changes?
         if app.project.needs_save():
             ret = QMessageBox.question(
@@ -791,50 +809,47 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
                 _("Save changes to project first?"),
                 QMessageBox.Cancel | QMessageBox.No | QMessageBox.Yes)
             if ret == QMessageBox.Yes:
-                # Save project
+                # Save project first, then open
                 self.actionSave_trigger()
+                _show_open_dialog()
             elif ret == QMessageBox.Cancel:
-                # User canceled prompt
                 return
-
-        # Prompt for open project file
-        file_path = QFileDialog.getOpenFileName(
-            self,
-            _("Open Project..."),
-            recommended_folder,
-            _("OpenShot Project (*.osp)"))[0]
-
-        if file_path:
-            # Load project file
-            self.OpenProjectSignal.emit(file_path)
+            else:
+                _show_open_dialog()
+        else:
+            _show_open_dialog()
 
     def actionSave_trigger(self):
         app = get_app()
         s = app.get_settings()
         _ = app._tr
 
-        # Get current filepath if any, otherwise ask user
+        # If the project already has a path, save immediately without a dialog.
         file_path = app.project.current_filepath
-        if not file_path:
-            recommended_folder = s.getDefaultPath(s.actionType.SAVE)
-            recommended_path = os.path.join(
-                recommended_folder,
-                _("Untitled Project") + ".osp"
-            )
-            file_path = QFileDialog.getSaveFileName(
-                self,
-                _("Save Project..."),
-                recommended_path,
-                _("OpenShot Project (*.osp)"))[0]
-
         if file_path:
             s.setDefaultPath(s.actionType.SAVE, file_path)
-            # Append .osp if needed
-            if not file_path.endswith(".osp"):
-                file_path = "%s.osp" % file_path
-
-            # Save project
+            file_path = ensure_extension(file_path, ".osp")
             self.save_project(file_path)
+            return
+
+        # No existing path — ask the user where to save.
+        recommended_folder = s.getDefaultPath(s.actionType.SAVE)
+        suggested_name = _("Untitled Project") + ".osp"
+
+        def _on_path(path):
+            if not path:
+                return
+            s.setDefaultPath(s.actionType.SAVE, path)
+            self.save_project(ensure_extension(path, ".osp"))
+
+        show_save_file_dialog(
+            self,
+            _("Save Project..."),
+            suggested_name,
+            "*/*",
+            _on_path,
+            directory=recommended_folder,
+        )
 
     def auto_save_project(self):
         """Auto save the project"""
@@ -854,9 +869,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
 
         if file_path:
             # A Real project file exists
-            # Append .osp if needed
-            if not file_path.endswith(".osp"):
-                    file_path = "%s.osp" % file_path
+            file_path = ensure_extension(file_path, ".osp")
 
             # Save project
             log.info("Auto save project file: %s", file_path)
@@ -886,28 +899,23 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         _ = app._tr
 
         project_file_path = app.project.current_filepath
-        if project_file_path:
-            recommended_file_name = os.path.basename(project_file_path)
-        else:
-            recommended_file_name = "%s.osp" % _("Untitled Project")
+        suggested_name = path_basename(project_file_path) or ("%s.osp" % _("Untitled Project"))
+
+        def _on_path(path):
+            if not path:
+                return
+            s.setDefaultPath(s.actionType.SAVE, path)
+            threading.Thread(target=self.save_project, args=(ensure_extension(path, ".osp"),), daemon=True).start()
+
         recommended_folder = s.getDefaultPath(s.actionType.SAVE)
-        recommended_path = os.path.join(
-            recommended_folder,
-            recommended_file_name
-        )
-        file_path = QFileDialog.getSaveFileName(
+        show_save_file_dialog(
             self,
             _("Save Project As..."),
-            recommended_path,
-            _("OpenShot Project (*.osp)"))[0]
-        if file_path:
-            s.setDefaultPath(s.actionType.SAVE, file_path)
-            # Append .osp if needed
-            if ".osp" not in file_path:
-                file_path = "%s.osp" % file_path
-
-            # Save new project
-            threading.Thread(target=self.save_project, args=(file_path,), daemon=True).start()
+            suggested_name,
+            "*/*",
+            _on_path,
+            directory=recommended_folder,
+        )
 
     def actionImportFiles_trigger(self):
         app = get_app()
@@ -3134,8 +3142,11 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
                 _("Recent Projects"))
             self.menuFile.insertMenu(self.actionRecentProjects, self.recent_menu)
         else:
-            # Clear the existing children
-            self.recent_menu.clear()
+            # Remove all actions individually instead of clear() — PySide6's
+            # clear() can delete QActions owned by other parents (e.g. actionClearRecents),
+            # crashing the next load_recent_menu call with "C++ object already deleted".
+            for _action in list(self.recent_menu.actions()):
+                self.recent_menu.removeAction(_action)
 
         # Add recent projects to menu
         # Show just a placeholder menu, if we have no recent projects list
