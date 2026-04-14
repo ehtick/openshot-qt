@@ -126,8 +126,8 @@ class OpenShotApp(QApplication):
         try:
             while QApplication.overrideCursor():
                 QApplication.restoreOverrideCursor()
-        except Exception:
-            pass
+        except Exception as exc:
+            log.debug("Failed to clear stale override cursor: %s", exc, exc_info=True)
         self.show_environment(info, openshot)
         if self.mode != "unittest":
             self.check_libopenshot_version(info, openshot)

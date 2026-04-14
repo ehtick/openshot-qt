@@ -38,7 +38,6 @@ from qt_api import (
     QPainter,
     QCursor,
     QIcon,
-    QColor,
     QToolTip,
     QPixmap,
 )
@@ -1121,7 +1120,7 @@ class TimelineWidgetBase(QWidget):
                 self.new_item = True
                 event.accept()
                 return
-            elif mime_html == "effect":
+            if mime_html == "effect":
                 self._drag_payload = {"type": "effect"}
                 event.accept()
                 return

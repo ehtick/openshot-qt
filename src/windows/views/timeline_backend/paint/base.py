@@ -27,7 +27,7 @@
 
 import math
 from qt_api import QRectF, Qt, QSvgRenderer, QPen
-from qt_api import QImage, QPainter, QPixmap, QColor, QSvgRenderer
+from qt_api import QImage, QPainter, QPixmap, QColor
 import os
 
 

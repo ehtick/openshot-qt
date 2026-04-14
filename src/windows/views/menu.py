@@ -51,7 +51,7 @@ class StyledContextMenu(QMenu):
             try:
                 pos = event_or_pos.globalPos()
             except Exception:
-                pass
+                pos = event_or_pos
         exec_fn = getattr(self, "exec", None) or getattr(self, "exec_", None)
         if exec_fn:
             exec_fn(pos)

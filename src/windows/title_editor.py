@@ -45,7 +45,7 @@ from qt_api import get_font_dialog_selection
 from qt_api import QFontDatabase, QColor, QIcon, QFont, QFontInfo, QPixmap, QPainter
 from qt_api import (
     QWidget,
-    QMessageBox, QDialog, QColorDialog,
+    QMessageBox, QDialog,
     QPushButton, QLineEdit, QLabel, QDialogButtonBox
 )
 

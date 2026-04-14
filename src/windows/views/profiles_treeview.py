@@ -27,7 +27,7 @@
 
 from qt_api import Qt, QItemSelectionModel, QRegularExpression, pyqtSignal, QTimer
 from qt_api import QIcon
-from qt_api import QListView, QTreeView, QAbstractItemView, QSizePolicy, QAction
+from qt_api import QTreeView, QAbstractItemView, QSizePolicy, QAction
 
 from classes.app import get_app
 from windows.models.profiles_model import ProfilesModel

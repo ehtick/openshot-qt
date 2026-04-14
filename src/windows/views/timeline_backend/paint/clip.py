@@ -1987,7 +1987,6 @@ class ClipPainter(BasePainter):
         self._invalidate_clip_cache_for_clip(clip_key)
 
         # Safe repaint — defer to avoid active painter issues
-        from qt_api import QTimer
         QTimer.singleShot(0, self.w.update)
 
     def _invalidate_clip_cache_for_clip(self, clip_token):

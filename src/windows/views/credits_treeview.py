@@ -28,7 +28,7 @@
 
 import webbrowser
 from qt_api import Qt
-from qt_api import QListView, QTreeView, QAbstractItemView, QSizePolicy, QHeaderView, QApplication
+from qt_api import QTreeView, QAbstractItemView, QSizePolicy, QHeaderView, QApplication
 from qt_api import QCursor
 from qt_api import make_filter_regex, set_proxy_filter
 from functools import partial
@@ -99,7 +99,7 @@ class CreditsTreeView(QTreeView):
         log.info("ViewWebsite")
         try:
             webbrowser.open(website)
-        except:
+        except Exception:
             log.warning('Failed to launch web browser to %s' % website)
 
     def __init__(self, credits, columns, *args):

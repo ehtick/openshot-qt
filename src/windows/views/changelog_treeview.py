@@ -30,7 +30,7 @@ import webbrowser
 from functools import partial
 
 from qt_api import Qt
-from qt_api import QListView, QTreeView, QAbstractItemView, QSizePolicy, QHeaderView, QApplication
+from qt_api import QTreeView, QAbstractItemView, QSizePolicy, QHeaderView, QApplication
 from qt_api import QCursor
 from qt_api import make_filter_regex, set_proxy_filter
 
@@ -91,7 +91,7 @@ class ChangelogTreeView(QTreeView):
 
         try:
             webbrowser.open(self.commit_url % hash)
-        except:
+        except Exception:
             log.warning('Failed to launch web browser to %s' % self.commit_url)
 
     def __init__(self, commits, commit_url, *args):

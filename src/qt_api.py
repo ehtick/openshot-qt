@@ -9,7 +9,6 @@ and final choice to help diagnose environment issues.
 
 import logging
 import os
-import ctypes
 import sys
 from typing import List, Optional, Tuple
 
@@ -29,6 +28,8 @@ def _is_android_runtime() -> bool:
 QtCore = QtGui = QtWidgets = QtSvg = QtWebEngineCore = QtWebEngineWidgets = QtWebChannel = QtWebKitWidgets = None
 Signal = Slot = Property = None
 QRegularExpression = None
+QByteArray = QDir = QLibraryInfo = None
+QSignalTransition = None
 QState = QStateMachine = None
 uic = None
 QT_API: Optional[str] = None
@@ -132,8 +133,8 @@ def clear_override_cursor():
     try:
         while QtWidgets.QApplication.overrideCursor():
             QtWidgets.QApplication.restoreOverrideCursor()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("qt_api: failed to clear override cursor: %s", exc, exc_info=True)
 
 
 # Module-level references keep pickers alive until the callback fires.
@@ -203,7 +204,7 @@ class _AndroidFilePicker:
     def open(self):
         try:
             from jnius import autoclass, PythonJavaClass, java_method  # type: ignore
-        except Exception as exc:
+        except Exception:
             self._on_complete([])
             return
 
@@ -397,7 +398,6 @@ class _AndroidFilePicker:
         6. Stream-copy into app cache (media files that must have a real path
            for libopenshot, or cloud files like Google Drive).
         """
-        import os
         autoclass = self._autoclass
 
         def _accessible(path):
@@ -857,9 +857,8 @@ def show_save_file_dialog(parent, caption, suggested_name, mime_type, on_complet
                                                   mime_type=mime_type)
         _active_save_picker.open()
     else:
-        import os as _os
         QFileDialog = getattr(QtWidgets, "QFileDialog", None)
-        initial_path = _os.path.join(directory, suggested_name) if directory else suggested_name
+        initial_path = os.path.join(directory, suggested_name) if directory else suggested_name
         path, _ = QFileDialog.getSaveFileName(parent, caption, initial_path)
         on_complete(path or "")
 
@@ -867,7 +866,7 @@ def show_save_file_dialog(parent, caption, suggested_name, mime_type, on_complet
 def get_font_dialog_selection(initial_font=None, parent=None, title=""):
     """Return (font, accepted) from a font dialog across bindings."""
     QFontDialog = getattr(QtWidgets, "QFontDialog", None)
-    if QFontDialog is None:
+    if not callable(QFontDialog):
         raise RuntimeError("QFontDialog is unavailable")
 
     # PySide6 has been unreliable with the static getFont() overloads here.
@@ -2301,7 +2300,8 @@ def _import_binding(name: str) -> Tuple:
 def _select_binding() -> str:
     """Select and load the first available binding."""
     global QtCore, QtGui, QtWidgets, QtSvg, QtWebEngineCore, QtWebEngineWidgets, QtWebChannel, QtWebKitWidgets
-    global Signal, Slot, Property, QRegularExpression, QState, QStateMachine, uic, QT_API, QT_VERSION_STR, PYQT_VERSION_STR, BINDING_VERSION_STR, _MODULES
+    global Signal, Slot, Property, QRegularExpression, QByteArray, QDir, QLibraryInfo, QSignalTransition
+    global QState, QStateMachine, uic, QT_API, QT_VERSION_STR, PYQT_VERSION_STR, BINDING_VERSION_STR, _MODULES
     global _FAILED_IMPORT, _SELECTING
 
     if _FAILED_IMPORT:
@@ -2360,6 +2360,10 @@ def _select_binding() -> str:
                 if m is not None
             ]
             _patch_enums_for_qt6()
+            QByteArray = getattr(QtCore, "QByteArray", None)
+            QDir = getattr(QtCore, "QDir", None)
+            QLibraryInfo = getattr(QtCore, "QLibraryInfo", None)
+            QSignalTransition = getattr(QtCore, "QSignalTransition", None)
             _FAILED_IMPORT = None
             _SELECTING = False
             return QT_API
@@ -2506,6 +2510,7 @@ def ensure_binding():
 
 def __getattr__(name):
     """Lazy attribute forwarding so `from qt_api import QIcon` works."""
+    global QByteArray, QDir, QLibraryInfo, QSignalTransition, QState, QStateMachine
     if QT_API is None:
         _select_binding()
     # Expose common QtCore symbols directly
@@ -2516,9 +2521,10 @@ def __getattr__(name):
     if name in ("pyqtProperty", "Property"):
         return Property
     if name in ("QByteArray", "QLibraryInfo", "QDir"):
-        return getattr(QtCore, name)
-    if name in ("QState", "QStateMachine"):
-        global QState, QStateMachine
+        value = getattr(QtCore, name)
+        globals()[name] = value
+        return value
+    if name in ("QSignalTransition", "QState", "QStateMachine"):
         if QState is None or QStateMachine is None:
             try:
                 if QT_API == "pyqt6":
@@ -2531,8 +2537,11 @@ def __getattr__(name):
                     QtStateMachine = QtCore
                 QState = getattr(QtStateMachine, "QState", None)
                 QStateMachine = getattr(QtStateMachine, "QStateMachine", None)
+                QSignalTransition = getattr(QtStateMachine, "QSignalTransition", None)
             except Exception:
                 pass
+        if name == "QSignalTransition":
+            return QSignalTransition
         return QState if name == "QState" else QStateMachine
     if name == "QAbstractItemModelTester":
         try:

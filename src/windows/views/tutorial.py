@@ -280,7 +280,7 @@ class TutorialManager(QObject):
         # Qt6 renamed associatedWidgets() to associatedObjects()
         if hasattr(action, 'associatedWidgets'):
             return action.associatedWidgets()
-        elif hasattr(action, 'associatedObjects'):
+        if hasattr(action, 'associatedObjects'):
             # Filter to only return QWidget instances
             return [obj for obj in action.associatedObjects() if isinstance(obj, QWidget)]
         return []

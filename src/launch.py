@@ -83,7 +83,7 @@ scale = max(0.5, min(3.0, scale))
 if scale != 1.0:
     os.environ["QT_SCALE_FACTOR"] = str(scale)
 
-from qt_api import QtCore, QtWidgets, QtWebEngineWidgets, QT_API
+from qt_api import QtCore, QtWidgets, QtWebEngineWidgets
 
 Qt = QtCore.Qt
 QApplication = QtWidgets.QApplication
@@ -249,7 +249,7 @@ def main():
     # Launch GUI and start event loop
     if app.gui():
         exec_fn = getattr(app, "exec", None) or getattr(app, "exec_", None)
-        if exec_fn is None:
+        if not callable(exec_fn):
             raise AttributeError("OpenShotApp has no exec_/exec method")
         sys.exit(exec_fn())
 

@@ -34,7 +34,6 @@ from qt_api import (
     Qt, QCoreApplication, QMutex, QTimer,
     pyqtSignal, pyqtSlot, QPoint, QPointF, QSize, QSizeF, QRect, QRectF, QLineF,
 )
-from qt_api import QT_API
 from qt_api import modifiers_has
 from qt_api import (
     QTransform, QPainter, QIcon, QColor, QPen, QBrush, QCursor, QImage, QRegion
