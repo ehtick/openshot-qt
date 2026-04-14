@@ -2230,6 +2230,7 @@ class VideoWidget(QWidget, updates.UpdateInterface):
         continue to match the current project's aspect ratio."""
         # Invoke parent init
         super().__init__(*args)
+        self.watch_project = bool(watch_project)
 
         # Translate object
         _ = get_app()._tr
