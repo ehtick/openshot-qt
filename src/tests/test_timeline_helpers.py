@@ -57,7 +57,6 @@ class DummySettings:
             "default-profile": "HD 720p 30 fps",
             "default-samplerate": 48000,
             "default-channels": 2,
-            "legacy-based-timeline": False,
         }
 
     def get(self, key):
@@ -88,8 +87,6 @@ class TimelineHelperTests(unittest.TestCase):
     def setUpClass(cls):
         app, cls._owns_app = get_or_create_app(DummyApp)
         cls.app = ensure_app_state(app)
-        cls._web_backend_patcher = patch.object(info, "WEB_BACKEND", "qwidget")
-        cls._web_backend_patcher.start()
         sys.modules.pop("windows.views.timeline", None)
         cls.timeline_module = importlib.import_module("windows.views.timeline")
         cls.qwidget_base_module = importlib.import_module("windows.views.timeline_backend.qwidget.base")
@@ -123,7 +120,6 @@ class TimelineHelperTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        cls._web_backend_patcher.stop()
         if getattr(cls, "_owns_app", False) and cls.app:
             cls.app.quit()
 

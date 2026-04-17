@@ -117,9 +117,6 @@ MODEL_TEST = False
 LOG_LEVEL_FILE = 'INFO'
 LOG_LEVEL_CONSOLE = 'INFO'
 
-# Web backend selection, overridable at launch
-WEB_BACKEND = 'auto'
-
 # Sentry.io error & transaction reporting rate (0.0 TO 1.0)
 # 0.0 = no error reporting to Sentry
 # 0.5 = 1/2 of errors reported to Sentry
