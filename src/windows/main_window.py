@@ -2768,6 +2768,32 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         QCoreApplication.processEvents()
         self._schedule_tab_order_update()
 
+    def actionColor_Grade_View_trigger(self):
+        """Switch to a color grading focused view."""
+        self.removeDocks()
+
+        color_grade_dock = getattr(getattr(self, "propertyTableView", None), "color_grade_wheels_dock", None)
+
+        self.addDocks([self.dockProperties], Qt.LeftDockWidgetArea)
+        self.addDocks([self.dockVideo], Qt.TopDockWidgetArea)
+        if color_grade_dock:
+            self.addDocks([color_grade_dock], Qt.RightDockWidgetArea)
+        self.addDocks([self.dockTimeline], Qt.BottomDockWidgetArea)
+
+        self.floatDocks(False)
+
+        docks_to_show = [
+            self.dockProperties,
+            self.dockVideo,
+            self.dockTimeline,
+        ]
+        if color_grade_dock:
+            docks_to_show.append(color_grade_dock)
+
+        self.showDocks(docks_to_show)
+        QCoreApplication.processEvents()
+        self._schedule_tab_order_update()
+
     def actionFreeze_View_trigger(self):
         """ Freeze all dockable widgets on the main screen """
         for dock in self.getDocks():

@@ -801,6 +801,10 @@ QMessageBox QPushButton[text="&{_('Cancel')}"] {{
         ]
         self.set_toolbar_buttons(self.app.window.toolBar, icon_size=20, settings=toolbar_buttons)
 
+        self.app.window.actionColor_Grade_View.setIcon(
+            QIcon(os.path.join(PATH, "themes/cosmic/images/view-color.svg"))
+        )
+
         # Timeline toolbar buttons
         timeline_buttons = [
             {"action": self.app.window.actionAddTrack, "icon": "themes/cosmic/images/tool-add-track.svg", "style": Qt.ToolButtonTextBesideIcon, "stylesheet": "QToolButton { margin-left: 15px; }"},

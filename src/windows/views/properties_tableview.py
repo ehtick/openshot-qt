@@ -1733,6 +1733,7 @@ class PropertiesTableView(QTableView):
     def _color_grade_wheels_visibility_changed(self, visible):
         if visible:
             self._update_color_grade_wheels_enabled()
+            QTimer.singleShot(0, self._auto_connect_color_grade_wheels_dock)
             return
         if self.live_property_session and self.live_property_session.get("property_type") == "colorgrade_wheels":
             self.accept_live_property_session()
