@@ -671,6 +671,20 @@ class PropertiesTableView(QTableView):
         self._ensure_color_grade_wheels_dock_attached()
         self._activate_color_grade_wheels_session(item, property_key, wheels_data)
 
+    def _reconnect_color_grade_wheels_session(self):
+        """Re-establish the live session when the wheels dock is shown (dock already attached)."""
+        if not self.color_grade_wheels_dock.isVisible():
+            return
+        if self.live_property_session:
+            return
+        if not self._selection_is_color_grade(self.current_selection):
+            return
+        item, property_key, wheels_data = self._find_color_grade_wheels_item()
+        if not item or not property_key:
+            return
+        self.selected_item = item
+        self._activate_color_grade_wheels_session(item, property_key, wheels_data)
+
     def _close_color_grade_editors(self, commit_changes=True):
         session = self.live_property_session or {}
         property_type = session.get("property_type")
@@ -1733,7 +1747,7 @@ class PropertiesTableView(QTableView):
     def _color_grade_wheels_visibility_changed(self, visible):
         if visible:
             self._update_color_grade_wheels_enabled()
-            QTimer.singleShot(0, self._auto_connect_color_grade_wheels_dock)
+            QTimer.singleShot(125, self._reconnect_color_grade_wheels_session)
             return
         if self.live_property_session and self.live_property_session.get("property_type") == "colorgrade_wheels":
             self.accept_live_property_session()
