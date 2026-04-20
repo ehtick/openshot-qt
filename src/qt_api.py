@@ -25,7 +25,7 @@ def _is_android_runtime() -> bool:
 
 
 # Public exports filled in after binding selection
-QtCore = QtGui = QtWidgets = QtSvg = QtWebEngineCore = QtWebEngineWidgets = QtWebChannel = QtWebKitWidgets = None
+QtCore = QtGui = QtWidgets = QtSvg = None
 Signal = Slot = Property = None
 QRegularExpression = None
 QByteArray = QDir = QLibraryInfo = None
@@ -2077,19 +2077,6 @@ def _patch_enums_for_qt6():
                     except Exception:
                         pass
 
-    QWebEngineSettings = None
-    if QtWebEngineCore:
-        QWebEngineSettings = getattr(QtWebEngineCore, "QWebEngineSettings", None)
-    if QWebEngineSettings is None and QtWebEngineWidgets:
-        QWebEngineSettings = getattr(QtWebEngineWidgets, "QWebEngineSettings", None)
-    if QWebEngineSettings and not hasattr(QWebEngineSettings, "ScrollAnimatorEnabled"):
-        web_attr = getattr(QWebEngineSettings, "WebAttribute", None)
-        if web_attr and hasattr(web_attr, "ScrollAnimatorEnabled"):
-            try:
-                setattr(QWebEngineSettings, "ScrollAnimatorEnabled", web_attr.ScrollAnimatorEnabled)
-            except Exception:
-                pass
-
     # Qt6 renamed exec_() -> exec(); backfill exec_ on common classes.
     def _exec_wrapper(self, *args, **kwargs):
         return self.exec(*args, **kwargs)
@@ -2162,18 +2149,8 @@ def _import_binding(name: str) -> Tuple:
         if q_state is None or q_state_machine is None:
             raise ImportError("PyQt6 QtStateMachine module not available (QState/QStateMachine missing)")
         QtSvgMod = None
-        QtWebEngineCoreMod = None
-        QtWebEngineWidgetsMod = None
-        QtWebChannelMod = None
-        QtWebKitWidgetsMod = None
         try:
             import PyQt6.QtSvg as QtSvgMod  # type: ignore
-        except Exception:
-            pass
-        try:
-            import PyQt6.QtWebEngineCore as QtWebEngineCoreMod  # type: ignore
-            import PyQt6.QtWebEngineWidgets as QtWebEngineWidgetsMod  # type: ignore
-            import PyQt6.QtWebChannel as QtWebChannelMod  # type: ignore
         except Exception:
             pass
         return (
@@ -2182,10 +2159,6 @@ def _import_binding(name: str) -> Tuple:
             QtGuiMod,
             QtWidgetsMod,
             QtSvgMod,
-            QtWebEngineCoreMod,
-            QtWebEngineWidgetsMod,
-            QtWebChannelMod,
-            QtWebKitWidgetsMod,
             QtCoreMod.pyqtSignal,
             QtCoreMod.pyqtSlot,
             QtCoreMod.pyqtProperty,
@@ -2215,18 +2188,8 @@ def _import_binding(name: str) -> Tuple:
         if q_state is None or q_state_machine is None:
             raise ImportError("PySide6 QtStateMachine module not available (QState/QStateMachine missing)")
         QtSvgMod = None
-        QtWebEngineCoreMod = None
-        QtWebEngineWidgetsMod = None
-        QtWebChannelMod = None
-        QtWebKitWidgetsMod = None
         try:
             import PySide6.QtSvg as QtSvgMod  # type: ignore
-        except Exception:
-            pass
-        try:
-            import PySide6.QtWebEngineCore as QtWebEngineCoreMod  # type: ignore
-            import PySide6.QtWebEngineWidgets as QtWebEngineWidgetsMod  # type: ignore
-            import PySide6.QtWebChannel as QtWebChannelMod  # type: ignore
         except Exception:
             pass
         return (
@@ -2235,10 +2198,6 @@ def _import_binding(name: str) -> Tuple:
             QtGuiMod,
             QtWidgetsMod,
             QtSvgMod,
-            QtWebEngineCoreMod,
-            QtWebEngineWidgetsMod,
-            QtWebChannelMod,
-            QtWebKitWidgetsMod,
             QtCoreMod.Signal,
             QtCoreMod.Slot,
             QtCoreMod.Property,
@@ -2262,22 +2221,8 @@ def _import_binding(name: str) -> Tuple:
             raise ImportError("PyQt5 missing QState/QStateMachine in QtCore")
 
         QtSvgMod = None
-        QtWebEngineCoreMod = None
-        QtWebEngineWidgetsMod = None
-        QtWebChannelMod = None
-        QtWebKitWidgetsMod = None
         try:
             import PyQt5.QtSvg as QtSvgMod  # type: ignore
-        except Exception:
-            pass
-        try:
-            import PyQt5.QtWebEngineCore as QtWebEngineCoreMod  # type: ignore
-            import PyQt5.QtWebEngineWidgets as QtWebEngineWidgetsMod  # type: ignore
-            import PyQt5.QtWebChannel as QtWebChannelMod  # type: ignore
-        except Exception:
-            pass
-        try:
-            import PyQt5.QtWebKitWidgets as QtWebKitWidgetsMod  # type: ignore
         except Exception:
             pass
         return (
@@ -2286,10 +2231,6 @@ def _import_binding(name: str) -> Tuple:
             QtGuiMod,
             QtWidgetsMod,
             QtSvgMod,
-            QtWebEngineCoreMod,
-            QtWebEngineWidgetsMod,
-            QtWebChannelMod,
-            QtWebKitWidgetsMod,
             QtCoreMod.pyqtSignal,
             QtCoreMod.pyqtSlot,
             QtCoreMod.pyqtProperty,
@@ -2307,7 +2248,7 @@ def _import_binding(name: str) -> Tuple:
 
 def _select_binding() -> str:
     """Select and load the first available binding."""
-    global QtCore, QtGui, QtWidgets, QtSvg, QtWebEngineCore, QtWebEngineWidgets, QtWebChannel, QtWebKitWidgets
+    global QtCore, QtGui, QtWidgets, QtSvg
     global Signal, Slot, Property, QRegularExpression, QByteArray, QDir, QLibraryInfo, QSignalTransition
     global QState, QStateMachine, uic, QT_API, QT_VERSION_STR, PYQT_VERSION_STR, BINDING_VERSION_STR, _MODULES
     global _FAILED_IMPORT, _SELECTING
@@ -2332,10 +2273,6 @@ def _select_binding() -> str:
                 QtGui,
                 QtWidgets,
                 QtSvg,
-                QtWebEngineCore,
-                QtWebEngineWidgets,
-                QtWebChannel,
-                QtWebKitWidgets,
                 Signal,
                 Slot,
                 Property,
@@ -2360,10 +2297,6 @@ def _select_binding() -> str:
                     QtGui,
                     QtWidgets,
                     QtSvg,
-                    QtWebEngineCore,
-                    QtWebEngineWidgets,
-                    QtWebChannel,
-                    QtWebKitWidgets,
                 )
                 if m is not None
             ]
@@ -2582,10 +2515,6 @@ __all__ = [
     "QtGui",
     "QtWidgets",
     "QtSvg",
-    "QtWebEngineCore",
-    "QtWebEngineWidgets",
-    "QtWebChannel",
-    "QtWebKitWidgets",
     "Signal",
     "Slot",
     "Property",
