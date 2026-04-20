@@ -43,7 +43,7 @@ from qt_api import (
 from qt_api import (
     QTableView, QAbstractItemView, QSizePolicy,
     QHeaderView, QItemDelegate, QStyle, QLabel, QDockWidget,
-    QPushButton, QHBoxLayout, QFrame
+    QPushButton, QHBoxLayout, QFrame, QScrollArea
 )
 
 from classes.logger import log
@@ -1021,12 +1021,10 @@ class PropertiesTableView(QTableView):
                 if self.live_property_session and self.live_property_session.get("property_type") == "colorgrade_wheels":
                     self.color_grade_wheels_dock.show()
                     self.color_grade_wheels_dock.raise_()
-                    self._show_scope_docks_if_hidden()
                     return
                 self._activate_color_grade_wheels_session(self.selected_item, property_key, wheels_data)
                 self.color_grade_wheels_dock.show()
                 self.color_grade_wheels_dock.raise_()
-                self._show_scope_docks_if_hidden()
 
     def caption_text_updated(self, new_caption_text, caption_model_row):
         """Caption text has been updated in the caption editor, and needs saving"""
@@ -1731,7 +1729,19 @@ class PropertiesTableView(QTableView):
         self.color_grade_wheels_dock = QDockWidget(get_app()._tr("Color Wheels"), self.win)
         self.color_grade_wheels_dock.setObjectName("dockColorGradeWheels")
         self.color_grade_wheels_panel = ColorGradeWheelsPanel(parent=self.color_grade_wheels_dock)
-        self.color_grade_wheels_dock.setWidget(self.color_grade_wheels_panel)
+        self.color_grade_wheels_scroll = QScrollArea(self.color_grade_wheels_dock)
+        self.color_grade_wheels_panel.adjustSize()
+        self.color_grade_wheels_panel.setMinimumSize(self.color_grade_wheels_panel.sizeHint())
+        self.color_grade_wheels_scroll.setWidgetResizable(False)
+        self.color_grade_wheels_scroll.setFrameShape(QFrame.NoFrame)
+        self.color_grade_wheels_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.color_grade_wheels_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.color_grade_wheels_scroll.setStyleSheet(
+            "QScrollArea { border: none; background: transparent; }"
+            "QScrollArea > QWidget { background: transparent; }"
+        )
+        self.color_grade_wheels_scroll.setWidget(self.color_grade_wheels_panel)
+        self.color_grade_wheels_dock.setWidget(self.color_grade_wheels_scroll)
         self.color_grade_wheels_panel.setEnabled(False)
         self.color_grade_wheels_dock.hide()
         self.win.addDockWidget(Qt.RightDockWidgetArea, self.color_grade_wheels_dock)
