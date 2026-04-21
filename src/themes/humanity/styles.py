@@ -67,8 +67,6 @@ class HumanityDarkTimelineTheme(TimelineTheme):
         self.clip.height        = 64
         self.clip.shadow_color  = QColor("#000000")
         self.clip.shadow_blur   = 10
-        self.clip.thumb_width   = 66
-        self.clip.thumb_height  = 38
 
         # ── Track ─────────────────────────────────────────────────────────
         self.track.background               = QColor("#060606")

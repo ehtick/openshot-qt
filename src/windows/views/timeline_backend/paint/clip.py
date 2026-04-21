@@ -667,6 +667,16 @@ class ClipPainter(BasePainter):
 
         return start
 
+    def _clip_aspect_ratio(self, clip):
+        """Return the source aspect ratio of a clip, falling back to 16:9."""
+        data = clip.data if isinstance(clip.data, dict) else {}
+        reader = data.get("reader") if isinstance(data.get("reader"), dict) else {}
+        w = self._to_float(reader.get("width"))
+        h = self._to_float(reader.get("height"))
+        if w > 0 and h > 0:
+            return max(0.25, min(w / h, 4.0))  # clamp to sane range
+        return 16.0 / 9.0
+
     def _clip_media_fps(self, clip):
         data = clip.data if isinstance(clip.data, dict) else {}
         reader = data.get("reader") if isinstance(data.get("reader"), dict) else {}
@@ -1068,25 +1078,13 @@ class ClipPainter(BasePainter):
         if clip_width <= 0.0:
             return [], None
 
-        # Slot dimensions
-        theme_thumb_w = float(self.w.theme.clip.thumb_width or inner.height())
-        thumb_w = theme_thumb_w
-        thumb_h = float(self.w.theme.clip.thumb_height or inner.height())
-        # Keep slot width at nominal thumbnail width even for small clips.
-        # This allows the clip bounds to crop thumbnails instead of shrinking them.
-        thumb_w = max(self._min_thumb_slot_width, thumb_w)
-        thumb_h = max(self._min_thumb_slot_width, min(thumb_h, inner.height()))
-        top = inner.y() + (inner.height() - thumb_h) / 2.0
-        # Keep legacy/default theme behavior while nudging thumbnails downward
-        # on taller tracks so they do not appear vertically centered too high.
-        baseline_clip_height = 48.0
-        if inner.height() > baseline_clip_height:
-            top += (inner.height() - baseline_clip_height) / 2.0
-            top += 3.0
-        max_top = inner.bottom() - thumb_h
-        if max_top < inner.y():
-            max_top = inner.y()
-        top = min(max(top, inner.y()), max_top)
+        # Slot dimensions — height fills the clip; width matches the clip's source AR.
+        thumb_h = max(self._min_thumb_slot_width, inner.height())
+        if self.w.theme.clip.thumb_width:
+            thumb_w = max(self._min_thumb_slot_width, float(self.w.theme.clip.thumb_width))
+        else:
+            thumb_w = max(self._min_thumb_slot_width, inner.height() * self._clip_aspect_ratio(clip))
+        top = inner.y()
 
         pixels_per_second = float(self.w.pixels_per_second or 0.0)
         if pixels_per_second <= 0.0:
@@ -1127,10 +1125,7 @@ class ClipPainter(BasePainter):
         # Slot spacing in time
         # Entire style keeps spacing tied to nominal thumb width (not the
         # shrinking clip width), which prevents end-of-trim slot oscillation.
-        if style == "entire":
-            interval_pixels = max(theme_thumb_w, self._min_thumb_slot_width)
-        else:
-            interval_pixels = max(thumb_w, self._min_thumb_slot_width)
+        interval_pixels = max(thumb_w, self._min_thumb_slot_width)
         interval_seconds = interval_pixels / pixels_per_second
         if interval_seconds <= 0.0:
             interval_seconds = 0.01
@@ -1462,14 +1457,14 @@ class ClipPainter(BasePainter):
         if rect_width <= 0.0:
             return
 
-        scaled = self.scaled_pixmap(pixmap, rect_width, rect.height())
+        scaled = self.scaled_pixmap(pixmap, rect_width, rect.height(), fill=True)
         if not scaled or scaled.isNull():
             return
         full_width, scaled_height = self.logical_size(scaled)
         if full_width <= 0.0 or scaled_height <= 0.0:
             return
 
-        target_x = rect.x()
+        target_x = rect.x() + (rect.width() - full_width) / 2.0
         target_y = rect.y() + (rect.height() - scaled_height) / 2.0
 
         had_hint = bool(painter.renderHints() & QPainter.SmoothPixmapTransform)
@@ -1621,12 +1616,14 @@ class ClipPainter(BasePainter):
                 hit_rect.setHeight(1.0)
             return {"rect": hit_rect, "title": title_raw}
 
-        painter.setPen(self.w.theme.clip.font_color)
         metrics = QFontMetrics(painter.font())
         title = metrics.elidedText(
             title_raw, Qt.ElideRight, int(text_width - 4)
         )
         text_draw_rect = text_rect.adjusted(2, 2, -2, -2)
+        painter.setPen(QColor(0, 0, 0, 160))
+        painter.drawText(text_draw_rect.translated(1, 1), self.w._clip_text_flags, title)
+        painter.setPen(self.w.theme.clip.font_color)
         painter.drawText(text_draw_rect, self.w._clip_text_flags, title)
 
         # Restrict hover to actual rendered text, not the entire clip region.
