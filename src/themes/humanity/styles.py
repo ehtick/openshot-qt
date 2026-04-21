@@ -167,7 +167,7 @@ class RetroTimelineTheme(HumanityDarkTimelineTheme):
         self.clip.top_overlay2  = QColor()
         self.clip.border_color  = QColor("#CD8D00")
         self.clip.border_radius = 0
-        self.clip.font_color    = QColor("#383730")
+        self.clip.font_color    = QColor("#FFFFFF")
 
         # ── Track ─────────────────────────────────────────────────────────
         self.track.background        = QColor("#E5E7EA")
