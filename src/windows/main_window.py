@@ -3175,6 +3175,10 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         s.set('window_state_v2', qt_types.bytes_to_str(self.saveState()))
         s.set('window_geometry_v2', qt_types.bytes_to_str(self.saveGeometry()))
         s.set('docks_frozen', self.docks_frozen)
+        # Qt's saveState() does not capture docks removed via removeDockWidget(); save them explicitly.
+        hidden = [d.objectName() for d in self.getDocks()
+                  if self.dockWidgetArea(d) == Qt.NoDockWidgetArea]
+        s.set('hidden_docks', hidden)
         dock = getattr(self, "dockTimeline", None)
         if dock:
             s.set('timeline_height', dock.height())
@@ -3651,6 +3655,14 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         """Restore saved dock state and then apply timeline height."""
         if self.saved_state:
             self.restoreState(self.saved_state)
+        # Re-apply removed-dock state that Qt's saveState/restoreState doesn't preserve.
+        hidden_names = get_app().get_settings().get('hidden_docks') or []
+        if hidden_names:
+            name_to_dock = {d.objectName(): d for d in self.getDocks()}
+            for name in hidden_names:
+                dock = name_to_dock.get(name)
+                if dock:
+                    self.removeDockWidget(dock)
         self._apply_saved_timeline_height()
 
     def _apply_saved_timeline_height(self):

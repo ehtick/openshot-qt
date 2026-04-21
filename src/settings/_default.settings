@@ -176,6 +176,13 @@
     "setting": "timeline_height"
   },
   {
+    "value": [],
+    "title": "",
+    "type": "hidden",
+    "category": "Qt",
+    "setting": "hidden_docks"
+  },
+  {
     "value": "thumbnail",
     "title": "",
     "type": "hidden",
