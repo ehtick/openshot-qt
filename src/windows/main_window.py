@@ -2865,6 +2865,19 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             color_grade_dock.raise_()
         self.style_dock_widgets()
 
+    def actionAnalysis_View_trigger(self):
+        """Show scope docks without disturbing the existing layout."""
+        self.addDocks([self.dockLumaWaveform], Qt.RightDockWidgetArea)
+        self.addDocks([self.dockHistogram],    Qt.RightDockWidgetArea)
+        self.addDocks([self.dockAudio],        Qt.RightDockWidgetArea)
+        self.tabifyDockWidget(self.dockLumaWaveform, self.dockHistogram)
+        self.tabifyDockWidget(self.dockHistogram,    self.dockAudio)
+        self.setTabPosition(Qt.RightDockWidgetArea, QTabWidget.North)
+        self.showDocks([self.dockLumaWaveform, self.dockHistogram, self.dockAudio])
+        self.dockLumaWaveform.raise_()
+        QCoreApplication.processEvents()
+        self.style_dock_widgets()
+
     def actionFreeze_View_trigger(self):
         """ Freeze all dockable widgets on the main screen """
         for dock in self.getDocks():
