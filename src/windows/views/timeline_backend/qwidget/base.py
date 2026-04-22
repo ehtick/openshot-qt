@@ -956,7 +956,10 @@ class TimelineWidgetBase(QWidget):
                     continue
                 pix, includes_start, includes_end = result
                 if pix:
+                    painter.save()
+                    painter.setOpacity(self.transition_painter.DEFAULT_OPACITY)
                     painter.drawPixmap(rect.topLeft(), pix)
+                    painter.restore()
                 self.transition_painter._stroke_visible_border(
                     painter,
                     rect,
@@ -2980,6 +2983,12 @@ class TimelineWidgetBase(QWidget):
         pos = posf
         if event.button() == Qt.RightButton:
             self._last_event = event
+            keyframe_marker = self._get_keyframe_at(posf)
+            if keyframe_marker:
+                self._active_keyframe_marker = keyframe_marker
+                if self.show_keyframe_context_menu(posf, marker=keyframe_marker):
+                    event.accept()
+                    return
             if self._panel_show_property_menu_at(posf):
                 event.accept()
                 return
@@ -3446,6 +3455,12 @@ class TimelineWidgetBase(QWidget):
 
     def contextMenuEvent(self, event):
         posf = _event_posf(event)
+        keyframe_marker = self._get_keyframe_at(posf)
+        if keyframe_marker:
+            self._active_keyframe_marker = keyframe_marker
+            if self.show_keyframe_context_menu(posf, marker=keyframe_marker):
+                event.accept()
+                return
         if self._panel_show_property_menu_at(posf):
             event.accept()
             return
@@ -3460,6 +3475,11 @@ class TimelineWidgetBase(QWidget):
             event.ignore()
 
     def _panel_show_property_menu_at(self, pos):
+        panel_marker = self._panel_marker_at(pos)
+        if panel_marker and panel_marker.get("point"):
+            if self.show_keyframe_context_menu(pos, panel_info=panel_marker):
+                return True
+
         lane = self._panel_lane_at(pos)
         if not lane:
             lane = self._panel_lane_for_label_gap(pos)

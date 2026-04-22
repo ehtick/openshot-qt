@@ -3968,3 +3968,217 @@ class TimelineHelperTests(unittest.TestCase):
 
         self.assertEqual(seconds, 15.0)
         self.assertEqual(track_number, 7)
+
+    # ---------------------------------------------------------------------------
+    # Keyframe context menu helpers (_set_keyframe_interpolation_at_path,
+    # _apply_keyframe_interpolation, _apply_keyframe_remove)
+    # ---------------------------------------------------------------------------
+
+    def make_keyframe_interp_helper(self):
+        """Minimal KeyframeMixin subclass for interpolation/remove tests."""
+        qwidget_keyframe_module = self.qwidget_keyframe_module
+
+        class Helper(qwidget_keyframe_module.KeyframeMixin):
+            def __init__(self):
+                self._pending_clip_overrides = {}
+                self._pending_transition_overrides = {}
+                self._panel_selected_keyframes = {}
+                self._active_keyframe_marker = None
+                self._press_keyframe = None
+                self._dragging_keyframe = None
+                self._dragging_panel_keyframes = None
+                self._snap_keyframe_seconds = []
+                self._keyframes_dirty = False
+                self.update_calls = 0
+                self.cleanup_calls = 0
+                self.geometry = types.SimpleNamespace(
+                    mark_dirty=lambda: None,
+                )
+                self.win = types.SimpleNamespace(
+                    timeline=types.SimpleNamespace(
+                        update_clip_data=lambda data, **_kw: self.clip_updates.append(
+                            copy.deepcopy(data)
+                        ),
+                        update_transition_data=lambda data, **_kw: self.transition_updates.append(
+                            copy.deepcopy(data)
+                        ),
+                    )
+                )
+                self.clip_updates = []
+                self.transition_updates = []
+
+            def _clear_panel_selection(self, arg):
+                self.cleanup_calls += 1
+
+            def _update_track_panel_properties(self):
+                pass
+
+            def update(self):
+                self.update_calls += 1
+
+        return Helper()
+
+    def _make_clip_data_with_keyframe(self, frame=25, interpolation=0):
+        return {
+            "id": "C1",
+            "volume": {
+                "Points": [
+                    {
+                        "co": {"X": frame, "Y": 1.0},
+                        "interpolation": interpolation,
+                        "handle_left": {"X": 0.25, "Y": 0.1},
+                        "handle_right": {"X": 0.25, "Y": 1.0},
+                    }
+                ]
+            },
+        }
+
+    def test_set_keyframe_interpolation_at_path_bezier_sets_handles(self):
+        helper = self.make_keyframe_interp_helper()
+        data = self._make_clip_data_with_keyframe(frame=25, interpolation=1)
+        path = (("dict", "volume"), ("dict", "Points"), ("list", 0))
+        preset = (0.42, 0.0, 0.58, 1.0, "Ease In/Out")
+
+        result = helper._set_keyframe_interpolation_at_path(data, path, 0, preset)
+
+        self.assertTrue(result)
+        pt = data["volume"]["Points"][0]
+        self.assertEqual(pt["interpolation"], 0)
+        self.assertAlmostEqual(pt["handle_right"]["X"], 0.42)
+        self.assertAlmostEqual(pt["handle_right"]["Y"], 0.0)
+        self.assertAlmostEqual(pt["handle_left"]["X"], 0.58)
+        self.assertAlmostEqual(pt["handle_left"]["Y"], 1.0)
+
+    def test_set_keyframe_interpolation_at_path_linear_removes_handles(self):
+        helper = self.make_keyframe_interp_helper()
+        data = self._make_clip_data_with_keyframe(frame=25, interpolation=0)
+        path = (("dict", "volume"), ("dict", "Points"), ("list", 0))
+
+        result = helper._set_keyframe_interpolation_at_path(data, path, 1, None)
+
+        self.assertTrue(result)
+        pt = data["volume"]["Points"][0]
+        self.assertEqual(pt["interpolation"], 1)
+        self.assertNotIn("handle_left", pt)
+        self.assertNotIn("handle_right", pt)
+
+    def test_set_keyframe_interpolation_at_path_constant_removes_handles(self):
+        helper = self.make_keyframe_interp_helper()
+        data = self._make_clip_data_with_keyframe(frame=25, interpolation=0)
+        path = (("dict", "volume"), ("dict", "Points"), ("list", 0))
+
+        result = helper._set_keyframe_interpolation_at_path(data, path, 2, None)
+
+        self.assertTrue(result)
+        pt = data["volume"]["Points"][0]
+        self.assertEqual(pt["interpolation"], 2)
+        self.assertNotIn("handle_left", pt)
+        self.assertNotIn("handle_right", pt)
+
+    def test_set_keyframe_interpolation_at_path_returns_false_for_invalid_path(self):
+        helper = self.make_keyframe_interp_helper()
+        data = {"volume": {"Points": []}}
+        path = (("dict", "volume"), ("dict", "Points"), ("list", 0))
+
+        result = helper._set_keyframe_interpolation_at_path(data, path, 1, None)
+
+        self.assertFalse(result)
+
+    def test_apply_keyframe_interpolation_updates_clip_from_marker(self):
+        helper = self.make_keyframe_interp_helper()
+        clip_data = self._make_clip_data_with_keyframe(frame=25, interpolation=0)
+        clip = types.SimpleNamespace(id="C1", data=clip_data)
+        path = (("dict", "volume"), ("dict", "Points"), ("list", 0))
+        marker = {
+            "type": "clip",
+            "object_type": "clip",
+            "object_id": "C1",
+            "clip": clip,
+            "data_paths": (path,),
+        }
+
+        helper._apply_keyframe_interpolation(1, None, marker, [])
+
+        self.assertEqual(len(helper.clip_updates), 1)
+        pt = helper.clip_updates[0]["volume"]["Points"][0]
+        self.assertEqual(pt["interpolation"], 1)
+        self.assertNotIn("handle_left", pt)
+
+    def test_apply_keyframe_interpolation_updates_clip_from_panel_targets(self):
+        helper = self.make_keyframe_interp_helper()
+        clip_data = self._make_clip_data_with_keyframe(frame=25, interpolation=0)
+        clip = types.SimpleNamespace(id="C1", data=clip_data)
+        path = (("dict", "volume"), ("dict", "Points"), ("list", 0))
+        panel_targets = [{
+            "owner_type": "clip",
+            "object_id": "C1",
+            "clip": clip,
+            "transition": None,
+            "paths": {path},
+        }]
+
+        helper._apply_keyframe_interpolation(2, None, None, panel_targets)
+
+        self.assertEqual(len(helper.clip_updates), 1)
+        pt = helper.clip_updates[0]["volume"]["Points"][0]
+        self.assertEqual(pt["interpolation"], 2)
+
+    def test_apply_keyframe_interpolation_updates_transition_from_panel_targets(self):
+        helper = self.make_keyframe_interp_helper()
+        trans_data = {
+            "id": "T1",
+            "brightness": {
+                "Points": [
+                    {
+                        "co": {"X": 10, "Y": 0.5},
+                        "interpolation": 1,
+                    }
+                ]
+            },
+        }
+        trans = types.SimpleNamespace(id="T1", data=trans_data)
+        path = (("dict", "brightness"), ("dict", "Points"), ("list", 0))
+        panel_targets = [{
+            "owner_type": "transition",
+            "object_id": "T1",
+            "clip": None,
+            "transition": trans,
+            "paths": {path},
+        }]
+        preset = (0.42, 0.0, 0.58, 1.0, "Ease In/Out")
+
+        helper._apply_keyframe_interpolation(0, preset, None, panel_targets)
+
+        self.assertEqual(len(helper.transition_updates), 1)
+        pt = helper.transition_updates[0]["brightness"]["Points"][0]
+        self.assertEqual(pt["interpolation"], 0)
+        self.assertAlmostEqual(pt["handle_right"]["X"], 0.42)
+
+    def test_apply_keyframe_remove_panel_targets_updates_clip_and_cleans_up(self):
+        helper = self.make_keyframe_interp_helper()
+        clip_data = self._make_clip_data_with_keyframe(frame=25, interpolation=1)
+        clip = types.SimpleNamespace(id="C1", data=clip_data)
+        path = (("dict", "volume"), ("dict", "Points"), ("list", 0))
+        panel_targets = [{
+            "owner_type": "clip",
+            "object_id": "C1",
+            "clip": clip,
+            "transition": None,
+            "paths": {path},
+        }]
+
+        helper._apply_keyframe_remove(None, panel_targets)
+
+        self.assertEqual(len(helper.clip_updates), 1)
+        self.assertEqual(helper.clip_updates[0]["volume"]["Points"], [])
+        self.assertIsNone(helper._active_keyframe_marker)
+        self.assertEqual(helper.cleanup_calls, 1)
+        self.assertTrue(helper._keyframes_dirty)
+
+    def test_keyframe_bezier_presets_returns_28_entries(self):
+        helper = self.make_keyframe_interp_helper()
+        presets = helper._keyframe_bezier_presets()
+        self.assertEqual(len(presets), 28)
+        for preset in presets:
+            self.assertEqual(len(preset), 5)
+            self.assertIsInstance(preset[4], str)
