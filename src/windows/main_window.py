@@ -3872,7 +3872,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         get_app().window.PlayPauseToggleSignal.emit()
 
     def deleteItem(self):
-        """Remove the current selected clip / transition or file from the project."""
+        """Remove the current selected file, keyframes, effect, clip, or transition."""
         # Set transaction id
         tid = str(uuid.uuid4())
         get_app().updates.transaction_id = tid
@@ -3892,6 +3892,8 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
                 if keyframes_deleted:
                     self.refreshFrameSignal.emit()
                     return
+                # Remove selected effects before falling back to clips/transitions.
+                self.actionRemoveEffect_trigger()
                 # Otherwise, proceed with the normal timeline delete behavior
                 self.actionRemoveClip_trigger(refresh=False)
                 self.actionRemoveTransition_trigger(refresh=False)

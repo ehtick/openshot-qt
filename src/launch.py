@@ -83,25 +83,16 @@ scale = max(0.5, min(3.0, scale))
 if scale != 1.0:
     os.environ["QT_SCALE_FACTOR"] = str(scale)
 
-from qt_api import QtCore, QtWidgets, QtWebEngineWidgets
+from qt_api import QtCore, QtWidgets
 
 Qt = QtCore.Qt
 QApplication = QtWidgets.QApplication
 
 try:
-    # This apparently has to be done before loading QtQuick
-    # (via QtWebEgine) AND before creating the QApplication instance
+    # This must be done before creating QApplication
     QApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
     from OpenGL import GL  # noqa
 except (ImportError, AttributeError):
-    pass
-
-try:
-    # QtWebEngineWidgets must be loaded prior to creating a QApplication
-    # But on systems with only WebKit, this will fail (and we ignore the failure)
-    if QtWebEngineWidgets:
-        WebEngineView = QtWebEngineWidgets.QWebEngineView
-except ImportError:
     pass
 
 try:
@@ -150,10 +141,6 @@ def main():
         action='store_true',
         help="Load Qt's QAbstractItemModelTester into data models "
         '(requires Qt 5.11+)')
-    parser.add_argument(
-        '-b', '--web-backend', action='store',
-        choices=['auto', 'webkit', 'webengine', 'qwidget'], default='auto',
-        help="Web backend to use for Timeline")
     parser.add_argument(
         '-d', '--debug', action='store_true',
         help='Enable debugging output')
@@ -205,8 +192,6 @@ def main():
         # Set default logging rules, if the user didn't
         if os.getenv('QT_LOGGING_RULES') is None:
             os.putenv('QT_LOGGING_RULES', 'qt.modeltest.debug=true')
-    if args.web_backend:
-        info.WEB_BACKEND = args.web_backend.lower()
     if args.lang:
         if args.lang in info.SUPPORTED_LANGUAGES:
             info.CMDLINE_LANGUAGE = args.lang
