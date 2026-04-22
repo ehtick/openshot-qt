@@ -26,55 +26,252 @@
  """
 
 import copy
+import json
 import math
 
 from qt_api import Qt, QPointF, QRectF, QSize, pyqtSignal, QShortcut, QKeySequence, QTimer
-from qt_api import QColor, QPainter, QPen, QBrush, QPainterPath, QConicalGradient
+from qt_api import QColor, QPainter, QPen, QBrush, QPainterPath, QConicalGradient, QPixmap, QIcon
 from qt_api import QWidget, QDialog, QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QAction
 from qt_api import QDialogButtonBox, QFrame, QSlider, QDoubleSpinBox, QGridLayout
 from qt_api import QFontMetrics, QSizePolicy
 
 from classes.app import get_app
-from windows.views.menu import StyledContextMenu
+from windows.views.menu import StyledContextMenu, populate_keyframe_context_menu
 from windows.color_picker import ColorPicker
+import openshot
+
+
+def _keyframe_value(frame_number=1.0, value=0.0, interpolation=openshot.CONSTANT):
+    return {
+        "Points": [{
+            "co": {"X": float(frame_number), "Y": float(value)},
+            "interpolation": int(interpolation),
+        }]
+    }
+
+
+def _normalize_keyframe_data(data, default_value=0.0):
+    if isinstance(data, dict) and isinstance(data.get("Points"), list):
+        points = []
+        for point in data["Points"]:
+            try:
+                normalized_point = {
+                    "co": {
+                        "X": float(point.get("co", {}).get("X", 1.0)),
+                        "Y": float(point.get("co", {}).get("Y", default_value)),
+                    },
+                    "interpolation": int(point.get("interpolation", openshot.LINEAR)),
+                }
+                handle_left = point.get("handle_left")
+                handle_right = point.get("handle_right")
+                if isinstance(handle_left, dict):
+                    normalized_point["handle_left"] = {
+                        "X": float(handle_left.get("X", 0.5)),
+                        "Y": float(handle_left.get("Y", 1.0)),
+                    }
+                if isinstance(handle_right, dict):
+                    normalized_point["handle_right"] = {
+                        "X": float(handle_right.get("X", 0.5)),
+                        "Y": float(handle_right.get("Y", 0.0)),
+                    }
+                if "handle_type" in point:
+                    normalized_point["handle_type"] = int(point.get("handle_type", openshot.AUTO))
+                points.append(normalized_point)
+            except (TypeError, ValueError, AttributeError):
+                continue
+        if points:
+            points.sort(key=lambda point: point["co"]["X"])
+            return {"Points": points}
+
+    if isinstance(data, (int, float, bool)):
+        return _keyframe_value(value=float(data))
+    return _keyframe_value(value=float(default_value))
+
+
+def _evaluate_keyframe(data, frame_number, default_value=0.0):
+    normalized = _normalize_keyframe_data(data, default_value)
+    points = normalized.get("Points", [])
+    if not points:
+        try:
+            return float(default_value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    frame_value = float(frame_number)
+    if frame_value <= points[0]["co"]["X"]:
+        return float(points[0]["co"]["Y"])
+
+    for index in range(1, len(points)):
+        left = points[index - 1]
+        right = points[index]
+        right_x = float(right["co"]["X"])
+        if frame_value > right_x:
+            continue
+        left_x = float(left["co"]["X"])
+        left_y = float(left["co"]["Y"])
+        right_y = float(right["co"]["Y"])
+        if abs(frame_value - right_x) < 0.00001:
+            return right_y
+        interpolation = int(right.get("interpolation", openshot.BEZIER))
+        if interpolation == openshot.CONSTANT or abs(right_x - left_x) < 0.00001:
+            return left_y
+        progress = (frame_value - left_x) / (right_x - left_x)
+        progress = max(0.0, min(1.0, progress))
+        return left_y + ((right_y - left_y) * progress)
+
+    return float(points[-1]["co"]["Y"])
+
+
+def _set_keyframe_value(data, frame_number, value, interpolation=openshot.BEZIER):
+    normalized = _normalize_keyframe_data(data, value)
+    points = copy.deepcopy(normalized["Points"])
+    target_frame = int(frame_number)
+    for point in points:
+        if int(round(point["co"]["X"])) == target_frame:
+            point["co"]["Y"] = float(value)
+            return {"Points": points}
+
+    points.append({
+        "co": {"X": float(target_frame), "Y": float(value)},
+        "interpolation": int(interpolation),
+    })
+    points.sort(key=lambda point: point["co"]["X"])
+    return {"Points": points}
+
+
+def _normalize_color_data(data, default_color="#ffffff"):
+    color = QColor(default_color)
+    if isinstance(data, dict):
+        return {
+            "red": _normalize_keyframe_data(data.get("red"), color.red()),
+            "green": _normalize_keyframe_data(data.get("green"), color.green()),
+            "blue": _normalize_keyframe_data(data.get("blue"), color.blue()),
+            "alpha": _normalize_keyframe_data(data.get("alpha"), color.alpha()),
+        }
+
+    if isinstance(data, str):
+        candidate = QColor(data)
+        if candidate.isValid():
+            color = candidate
+
+    return {
+        "red": _keyframe_value(value=color.red()),
+        "green": _keyframe_value(value=color.green()),
+        "blue": _keyframe_value(value=color.blue()),
+        "alpha": _keyframe_value(value=color.alpha()),
+    }
+
+
+def _evaluate_color(data, frame_number, default_color="#ffffff"):
+    normalized = _normalize_color_data(data, default_color)
+    return QColor(
+        int(round(_evaluate_keyframe(normalized["red"], frame_number, 255.0))),
+        int(round(_evaluate_keyframe(normalized["green"], frame_number, 255.0))),
+        int(round(_evaluate_keyframe(normalized["blue"], frame_number, 255.0))),
+        int(round(_evaluate_keyframe(normalized["alpha"], frame_number, 255.0))),
+    )
+
+
+def _set_color_value(data, frame_number, color):
+    current = _normalize_color_data(data)
+    return {
+        "red": _set_keyframe_value(current["red"], frame_number, color.red()),
+        "green": _set_keyframe_value(current["green"], frame_number, color.green()),
+        "blue": _set_keyframe_value(current["blue"], frame_number, color.blue()),
+        "alpha": _set_keyframe_value(current["alpha"], frame_number, color.alpha()),
+    }
+
+
+def _default_curve_node(node_id, x_value, y_value):
+    return {
+        "id": int(node_id),
+        "x": _keyframe_value(value=x_value),
+        "y": _keyframe_value(value=y_value),
+        "left_handle_x": _keyframe_value(value=0.5),
+        "left_handle_y": _keyframe_value(value=1.0),
+        "right_handle_x": _keyframe_value(value=0.5),
+        "right_handle_y": _keyframe_value(value=0.0),
+        "interpolation": int(openshot.LINEAR),
+        "handle_type": int(openshot.AUTO),
+    }
 
 
 def default_curve_data():
-    return {"enabled": True, "points": [{"x": 0.0, "y": 0.0}, {"x": 1.0, "y": 1.0}]}
+    return {
+        "enabled": _keyframe_value(value=1.0),
+        "nodes": [
+            _default_curve_node(0, 0.0, 0.0),
+            _default_curve_node(1, 1.0, 1.0),
+        ],
+    }
 
 
 def normalize_curve_data(data):
     data = data or {}
-    points = data.get("points") or []
-    parsed = []
-    for point in points:
+    nodes = []
+    for index, node in enumerate(data.get("nodes") or []):
         try:
-            x = max(0.0, min(1.0, float(point.get("x", 0.0))))
-            y = max(0.0, min(1.0, float(point.get("y", 0.0))))
-            parsed.append({"x": x, "y": y})
+            node_id = int(node.get("id", index))
         except (TypeError, ValueError, AttributeError):
-            continue
-    if not parsed:
+            node_id = index
+        nodes.append({
+            "id": node_id,
+            "x": _normalize_keyframe_data(node.get("x"), 0.0),
+            "y": _normalize_keyframe_data(node.get("y"), 0.0),
+            "left_handle_x": _normalize_keyframe_data(node.get("left_handle_x"), 0.5),
+            "left_handle_y": _normalize_keyframe_data(node.get("left_handle_y"), 1.0),
+            "right_handle_x": _normalize_keyframe_data(node.get("right_handle_x"), 0.5),
+            "right_handle_y": _normalize_keyframe_data(node.get("right_handle_y"), 0.0),
+            "interpolation": int(node.get("interpolation", openshot.LINEAR)),
+            "handle_type": int(node.get("handle_type", openshot.AUTO)),
+        })
+    if len(nodes) < 2:
         return default_curve_data()
-    parsed.sort(key=lambda point: point["x"])
-    if parsed[0]["x"] > 0.0:
-        parsed.insert(0, {"x": 0.0, "y": parsed[0]["y"]})
-    else:
-        parsed[0]["x"] = 0.0
-    if parsed[-1]["x"] < 1.0:
-        parsed.append({"x": 1.0, "y": parsed[-1]["y"]})
-    else:
-        parsed[-1]["x"] = 1.0
-    return {"enabled": bool(data.get("enabled", True)), "points": parsed}
+    return {
+        "enabled": _normalize_keyframe_data(data.get("enabled"), 1.0),
+        "nodes": nodes,
+    }
+
+
+def curve_enabled_at_frame(data, frame_number):
+    curve = normalize_curve_data(data)
+    return _evaluate_keyframe(curve["enabled"], frame_number, 1.0) >= 0.5
+
+
+def curve_nodes_at_frame(data, frame_number):
+    curve = normalize_curve_data(data)
+    evaluated = []
+    for node in curve["nodes"]:
+        evaluated.append({
+            "id": node["id"],
+            "x": max(0.0, min(1.0, _evaluate_keyframe(node["x"], frame_number, 0.0))),
+            "y": max(0.0, min(1.0, _evaluate_keyframe(node["y"], frame_number, 0.0))),
+            "left_handle_x": max(0.0, min(1.0, _evaluate_keyframe(node["left_handle_x"], frame_number, 0.5))),
+            "left_handle_y": max(0.0, min(1.0, _evaluate_keyframe(node["left_handle_y"], frame_number, 1.0))),
+            "right_handle_x": max(0.0, min(1.0, _evaluate_keyframe(node["right_handle_x"], frame_number, 0.5))),
+            "right_handle_y": max(0.0, min(1.0, _evaluate_keyframe(node["right_handle_y"], frame_number, 0.0))),
+            "interpolation": int(node.get("interpolation", openshot.LINEAR)),
+            "handle_type": int(node.get("handle_type", openshot.AUTO)),
+        })
+    evaluated.sort(key=lambda node: (node["x"], node["id"]))
+    return evaluated
+
+
+def curve_summary(data, frame_number):
+    curve = normalize_curve_data(data)
+    summary = f"{len(curve['nodes'])} nodes"
+    if not curve_enabled_at_frame(curve, frame_number):
+        return f"Disabled, {summary}"
+    return summary
 
 
 def default_wheels_data():
     return {
-        "enabled": True,
-        "global": {"color": "#ffffff", "amount": 0.0, "luma": 0.0},
-        "shadows": {"color": "#ffffff", "amount": 0.0, "luma": 0.0},
-        "midtones": {"color": "#ffffff", "amount": 0.0, "luma": 0.0},
-        "highlights": {"color": "#ffffff", "amount": 0.0, "luma": 0.0},
+        "enabled_keyframes": _keyframe_value(value=1.0),
+        "global": {"color_keyframes": _normalize_color_data("#ffffff"), "amount_keyframes": _keyframe_value(value=0.0), "luma_keyframes": _keyframe_value(value=0.0)},
+        "shadows": {"color_keyframes": _normalize_color_data("#ffffff"), "amount_keyframes": _keyframe_value(value=0.0), "luma_keyframes": _keyframe_value(value=0.0)},
+        "midtones": {"color_keyframes": _normalize_color_data("#ffffff"), "amount_keyframes": _keyframe_value(value=0.0), "luma_keyframes": _keyframe_value(value=0.0)},
+        "highlights": {"color_keyframes": _normalize_color_data("#ffffff"), "amount_keyframes": _keyframe_value(value=0.0), "luma_keyframes": _keyframe_value(value=0.0)},
     }
 
 
@@ -132,31 +329,89 @@ def puck_display_color(data):
 
 def normalize_single_wheel_data(data):
     normalized = normalize_wheels_data({"global": data})
-    return copy.deepcopy(normalized["global"])
+    return wheel_snapshot(normalized["global"], 1)
 
 
 def normalize_wheels_data(data):
     data = copy.deepcopy(data or {})
     normalized = default_wheels_data()
-    normalized["enabled"] = bool(data.get("enabled", True))
+    normalized["enabled_keyframes"] = _normalize_keyframe_data(
+        data.get("enabled_keyframes", data.get("enabled")),
+        1.0,
+    )
     for name, wheel in normalized.items():
-        if name == "enabled":
+        if name == "enabled_keyframes":
             continue
         source = data.get(name) or {}
-        color = QColor(source.get("color", wheel["color"]))
-        wheel["color"] = color.name() if color.isValid() else "#ffffff"
-        try:
-            wheel["amount"] = max(0.0, min(1.0, float(source.get("amount", wheel["amount"]))))
-        except (TypeError, ValueError):
-            pass
-        try:
-            wheel["luma"] = max(-1.0, min(1.0, float(source.get("luma", wheel["luma"]))))
-        except (TypeError, ValueError):
-            pass
-        if wheel["amount"] <= 0.0001:
-            wheel["amount"] = 0.0
-            wheel["color"] = NEUTRAL_WHEEL_COLOR
+        wheel["color_keyframes"] = _normalize_color_data(source.get("color_keyframes", source.get("color")), "#ffffff")
+        wheel["amount_keyframes"] = _normalize_keyframe_data(source.get("amount_keyframes", source.get("amount")), 0.0)
+        wheel["luma_keyframes"] = _normalize_keyframe_data(source.get("luma_keyframes", source.get("luma")), 0.0)
     return normalized
+
+
+def wheels_enabled_at_frame(data, frame_number):
+    wheels = normalize_wheels_data(data)
+    return _evaluate_keyframe(wheels["enabled_keyframes"], frame_number, 1.0) >= 0.5
+
+
+def wheel_snapshot(data, frame_number):
+    wheel = data or {}
+    color = _evaluate_color(wheel.get("color_keyframes", wheel.get("color")), frame_number, NEUTRAL_WHEEL_COLOR)
+    return {
+        "color": color.name(),
+        "amount": max(0.0, min(1.0, _evaluate_keyframe(wheel.get("amount_keyframes", wheel.get("amount")), frame_number, 0.0))),
+        "luma": max(-1.0, min(1.0, _evaluate_keyframe(wheel.get("luma_keyframes", wheel.get("luma")), frame_number, 0.0))),
+    }
+
+
+def wheels_snapshot(data, frame_number):
+    wheels = normalize_wheels_data(data)
+    snapshot = {"enabled": wheels_enabled_at_frame(wheels, frame_number)}
+    for name in ("global", "shadows", "midtones", "highlights"):
+        snapshot[name] = wheel_snapshot(wheels.get(name), frame_number)
+    return snapshot
+
+
+def wheels_summary(data, frame_number):
+    if wheels_enabled_at_frame(data, frame_number):
+        return "Global / Shadows / Midtones / Highlights"
+    return "Disabled"
+
+
+def _draw_keyframe_marker(painter, center, interpolation, size, fill_color, border_color):
+    half = size / 2.0
+    rect = QRectF(center.x() - half, center.y() - half, size, size)
+    painter.setPen(QPen(border_color, 1.2))
+    painter.setBrush(QBrush(fill_color))
+    if interpolation == openshot.LINEAR:
+        painter.drawRect(rect)
+    elif interpolation == openshot.CONSTANT:
+        path = QPainterPath()
+        path.moveTo(center.x(), rect.top())
+        path.lineTo(rect.right(), center.y())
+        path.lineTo(center.x(), rect.bottom())
+        path.lineTo(rect.left(), center.y())
+        path.closeSubpath()
+        painter.drawPath(path)
+    else:
+        painter.drawEllipse(rect)
+
+
+def _keyframe_marker_icon(interpolation, size=12, fill_color="#4d7bff", border_color="#ffffff"):
+    pixmap = QPixmap(size + 4, size + 4)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing)
+    _draw_keyframe_marker(
+        painter,
+        QPointF(pixmap.width() / 2.0, pixmap.height() / 2.0),
+        interpolation,
+        float(size),
+        QColor(fill_color),
+        QColor(border_color),
+    )
+    painter.end()
+    return QIcon(pixmap)
 
 
 class ColorWheelControl(QWidget):
@@ -292,12 +547,19 @@ class CurvePreviewWidget(QWidget):
     dragStarted = pyqtSignal()
     dragFinished = pyqtSignal()
 
-    def __init__(self, curve_data=None, parent=None):
+    def __init__(self, curve_data=None, frame_number=1, parent=None):
         super().__init__(parent)
         self.setMinimumSize(QSize(240, 240))
         self._curve_data = normalize_curve_data(curve_data)
-        self._drag_index = None
+        self._frame_number = int(frame_number)
+        self._drag_target = None
         self._padding = 18.0
+        self._selected_node_id = None
+        self._curve_icons = {
+            openshot.BEZIER: _keyframe_marker_icon(openshot.BEZIER),
+            openshot.LINEAR: _keyframe_marker_icon(openshot.LINEAR),
+            openshot.CONSTANT: _keyframe_marker_icon(openshot.CONSTANT),
+        }
 
     def curve_data(self):
         return normalize_curve_data(self._curve_data)
@@ -306,6 +568,10 @@ class CurvePreviewWidget(QWidget):
         self._curve_data = normalize_curve_data(curve_data)
         self.update()
         self.curveChanged.emit(self.curve_data())
+
+    def set_frame_number(self, frame_number):
+        self._frame_number = int(frame_number)
+        self.update()
 
     def reset(self):
         self.set_curve_data(default_curve_data())
@@ -330,62 +596,267 @@ class CurvePreviewWidget(QWidget):
         y = max(0.0, min(1.0, (rect.bottom() - pos.y()) / rect.height()))
         return {"x": x, "y": y}
 
+    def _evaluated_nodes(self):
+        return curve_nodes_at_frame(self._curve_data, self._frame_number)
+
+    def _node_sort_index(self, node_id):
+        for idx, node in enumerate(self._evaluated_nodes()):
+            if node["id"] == node_id:
+                return idx
+        return None
+
+    def _get_node(self, node_id):
+        for node in self._curve_data["nodes"]:
+            if node["id"] == node_id:
+                return node
+        return None
+
+    def _curve_icon(self, interpolation):
+        return self._curve_icons.get(interpolation) or self._curve_icons[openshot.BEZIER]
+
     def _find_point_index(self, pos, radius=10.0):
-        for idx, point in enumerate(self._curve_data["points"]):
+        for idx, point in enumerate(self._evaluated_nodes()):
             if (self._point_to_screen(point) - pos).manhattanLength() <= radius:
                 return idx
         return None
 
+    def _segment_nodes(self, node_id, side):
+        nodes = self._evaluated_nodes()
+        sort_index = self._node_sort_index(node_id)
+        if sort_index is None:
+            return None, None
+        if side == "left":
+            if sort_index <= 0:
+                return None, None
+            return nodes[sort_index - 1], nodes[sort_index]
+        if sort_index >= len(nodes) - 1:
+            return None, None
+        return nodes[sort_index], nodes[sort_index + 1]
+
+    def _handle_point(self, node_id, side):
+        left, right = self._segment_nodes(node_id, side)
+        if not left or not right:
+            return None
+
+        if side == "left" and right["interpolation"] != openshot.BEZIER:
+            return None
+        if side == "right" and right["interpolation"] != openshot.BEZIER:
+            return None
+
+        delta_x = right["x"] - left["x"]
+        delta_y = right["y"] - left["y"]
+        if side == "left":
+            return {
+                "x": left["x"] + (right["left_handle_x"] * delta_x),
+                "y": left["y"] + (right["left_handle_y"] * delta_y),
+            }
+        return {
+            "x": left["x"] + (left["right_handle_x"] * delta_x),
+            "y": left["y"] + (left["right_handle_y"] * delta_y),
+        }
+
+    def _find_handle_hit(self, pos, radius=8.0):
+        for node in self._evaluated_nodes():
+            for side in ("left", "right"):
+                handle = self._handle_point(node["id"], side)
+                if handle is None:
+                    continue
+                if (self._point_to_screen(handle) - pos).manhattanLength() <= radius:
+                    return {"type": "handle", "node_id": node["id"], "side": side}
+        return None
+
+    def _set_handle_value(self, node, side, x_value, y_value):
+        if side == "left":
+            node["left_handle_x"] = _set_keyframe_value(node.get("left_handle_x"), self._frame_number, x_value)
+            node["left_handle_y"] = _set_keyframe_value(node.get("left_handle_y"), self._frame_number, y_value)
+        else:
+            node["right_handle_x"] = _set_keyframe_value(node.get("right_handle_x"), self._frame_number, x_value)
+            node["right_handle_y"] = _set_keyframe_value(node.get("right_handle_y"), self._frame_number, y_value)
+
+    def _set_handle_from_position(self, node_id, side, pos, modifiers):
+        left, right = self._segment_nodes(node_id, side)
+        node = self._get_node(node_id)
+        if not left or not right or not node:
+            return
+
+        point = self._screen_to_point(pos)
+        delta_x = right["x"] - left["x"]
+        delta_y = right["y"] - left["y"]
+        base_x = left["x"]
+        base_y = left["y"]
+
+        if abs(delta_x) < 0.00001:
+            handle_x = 0.5
+        else:
+            handle_x = (point["x"] - base_x) / delta_x
+        if abs(delta_y) < 0.00001:
+            handle_y = 0.0 if side == "right" else 1.0
+        else:
+            handle_y = (point["y"] - base_y) / delta_y
+
+        handle_x = max(-2.0, min(2.0, handle_x))
+        handle_y = max(-2.0, min(2.0, handle_y))
+        self._set_handle_value(node, side, handle_x, handle_y)
+
+        opposite_side = "right" if side == "left" else "left"
+        if modifiers & Qt.ShiftModifier:
+            opposite_node = node
+            if side == "left":
+                opposite_left, opposite_right = self._segment_nodes(node_id, "right")
+                if opposite_left and opposite_right:
+                    self._set_handle_value(opposite_node, "right", 1.0 - handle_x, 1.0 - handle_y)
+            else:
+                opposite_left, opposite_right = self._segment_nodes(node_id, "left")
+                if opposite_left and opposite_right:
+                    self._set_handle_value(opposite_node, "left", 1.0 - handle_x, 1.0 - handle_y)
+        elif modifiers & Qt.ControlModifier:
+            opposite_node = node
+            if side == "left":
+                current_x = _evaluate_keyframe(node.get("right_handle_x"), self._frame_number, 0.5)
+                current_y = _evaluate_keyframe(node.get("right_handle_y"), self._frame_number, 0.0)
+                left_current_x = _evaluate_keyframe(node.get("left_handle_x"), self._frame_number, 0.5)
+                left_current_y = _evaluate_keyframe(node.get("left_handle_y"), self._frame_number, 1.0)
+                self._set_handle_value(opposite_node, "right", current_x + (handle_x - left_current_x), current_y + (handle_y - left_current_y))
+            else:
+                current_x = _evaluate_keyframe(node.get("left_handle_x"), self._frame_number, 0.5)
+                current_y = _evaluate_keyframe(node.get("left_handle_y"), self._frame_number, 1.0)
+                right_current_x = _evaluate_keyframe(node.get("right_handle_x"), self._frame_number, 0.5)
+                right_current_y = _evaluate_keyframe(node.get("right_handle_y"), self._frame_number, 0.0)
+                self._set_handle_value(opposite_node, "left", current_x + (handle_x - right_current_x), current_y + (handle_y - right_current_y))
+
     def mousePressEvent(self, event):
         pos = event.position() if hasattr(event, "position") else QPointF(event.pos())
+        if event.button() == Qt.RightButton:
+            hit_index = self._find_point_index(pos)
+            if hit_index is not None:
+                self._selected_node_id = self._evaluated_nodes()[hit_index]["id"]
+                self._show_node_menu(event.globalPos() if hasattr(event, "globalPos") else self.mapToGlobal(pos.toPoint()))
+            return
+
+        handle_hit = self._find_handle_hit(pos)
+        if handle_hit is not None:
+            self._drag_target = handle_hit
+            self._selected_node_id = handle_hit["node_id"]
+            self.dragStarted.emit()
+            return
+
         hit_index = self._find_point_index(pos)
         if hit_index is not None:
-            self._drag_index = hit_index
+            self._drag_target = {"type": "node", "node_id": self._evaluated_nodes()[hit_index]["id"]}
+            self._selected_node_id = self._drag_target["node_id"]
             self.dragStarted.emit()
             return
 
         new_point = self._screen_to_point(pos)
-        points = list(self._curve_data["points"])
-        points.append(new_point)
-        self._curve_data = normalize_curve_data({"points": points})
-        for idx, point in enumerate(self._curve_data["points"]):
-            if abs(point["x"] - new_point["x"]) < 0.0001 and abs(point["y"] - new_point["y"]) < 0.0001:
-                self._drag_index = idx
-                break
+        next_id = max([node["id"] for node in self._curve_data["nodes"]] + [-1]) + 1
+        new_node = _default_curve_node(next_id, new_point["x"], new_point["y"])
+        self._curve_data["nodes"].append(new_node)
+        self._curve_data = normalize_curve_data(self._curve_data)
+        self._drag_target = {"type": "node", "node_id": next_id}
+        self._selected_node_id = next_id
         self.dragStarted.emit()
         self.update()
         self.curveChanged.emit(self.curve_data())
 
     def mouseMoveEvent(self, event):
-        if self._drag_index is None:
+        if self._drag_target is None:
             return
         pos = event.position() if hasattr(event, "position") else QPointF(event.pos())
-        point = self._screen_to_point(pos)
-        points = list(self._curve_data["points"])
-        if self._drag_index in (0, len(points) - 1):
-            point["x"] = 0.0 if self._drag_index == 0 else 1.0
-        points[self._drag_index] = point
-        self._curve_data = normalize_curve_data({"points": points})
+        if self._drag_target["type"] == "handle":
+            self._set_handle_from_position(
+                self._drag_target["node_id"],
+                self._drag_target["side"],
+                pos,
+                event.modifiers() if hasattr(event, "modifiers") else Qt.NoModifier,
+            )
+        else:
+            point = self._screen_to_point(pos)
+            sort_index = self._node_sort_index(self._drag_target["node_id"])
+            if sort_index == 0:
+                point["x"] = 0.0
+            elif sort_index == len(self._curve_data["nodes"]) - 1:
+                point["x"] = 1.0
+            node = self._get_node(self._drag_target["node_id"])
+            if not node:
+                return
+            node["x"] = _set_keyframe_value(node["x"], self._frame_number, point["x"])
+            node["y"] = _set_keyframe_value(node["y"], self._frame_number, point["y"])
+        self._curve_data = normalize_curve_data(self._curve_data)
         self.update()
         self.curveChanged.emit(self.curve_data())
 
     def mouseReleaseEvent(self, event):
-        if self._drag_index is not None:
-            self._drag_index = None
+        if self._drag_target is not None:
+            self._drag_target = None
             self.dragFinished.emit()
         super().mouseReleaseEvent(event)
 
-    def mouseDoubleClickEvent(self, event):
-        pos = event.position() if hasattr(event, "position") else QPointF(event.pos())
-        hit_index = self._find_point_index(pos)
-        points = list(self._curve_data["points"])
-        if hit_index is not None and hit_index not in (0, len(points) - 1):
-            self.dragStarted.emit()
-            points.pop(hit_index)
-            self._curve_data = normalize_curve_data({"points": points})
-            self.update()
-            self.curveChanged.emit(self.curve_data())
-            self.dragFinished.emit()
+    def _remove_selected_node(self):
+        if self._selected_node_id is None or len(self._curve_data["nodes"]) <= 2:
+            return
+        sort_index = self._node_sort_index(self._selected_node_id)
+        if sort_index in (0, len(self._curve_data["nodes"]) - 1):
+            return
+        self.dragStarted.emit()
+        self._curve_data["nodes"] = [
+            node for node in self._curve_data["nodes"] if node["id"] != self._selected_node_id
+        ]
+        self._curve_data = normalize_curve_data(self._curve_data)
+        self.update()
+        self.curveChanged.emit(self.curve_data())
+        self.dragFinished.emit()
+
+    def _set_selected_interpolation(self, interpolation):
+        node = self._get_node(self._selected_node_id)
+        if not node:
+            return
+        self.dragStarted.emit()
+        node["interpolation"] = int(interpolation)
+        self._curve_data = normalize_curve_data(self._curve_data)
+        self.update()
+        self.curveChanged.emit(self.curve_data())
+        self.dragFinished.emit()
+
+    def _apply_selected_bezier_preset(self, preset):
+        node = self._get_node(self._selected_node_id)
+        if not node:
+            return
+
+        self.dragStarted.emit()
+        node["interpolation"] = int(openshot.BEZIER)
+
+        sort_index = self._node_sort_index(self._selected_node_id)
+        if sort_index is not None and sort_index > 0:
+            previous_id = self._evaluated_nodes()[sort_index - 1]["id"]
+            previous = self._get_node(previous_id)
+            if previous:
+                previous["right_handle_x"] = _set_keyframe_value(previous.get("right_handle_x"), self._frame_number, preset[0])
+                previous["right_handle_y"] = _set_keyframe_value(previous.get("right_handle_y"), self._frame_number, preset[1])
+            node["left_handle_x"] = _set_keyframe_value(node.get("left_handle_x"), self._frame_number, preset[2])
+            node["left_handle_y"] = _set_keyframe_value(node.get("left_handle_y"), self._frame_number, preset[3])
+
+        self._curve_data = normalize_curve_data(self._curve_data)
+        self.update()
+        self.curveChanged.emit(self.curve_data())
+        self.dragFinished.emit()
+
+    def _show_node_menu(self, global_pos):
+        menu = StyledContextMenu(parent=self)
+        sort_index = self._node_sort_index(self._selected_node_id)
+        remove_enabled = sort_index not in (0, len(self._curve_data["nodes"]) - 1) and len(self._curve_data["nodes"]) > 2
+        populate_keyframe_context_menu(
+            menu,
+            bezier_callback=self._apply_selected_bezier_preset,
+            linear_callback=lambda: self._set_selected_interpolation(openshot.LINEAR),
+            constant_callback=lambda: self._set_selected_interpolation(openshot.CONSTANT),
+            remove_callback=self._remove_selected_node,
+            remove_enabled=remove_enabled,
+            bezier_icon=None,
+            linear_icon=None,
+            constant_icon=None,
+            remove_text=get_app()._tr("Remove"),
+        )
+        menu.exec_(global_pos)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -403,20 +874,63 @@ class CurvePreviewWidget(QWidget):
             painter.drawLine(QPointF(x, rect.top()), QPointF(x, rect.bottom()))
             painter.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y))
 
-        painter.setPen(QPen(self.palette().text().color(), 1.5))
+        nodes = self._evaluated_nodes()
+        is_enabled = curve_enabled_at_frame(self._curve_data, self._frame_number)
+        painter.setPen(QPen(self.palette().text().color() if is_enabled else self.palette().mid().color(), 1.5))
         path = QPainterPath()
-        points = self._curve_data["points"]
-        if points:
-            path.moveTo(self._point_to_screen(points[0]))
-            for point in points[1:]:
-                path.lineTo(self._point_to_screen(point))
+        if nodes:
+            path.moveTo(self._point_to_screen(nodes[0]))
+            for idx in range(1, len(nodes)):
+                left = nodes[idx - 1]
+                right = nodes[idx]
+                if right["interpolation"] == openshot.CONSTANT:
+                    step = QPointF(self._point_to_screen(right).x(), self._point_to_screen(left).y())
+                    path.lineTo(step)
+                    path.lineTo(self._point_to_screen(right))
+                elif right["interpolation"] == openshot.LINEAR:
+                    path.lineTo(self._point_to_screen(right))
+                else:
+                    delta_x = right["x"] - left["x"]
+                    delta_y = right["y"] - left["y"]
+                    c1 = {
+                        "x": left["x"] + (left["right_handle_x"] * delta_x),
+                        "y": left["y"] + (left["right_handle_y"] * delta_y),
+                    }
+                    c2 = {
+                        "x": left["x"] + (right["left_handle_x"] * delta_x),
+                        "y": left["y"] + (right["left_handle_y"] * delta_y),
+                    }
+                    path.cubicTo(self._point_to_screen(c1), self._point_to_screen(c2), self._point_to_screen(right))
             painter.drawPath(path)
 
-        point_brush = QBrush(self.palette().highlight())
-        painter.setBrush(point_brush)
-        for point in points:
-            p = self._point_to_screen(point)
-            painter.drawEllipse(p, 4.0, 4.0)
+        handle_pen = QPen(QColor("#ffffff") if is_enabled else self.palette().mid().color(), 1.0)
+        painter.setPen(handle_pen)
+        painter.setBrush(QBrush(QColor("#ffffff") if is_enabled else self.palette().mid().color()))
+        for node in nodes:
+            if node["interpolation"] == openshot.BEZIER:
+                left_handle = self._handle_point(node["id"], "left")
+                if left_handle is not None:
+                    anchor = self._point_to_screen(node)
+                    handle_point = self._point_to_screen(left_handle)
+                    painter.drawLine(anchor, handle_point)
+                    painter.drawRect(QRectF(handle_point.x() - 3.0, handle_point.y() - 3.0, 6.0, 6.0))
+            right_handle = self._handle_point(node["id"], "right")
+            if right_handle is not None:
+                anchor = self._point_to_screen(node)
+                handle_point = self._point_to_screen(right_handle)
+                painter.drawLine(anchor, handle_point)
+                painter.drawRect(QRectF(handle_point.x() - 3.0, handle_point.y() - 3.0, 6.0, 6.0))
+
+        for node in nodes:
+            screen_point = self._point_to_screen(node)
+            _draw_keyframe_marker(
+                painter,
+                screen_point,
+                node["interpolation"],
+                9.0,
+                QColor("#4d7bff") if is_enabled else self.palette().mid().color(),
+                QColor("#ffffff") if is_enabled else self.palette().mid().color(),
+            )
 
         painter.end()
 
@@ -439,15 +953,16 @@ class ColorGradeCurveDialog(QDialog):
     changeFinished = pyqtSignal()
     closed = pyqtSignal()
 
-    def __init__(self, curve_data=None, channel="master", parent=None, title=None):
+    def __init__(self, curve_data=None, channel="all", frame_number=1, parent=None, title=None):
         super().__init__(parent)
         _ = get_app()._tr
         self.setWindowTitle(title if title else _("Edit Color Curve"))
         self.setModal(False)
-        self._widget = CurvePreviewWidget(curve_data, self)
+        self._frame_number = int(frame_number)
+        self._widget = CurvePreviewWidget(curve_data, self._frame_number, self)
 
         layout = QVBoxLayout(self)
-        layout.addWidget(ElidedLabel(_("Drag to reshape. Double-click to remove."), self))
+        layout.addWidget(ElidedLabel(_("Drag to reshape. Right-click a node for interpolation and remove actions."), self))
         layout.addWidget(self._widget)
 
         button_row = QHBoxLayout()
@@ -478,6 +993,11 @@ class ColorGradeCurveDialog(QDialog):
     def curve_widget(self):
         return self._widget
 
+    def set_frame_number(self, frame_number):
+        self._frame_number = int(frame_number)
+        self._widget.set_frame_number(self._frame_number)
+        self._update_enabled_state()
+
     def _apply_curve_change(self, curve_data):
         self.changeStarted.emit()
         self._widget.set_curve_data(curve_data)
@@ -485,17 +1005,18 @@ class ColorGradeCurveDialog(QDialog):
 
     def _reset(self):
         reset_curve = default_curve_data()
-        reset_curve["enabled"] = self.curve_data().get("enabled", True)
+        reset_curve["enabled"] = copy.deepcopy(self.curve_data().get("enabled", _keyframe_value(value=1.0)))
         self._apply_curve_change(reset_curve)
 
     def _toggle_enabled(self):
         updated = copy.deepcopy(self.curve_data())
-        updated["enabled"] = not updated.get("enabled", True)
+        next_enabled = not curve_enabled_at_frame(updated, self._frame_number)
+        updated["enabled"] = _set_keyframe_value(updated.get("enabled"), self._frame_number, 1.0 if next_enabled else 0.0)
         self._apply_curve_change(updated)
         self._update_enabled_state()
 
     def _update_enabled_state(self):
-        enabled = self.curve_data().get("enabled", True)
+        enabled = curve_enabled_at_frame(self.curve_data(), self._frame_number)
         _ = get_app()._tr
         self.toggle_button.setText(_("Disable") if enabled else _("Enable"))
         self._widget.setEnabled(enabled)
@@ -508,6 +1029,7 @@ class ColorGradeCurveDialog(QDialog):
 class WheelsPreviewWidget(QWidget):
     def __init__(self, wheels_data=None, parent=None):
         super().__init__(parent)
+        self._frame_number = 1
         self._wheels_data = normalize_wheels_data(wheels_data)
         self.setMinimumHeight(72)
 
@@ -515,16 +1037,21 @@ class WheelsPreviewWidget(QWidget):
         self._wheels_data = normalize_wheels_data(wheels_data)
         self.update()
 
+    def set_frame_number(self, frame_number):
+        self._frame_number = int(frame_number)
+        self.update()
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.fillRect(self.rect(), self.palette().window())
 
+        wheels = wheels_snapshot(self._wheels_data, self._frame_number)
         names = ["global", "shadows", "midtones", "highlights"]
         labels = ["G", "S", "M", "H"]
         slot_width = self.width() / float(len(names))
         for idx, name in enumerate(names):
-            wheel = self._wheels_data[name]
+            wheel = wheels[name]
             center_x = (idx * slot_width) + (slot_width / 2.0)
             center = QPointF(center_x, 28.0)
             radius = 19.0
@@ -566,10 +1093,11 @@ class WheelRow(QWidget):
     dragStarted = pyqtSignal()
     dragFinished = pyqtSignal()
 
-    def __init__(self, title, wheel_data, parent=None):
+    def __init__(self, title, wheel_data, frame_number=1, parent=None):
         super().__init__(parent)
         self.title = title
-        self._data = copy.deepcopy(wheel_data)
+        self._data = normalize_wheels_data({"global": wheel_data})["global"]
+        self._frame_number = int(frame_number)
         self._spin_change_active = False
         self._spin_change_timer = QTimer(self)
         self._spin_change_timer.setSingleShot(True)
@@ -612,7 +1140,7 @@ class WheelRow(QWidget):
         self.luma_slider.sliderPressed.connect(self.dragStarted)
         self.luma_slider.sliderReleased.connect(self.dragFinished)
 
-        self._apply_data(self._data)
+        self._apply_data()
 
     def _make_slider_pair(self):
         slider = QSlider(Qt.Horizontal, self)
@@ -634,7 +1162,15 @@ class WheelRow(QWidget):
         spin.setRange(-1.0, 1.0)
         return slider, spin
 
-    def _apply_data(self, data):
+    def set_frame_number(self, frame_number):
+        self._frame_number = int(frame_number)
+        self._apply_data()
+
+    def _snapshot(self):
+        return wheel_snapshot(self._data, self._frame_number)
+
+    def _apply_data(self):
+        data = self._snapshot()
         color = selected_wheel_color(data)
         if is_achromatic_color(color):
             self.color_button.setText(get_app()._tr("Neutral"))
@@ -660,54 +1196,58 @@ class WheelRow(QWidget):
             spin.blockSignals(False)
 
     def _on_slider_changed(self, key, value):
-        self._data[key] = value / 100.0
+        key_name = f"{key}_keyframes"
+        self._data[key_name] = _set_keyframe_value(self._data.get(key_name), self._frame_number, value / 100.0)
         spin = self.amount_spin if key == "amount" else self.luma_spin
         spin.blockSignals(True)
-        spin.setValue(self._data[key])
+        spin.setValue(value / 100.0)
         spin.blockSignals(False)
         if key == "amount":
             self.wheel_control.blockSignals(True)
-            self.wheel_control.set_wheel_data(self._data)
+            self.wheel_control.set_wheel_data(self._snapshot())
             self.wheel_control.blockSignals(False)
         self.changed.emit()
 
     def _on_spin_changed(self, key, value):
         self._start_spin_change_burst()
-        self._data[key] = float(value)
+        key_name = f"{key}_keyframes"
+        self._data[key_name] = _set_keyframe_value(self._data.get(key_name), self._frame_number, float(value))
         slider = self.amount_slider if key == "amount" else self.luma_slider
         slider.blockSignals(True)
         slider.setValue(int(round(value * 100.0)))
         slider.blockSignals(False)
         if key == "amount":
             self.wheel_control.blockSignals(True)
-            self.wheel_control.set_wheel_data(self._data)
+            self.wheel_control.set_wheel_data(self._snapshot())
             self.wheel_control.blockSignals(False)
         self.changed.emit()
         self._spin_change_timer.start()
 
     def _on_wheel_control_changed(self):
-        self._data.update(self.wheel_control.wheel_data())
-        self._apply_data(self._data)
+        snapshot = self.wheel_control.wheel_data()
+        self._data["color_keyframes"] = _set_color_value(self._data.get("color_keyframes"), self._frame_number, QColor(snapshot["color"]))
+        self._data["amount_keyframes"] = _set_keyframe_value(self._data.get("amount_keyframes"), self._frame_number, snapshot["amount"])
+        self._apply_data()
         self.changed.emit()
 
     def pick_color(self):
-        current = QColor(self._data["color"])
+        current = _evaluate_color(self._data.get("color_keyframes"), self._frame_number, NEUTRAL_WHEEL_COLOR)
 
         def callback(color):
             if is_achromatic_color(color):
-                self._data["color"] = NEUTRAL_WHEEL_COLOR
-                self._data["amount"] = 0.0
+                self._data["color_keyframes"] = _set_color_value(self._data.get("color_keyframes"), self._frame_number, QColor(NEUTRAL_WHEEL_COLOR))
+                self._data["amount_keyframes"] = _set_keyframe_value(self._data.get("amount_keyframes"), self._frame_number, 0.0)
             else:
-                self._data["color"] = color.name()
-            self._apply_data(self._data)
+                self._data["color_keyframes"] = _set_color_value(self._data.get("color_keyframes"), self._frame_number, color)
+            self._apply_data()
             self.changed.emit()
 
         ColorPicker(current, parent=self, title=get_app()._tr("Select a Color"), callback=callback)
 
     def reset_to_neutral(self):
-        self._data["color"] = NEUTRAL_WHEEL_COLOR
-        self._data["amount"] = 0.0
-        self._apply_data(self._data)
+        self._data["color_keyframes"] = _set_color_value(self._data.get("color_keyframes"), self._frame_number, QColor(NEUTRAL_WHEEL_COLOR))
+        self._data["amount_keyframes"] = _set_keyframe_value(self._data.get("amount_keyframes"), self._frame_number, 0.0)
+        self._apply_data()
         self.changed.emit()
 
     def _show_color_button_menu(self, pos):
@@ -752,7 +1292,7 @@ class ColorGradeWheelsDialog(QDialog):
             ("midtones", _("Midtones")),
             ("highlights", _("Highlights")),
         ):
-            row = WheelRow(title, self._data[name], self)
+            row = WheelRow(title, self._data[name], 1, self)
             row.changed.connect(self._refresh_preview)
             self.rows[name] = row
             layout.addWidget(row)
@@ -773,11 +1313,11 @@ class ColorGradeWheelsDialog(QDialog):
         reset_data = default_wheels_data()
         for name, row in self.rows.items():
             row._data = copy.deepcopy(reset_data[name])
-            row._apply_data(row._data)
+            row._apply_data()
         self._refresh_preview()
 
     def wheels_data(self):
-        payload = {}
+        payload = {"enabled_keyframes": copy.deepcopy(self._data.get("enabled_keyframes", _keyframe_value(value=1.0)))}
         for name, row in self.rows.items():
             payload[name] = row.value()
         return normalize_wheels_data(payload)
@@ -788,10 +1328,11 @@ class ColorGradeWheelsPanel(QWidget):
     dragStarted = pyqtSignal()
     dragFinished = pyqtSignal()
 
-    def __init__(self, wheels_data=None, parent=None):
+    def __init__(self, wheels_data=None, frame_number=1, parent=None):
         super().__init__(parent)
         _ = get_app()._tr
         self._data = normalize_wheels_data(wheels_data)
+        self._frame_number = int(frame_number)
 
         layout = QVBoxLayout(self)
 
@@ -802,7 +1343,7 @@ class ColorGradeWheelsPanel(QWidget):
             ("midtones", _("Midtones")),
             ("highlights", _("Highlights")),
         ):
-            row = WheelRow(title, self._data[name], self)
+            row = WheelRow(title, self._data[name], self._frame_number, self)
             row.changed.connect(self._refresh_preview)
             row.dragStarted.connect(self.dragStarted)
             row.dragFinished.connect(self.dragFinished)
@@ -826,7 +1367,13 @@ class ColorGradeWheelsPanel(QWidget):
         self._data = normalize_wheels_data(wheels_data)
         for name, row in self.rows.items():
             row._data = copy.deepcopy(self._data[name])
-            row._apply_data(row._data)
+            row._apply_data()
+        self._update_enabled_state()
+
+    def set_frame_number(self, frame_number):
+        self._frame_number = int(frame_number)
+        for row in self.rows.values():
+            row.set_frame_number(self._frame_number)
         self._update_enabled_state()
 
     def _refresh_preview(self):
@@ -835,26 +1382,27 @@ class ColorGradeWheelsPanel(QWidget):
 
     def _reset(self):
         reset_data = default_wheels_data()
-        reset_data["enabled"] = self.wheels_data().get("enabled", True)
+        reset_data["enabled_keyframes"] = copy.deepcopy(self.wheels_data().get("enabled_keyframes", _keyframe_value(value=1.0)))
         self.set_wheels_data(reset_data)
         self.wheelsChanged.emit(self.wheels_data())
 
     def _toggle_enabled(self):
         updated = self.wheels_data()
-        updated["enabled"] = not updated.get("enabled", True)
+        next_enabled = not wheels_enabled_at_frame(updated, self._frame_number)
+        updated["enabled_keyframes"] = _set_keyframe_value(updated.get("enabled_keyframes"), self._frame_number, 1.0 if next_enabled else 0.0)
         self.set_wheels_data(updated)
         self.wheelsChanged.emit(updated)
         self._update_enabled_state()
 
     def _update_enabled_state(self):
-        enabled = self.wheels_data().get("enabled", True)
+        enabled = wheels_enabled_at_frame(self.wheels_data(), self._frame_number)
         _ = get_app()._tr
         self.toggle_button.setText(_("Disable") if enabled else _("Enable"))
         for row in self.rows.values():
             row.setEnabled(enabled)
 
     def wheels_data(self):
-        payload = {"enabled": self._data.get("enabled", True)}
+        payload = {"enabled_keyframes": copy.deepcopy(self._data.get("enabled_keyframes", _keyframe_value(value=1.0)))}
         for name, row in self.rows.items():
             payload[name] = row.value()
         return normalize_wheels_data(payload)

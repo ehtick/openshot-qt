@@ -28,7 +28,7 @@ class ColorPresetTests(unittest.TestCase):
         self.assertEqual(payload["contrast"]["Points"][0]["co"]["Y"], 0.18)
         self.assertEqual(payload["highlights"]["Points"][0]["co"]["Y"], -0.08)
         self.assertEqual(payload["shadows"]["Points"][0]["co"]["Y"], 0.08)
-        self.assertEqual(payload["curve_master"]["points"][1], {"x": 0.25, "y": 0.22})
+        self.assertEqual(payload["curve_all"]["nodes"][1]["id"], 1)
 
     def test_lift_shadows_uses_fresh_neutral_channel_curves_and_wheels(self):
         payload = apply_color_grade_preset({

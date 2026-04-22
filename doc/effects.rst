@@ -559,7 +559,7 @@ Workflow
 3. Use the main controls for broad correction: :guilabel:`Temperature`, :guilabel:`Tint`, :guilabel:`Exposure`,
    :guilabel:`Contrast`, :guilabel:`Highlights`, :guilabel:`Shadows`, :guilabel:`Saturation`, and :guilabel:`Vibrance`.
 4. Open the :guilabel:`Wheels` row to balance global tone, shadows, midtones, and highlights.
-5. Open the :guilabel:`Curve: Master`, :guilabel:`Curve: Red`, :guilabel:`Curve: Green`, and :guilabel:`Curve: Blue`
+5. Open the :guilabel:`Curve: All`, :guilabel:`Curve: Red`, :guilabel:`Curve: Green`, and :guilabel:`Curve: Blue`
    rows to shape overall contrast or individual channels.
 6. Optionally choose a :guilabel:`LUT File` and blend it with :guilabel:`LUT Intensity`.
 7. Use :guilabel:`Mix` to blend the graded result back toward the original image.
@@ -583,7 +583,7 @@ Properties
    vibrance                    ``(float, -1 to 1)`` Protect low-color areas while increasing or decreasing colorfulness.
    mix                         ``(float, 0 to 1)`` Blend between the original frame and the graded result.
    wheels                      ``(rich wheels editor)`` Opens the Color Wheels dock for global, shadows, midtones, and highlights adjustments.
-   curve_master                ``(rich curve editor)`` Opens the master curve dialog for overall tonal shaping.
+   curve_all                   ``(rich curve editor)`` Opens the all-channels curve dialog for overall tonal shaping.
    curve_red                   ``(rich curve editor)`` Opens the red channel curve dialog.
    curve_green                 ``(rich curve editor)`` Opens the green channel curve dialog.
    curve_blue                  ``(rich curve editor)`` Opens the blue channel curve dialog.

@@ -821,6 +821,9 @@ class TimelineHelperTests(unittest.TestCase):
             def _clip_menu_rect(self, rect):
                 return qwidget_base_module.TimelineWidgetBase._clip_menu_rect(self, rect)
 
+            def _effect_icon_at(self, pos):
+                return None
+
             def _select_timeline_item(self, item_id, item_type, clear_existing):
                 self.selected.append((item_id, item_type, clear_existing))
 

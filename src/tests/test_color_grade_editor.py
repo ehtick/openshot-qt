@@ -34,42 +34,86 @@ if PATH not in sys.path:
     sys.path.append(PATH)
 
 from windows.color_grade_editor import (  # noqa: E402
+    _set_color_value,
+    _set_keyframe_value,
+    curve_enabled_at_frame,
+    curve_nodes_at_frame,
     default_curve_data,
     default_wheels_data,
     is_achromatic_color,
     normalize_curve_data,
     normalize_wheels_data,
     puck_display_color,
+    wheel_snapshot,
+    wheels_enabled_at_frame,
 )
 from qt_api import QColor  # noqa: E402
+import openshot  # noqa: E402
 
 
 class ColorGradeEditorTests(unittest.TestCase):
-    def test_normalize_curve_data_injects_endpoints_and_sorts_points(self):
-        curve = normalize_curve_data({
-            "points": [
-                {"x": 0.8, "y": 1.2},
-                {"x": 0.2, "y": -1.0},
-            ]
-        })
-        self.assertEqual(curve["points"][0]["x"], 0.0)
-        self.assertEqual(curve["points"][-1]["x"], 1.0)
-        self.assertGreaterEqual(curve["points"][1]["x"], curve["points"][0]["x"])
+    def test_default_curve_data_uses_linear_nodes(self):
+        curve = default_curve_data()
+        self.assertEqual(len(curve["nodes"]), 2)
+        self.assertEqual(curve["nodes"][0]["interpolation"], openshot.LINEAR)
+        self.assertEqual(curve["nodes"][1]["interpolation"], openshot.LINEAR)
 
     def test_normalize_curve_data_falls_back_to_default(self):
         self.assertEqual(normalize_curve_data({}), default_curve_data())
 
-    def test_normalize_curve_data_preserves_enabled_flag(self):
-        curve = normalize_curve_data({"enabled": False, "points": [{"x": 0.0, "y": 0.0}, {"x": 1.0, "y": 1.0}]})
-        self.assertFalse(curve["enabled"])
+    def test_curve_helpers_evaluate_current_frame(self):
+        curve = default_curve_data()
+        curve["nodes"][0]["y"]["Points"][0]["co"]["Y"] = 0.0
+        curve["nodes"][0]["y"]["Points"].append({"co": {"X": 10.0, "Y": 0.5}, "interpolation": openshot.LINEAR})
+        nodes = curve_nodes_at_frame(curve, 10)
+        self.assertAlmostEqual(nodes[0]["y"], 0.5, places=3)
+        self.assertTrue(curve_enabled_at_frame(curve, 1))
+
+    def test_set_keyframe_value_preserves_other_frames(self):
+        keyframe = {"Points": [
+            {"co": {"X": 1.0, "Y": 0.1}, "interpolation": openshot.LINEAR},
+            {"co": {"X": 20.0, "Y": 0.9}, "interpolation": openshot.LINEAR},
+        ]}
+        updated = _set_keyframe_value(keyframe, 10, 0.5)
+        self.assertEqual(len(updated["Points"]), 3)
+        self.assertAlmostEqual(updated["Points"][0]["co"]["Y"], 0.1, places=3)
+        self.assertAlmostEqual(updated["Points"][1]["co"]["Y"], 0.5, places=3)
+        self.assertAlmostEqual(updated["Points"][2]["co"]["Y"], 0.9, places=3)
+
+    def test_set_color_value_preserves_other_frames(self):
+        color = {
+            "red": {"Points": [
+                {"co": {"X": 1.0, "Y": 255.0}, "interpolation": openshot.LINEAR},
+                {"co": {"X": 20.0, "Y": 0.0}, "interpolation": openshot.LINEAR},
+            ]},
+            "green": {"Points": [
+                {"co": {"X": 1.0, "Y": 0.0}, "interpolation": openshot.LINEAR},
+                {"co": {"X": 20.0, "Y": 255.0}, "interpolation": openshot.LINEAR},
+            ]},
+            "blue": {"Points": [
+                {"co": {"X": 1.0, "Y": 0.0}, "interpolation": openshot.LINEAR},
+                {"co": {"X": 20.0, "Y": 0.0}, "interpolation": openshot.LINEAR},
+            ]},
+            "alpha": {"Points": [
+                {"co": {"X": 1.0, "Y": 255.0}, "interpolation": openshot.LINEAR},
+                {"co": {"X": 20.0, "Y": 255.0}, "interpolation": openshot.LINEAR},
+            ]},
+        }
+        updated = _set_color_value(color, 10, QColor("#ffffff"))
+        self.assertEqual(len(updated["red"]["Points"]), 3)
+        self.assertAlmostEqual(updated["red"]["Points"][0]["co"]["Y"], 255.0, places=3)
+        self.assertAlmostEqual(updated["red"]["Points"][1]["co"]["Y"], 255.0, places=3)
+        self.assertAlmostEqual(updated["red"]["Points"][2]["co"]["Y"], 0.0, places=3)
+        self.assertEqual(wheel_snapshot({"color": updated, "amount": {"Points": [{"co": {"X": 10.0, "Y": 1.0}, "interpolation": openshot.LINEAR}]}, "luma": 0.0}, 10)["color"], "#ffffff")
 
     def test_normalize_wheels_data_clamps_values(self):
         wheels = normalize_wheels_data({
             "global": {"color": "#zzzzzz", "amount": 5, "luma": -5},
         })
-        self.assertEqual(wheels["global"]["color"], "#ffffff")
-        self.assertEqual(wheels["global"]["amount"], 1.0)
-        self.assertEqual(wheels["global"]["luma"], -1.0)
+        snapshot = wheel_snapshot(wheels["global"], 1)
+        self.assertEqual(snapshot["color"], "#ffffff")
+        self.assertEqual(snapshot["amount"], 1.0)
+        self.assertEqual(snapshot["luma"], -1.0)
 
     def test_normalize_wheels_data_supplies_missing_entries(self):
         wheels = normalize_wheels_data({})
@@ -77,7 +121,7 @@ class ColorGradeEditorTests(unittest.TestCase):
 
     def test_normalize_wheels_data_preserves_enabled_flag(self):
         wheels = normalize_wheels_data({"enabled": False})
-        self.assertFalse(wheels["enabled"])
+        self.assertFalse(wheels_enabled_at_frame(wheels, 1))
 
     def test_achromatic_color_detection_treats_white_as_neutral(self):
         self.assertTrue(is_achromatic_color(QColor("#ffffff")))

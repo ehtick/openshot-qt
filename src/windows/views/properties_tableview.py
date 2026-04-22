@@ -57,15 +57,21 @@ from windows.color_picker import ColorPicker
 from windows.color_grade_editor import (
     ColorGradeCurveDialog,
     ColorGradeWheelsPanel,
+    curve_enabled_at_frame,
+    curve_nodes_at_frame,
+    curve_summary,
     default_curve_data,
     default_wheels_data,
     display_wheel_color,
     is_neutral_wheel,
-    puck_display_color,
     normalize_curve_data,
     normalize_wheels_data,
+    puck_display_color,
+    wheels_enabled_at_frame,
+    wheels_snapshot,
+    wheels_summary,
 )
-from .menu import StyledContextMenu
+from .menu import StyledContextMenu, populate_keyframe_context_menu
 
 import openshot
 
@@ -200,27 +206,53 @@ class PropertyDelegate(QItemDelegate):
                 painter.setPen(QPen(Qt.white))
 
             if property_type == "colorgrade_curve":
-                curve = normalize_curve_data(cur_property[1].get("curve"))
-                is_enabled = curve.get("enabled", True)
+                frame_number = getattr(get_app().window.propertyTableView.clip_properties_model, "frame_number", 1)
+                preview_frame = cur_property[1].get("preview_frame")
+                nodes = cur_property[1].get("preview_curve_nodes") if preview_frame == frame_number else None
+                is_enabled = cur_property[1].get("preview_curve_enabled") if preview_frame == frame_number else None
+                if nodes is None or is_enabled is None:
+                    curve = normalize_curve_data(cur_property[1].get("curve"))
+                    is_enabled = curve_enabled_at_frame(curve, frame_number)
+                    nodes = curve_nodes_at_frame(curve, frame_number)
                 preview_rect = QRectF(option.rect.adjusted(8, 8, -8, -8))
                 line_color = Qt.white if is_enabled else QColor(100, 100, 100)
                 painter.setPen(QPen(line_color, 1.5))
                 path = QPainterPath()
-                points_data = curve["points"]
-                if points_data:
-                    start = QPointF(
-                        preview_rect.left() + (points_data[0]["x"] * preview_rect.width()),
-                        preview_rect.bottom() - (points_data[0]["y"] * preview_rect.height()),
-                    )
+                if nodes:
+                    start = QPointF(preview_rect.left() + (nodes[0]["x"] * preview_rect.width()),
+                                    preview_rect.bottom() - (nodes[0]["y"] * preview_rect.height()))
                     path.moveTo(start)
-                    for point in points_data[1:]:
-                        path.lineTo(
-                            preview_rect.left() + (point["x"] * preview_rect.width()),
-                            preview_rect.bottom() - (point["y"] * preview_rect.height()),
-                        )
+                    for idx in range(1, len(nodes)):
+                        left = nodes[idx - 1]
+                        right = nodes[idx]
+                        right_point = QPointF(preview_rect.left() + (right["x"] * preview_rect.width()),
+                                              preview_rect.bottom() - (right["y"] * preview_rect.height()))
+                        if right["interpolation"] == openshot.CONSTANT:
+                            left_point = QPointF(preview_rect.left() + (left["x"] * preview_rect.width()),
+                                                 preview_rect.bottom() - (left["y"] * preview_rect.height()))
+                            path.lineTo(QPointF(right_point.x(), left_point.y()))
+                            path.lineTo(right_point)
+                        elif right["interpolation"] == openshot.LINEAR:
+                            path.lineTo(right_point)
+                        else:
+                            delta_x = right["x"] - left["x"]
+                            delta_y = right["y"] - left["y"]
+                            c1 = QPointF(
+                                preview_rect.left() + ((left["x"] + (left["right_handle_x"] * delta_x)) * preview_rect.width()),
+                                preview_rect.bottom() - ((left["y"] + (left["right_handle_y"] * delta_y)) * preview_rect.height()),
+                            )
+                            c2 = QPointF(
+                                preview_rect.left() + ((left["x"] + (right["left_handle_x"] * delta_x)) * preview_rect.width()),
+                                preview_rect.bottom() - ((left["y"] + (right["left_handle_y"] * delta_y)) * preview_rect.height()),
+                            )
+                            path.cubicTo(c1, c2, right_point)
                     painter.drawPath(path)
             elif property_type == "colorgrade_wheels":
-                wheels = normalize_wheels_data(cur_property[1].get("wheels"))
+                frame_number = getattr(get_app().window.propertyTableView.clip_properties_model, "frame_number", 1)
+                preview_frame = cur_property[1].get("preview_frame")
+                wheels = cur_property[1].get("preview_wheels") if preview_frame == frame_number else None
+                if wheels is None:
+                    wheels = wheels_snapshot(cur_property[1].get("wheels"), frame_number)
                 is_enabled = wheels.get("enabled", True)
                 circle_color = QColor(Qt.white) if is_enabled else QColor(100, 100, 100)
                 names = ["global", "shadows", "midtones", "highlights"]
@@ -534,6 +566,18 @@ class PropertiesTableView(QTableView):
             value,
         )
 
+    def _update_color_grade_preview_meta(self, property_meta):
+        if not isinstance(property_meta, dict):
+            return
+        frame_number = self.clip_properties_model.frame_number
+        property_meta["preview_frame"] = frame_number
+        if property_meta.get("type") == "colorgrade_curve":
+            curve = normalize_curve_data(property_meta.get("curve"))
+            property_meta["preview_curve_enabled"] = curve_enabled_at_frame(curve, frame_number)
+            property_meta["preview_curve_nodes"] = curve_nodes_at_frame(curve, frame_number)
+        elif property_meta.get("type") == "colorgrade_wheels":
+            property_meta["preview_wheels"] = wheels_snapshot(property_meta.get("wheels"), frame_number)
+
     def _update_property_preview(self, item, property_type, property_key, value):
         if not item or property_type not in ["colorgrade_curve", "colorgrade_wheels"]:
             return
@@ -552,13 +596,14 @@ class PropertiesTableView(QTableView):
         if prop_name != property_key:
             return
 
-        updated_meta = copy.deepcopy(prop_meta)
+        updated_meta = prop_meta
         if property_type == "colorgrade_curve":
             updated_meta["curve"] = copy.deepcopy(value)
+            updated_meta["summary"] = curve_summary(value, self.clip_properties_model.frame_number)
         elif property_type == "colorgrade_wheels":
             updated_meta["wheels"] = copy.deepcopy(value)
-
-        label_item.setData((prop_name, updated_meta))
+            updated_meta["summary"] = wheels_summary(value, self.clip_properties_model.frame_number)
+        self._update_color_grade_preview_meta(updated_meta)
         if value_item:
             summary = updated_meta.get("summary") or updated_meta.get("memo") or ""
             value_item.setText(summary)
@@ -578,7 +623,10 @@ class PropertiesTableView(QTableView):
                     continue
                 if getattr(dialog, "_item_data", None) != item_data:
                     continue
+                dialog.set_frame_number(self.clip_properties_model.frame_number)
+                dialog.curve_widget().blockSignals(True)
                 dialog.curve_widget().set_curve_data(value)
+                dialog.curve_widget().blockSignals(False)
                 dialog._update_enabled_state()
         elif property_type == "colorgrade_wheels":
             session = self.live_property_session or {}
@@ -587,7 +635,41 @@ class PropertiesTableView(QTableView):
                 and session.get("property_key") == property_key
                 and session.get("item") is item
             ):
+                self.color_grade_wheels_panel.set_frame_number(self.clip_properties_model.frame_number)
                 self.color_grade_wheels_panel.set_wheels_data(value)
+
+    def _sync_color_grade_editors_to_current_frame(self):
+        model = self.clip_properties_model.model
+        self.color_grade_wheels_panel.set_frame_number(self.clip_properties_model.frame_number)
+
+        for row in range(model.rowCount()):
+            label_item = model.item(row, 0)
+            value_item = model.item(row, 1)
+            if not label_item or not value_item:
+                continue
+            cur_property = label_item.data()
+            if not isinstance(cur_property, tuple) or len(cur_property) != 2:
+                continue
+            property_key, property_meta = cur_property
+            property_type = property_meta.get("type")
+            if property_type == "colorgrade_curve":
+                self._update_color_grade_preview_meta(property_meta)
+                item_data = value_item.data()
+                for dialog in list(getattr(self, "color_grade_curve_dialogs", [])):
+                    if isdeleted(dialog):
+                        self.color_grade_curve_dialogs.discard(dialog)
+                        continue
+                    if getattr(dialog, "_property_key", None) != property_key:
+                        continue
+                    if getattr(dialog, "_item_data", None) != item_data:
+                        continue
+                    dialog.set_frame_number(self.clip_properties_model.frame_number)
+                    dialog.curve_widget().blockSignals(True)
+                    dialog.curve_widget().set_curve_data(normalize_curve_data(property_meta.get("curve")))
+                    dialog.curve_widget().blockSignals(False)
+            elif property_type == "colorgrade_wheels":
+                self._update_color_grade_preview_meta(property_meta)
+        self.viewport().update()
 
     def pause_live_property_caching(self):
         if self.live_property_cache_paused:
@@ -649,6 +731,7 @@ class PropertiesTableView(QTableView):
         session = self.live_property_session or {}
         if session.get("property_type") == "colorgrade_wheels":
             if session.get("item") is item and session.get("property_key") == property_key:
+                self.color_grade_wheels_panel.set_frame_number(self.clip_properties_model.frame_number)
                 self.color_grade_wheels_panel.set_wheels_data(wheels_data)
                 return
             if self.transaction_id:
@@ -660,6 +743,7 @@ class PropertiesTableView(QTableView):
             self.cancel_live_property_session()
 
         self.begin_live_property_session(item, "colorgrade_wheels", property_key, wheels_data)
+        self.color_grade_wheels_panel.set_frame_number(self.clip_properties_model.frame_number)
         self.color_grade_wheels_panel.set_wheels_data(wheels_data)
 
     def _auto_connect_color_grade_wheels_dock(self):
@@ -993,7 +1077,8 @@ class PropertiesTableView(QTableView):
             elif property_type == "colorgrade_curve":
                 curve_data = normalize_curve_data(cur_property[1].get("curve"))
                 property_key = cur_property[0]
-                dialog = ColorGradeCurveDialog(curve_data, cur_property[1].get("channel", "master"), self.win,
+                dialog = ColorGradeCurveDialog(curve_data, cur_property[1].get("channel", "all"),
+                                               self.clip_properties_model.frame_number, self.win,
                                                title=cur_property[1].get("name"))
                 item = self.selected_item
                 dialog._property_key = property_key
@@ -1069,6 +1154,7 @@ class PropertiesTableView(QTableView):
 
         # Update item
         self.clip_properties_model.update_frame(frame_number)
+        self._sync_color_grade_editors_to_current_frame()
 
     def filter_changed(self, value=None):
         """ Filter the list of properties """
@@ -1411,41 +1497,6 @@ class PropertiesTableView(QTableView):
                     fontinfo = QFontInfo(font)
                     self.clip_properties_model.value_updated(self.selected_item, value=fontinfo.family())
 
-            # Define bezier presets
-            bezier_presets = [
-                (0.250, 0.100, 0.250, 1.000, _("Ease (Default)")),
-                (0.420, 0.000, 1.000, 1.000, _("Ease In")),
-                (0.000, 0.000, 0.580, 1.000, _("Ease Out")),
-                (0.420, 0.000, 0.580, 1.000, _("Ease In/Out")),
-
-                (0.550, 0.085, 0.680, 0.530, _("Ease In (Quad)")),
-                (0.550, 0.055, 0.675, 0.190, _("Ease In (Cubic)")),
-                (0.895, 0.030, 0.685, 0.220, _("Ease In (Quart)")),
-                (0.755, 0.050, 0.855, 0.060, _("Ease In (Quint)")),
-                (0.470, 0.000, 0.745, 0.715, _("Ease In (Sine)")),
-                (0.950, 0.050, 0.795, 0.035, _("Ease In (Expo)")),
-                (0.600, 0.040, 0.980, 0.335, _("Ease In (Circ)")),
-                (0.600, -0.280, 0.735, 0.045, _("Ease In (Back)")),
-
-                (0.250, 0.460, 0.450, 0.940, _("Ease Out (Quad)")),
-                (0.215, 0.610, 0.355, 1.000, _("Ease Out (Cubic)")),
-                (0.165, 0.840, 0.440, 1.000, _("Ease Out (Quart)")),
-                (0.230, 1.000, 0.320, 1.000, _("Ease Out (Quint)")),
-                (0.390, 0.575, 0.565, 1.000, _("Ease Out (Sine)")),
-                (0.190, 1.000, 0.220, 1.000, _("Ease Out (Expo)")),
-                (0.075, 0.820, 0.165, 1.000, _("Ease Out (Circ)")),
-                (0.175, 0.885, 0.320, 1.275, _("Ease Out (Back)")),
-
-                (0.455, 0.030, 0.515, 0.955, _("Ease In/Out (Quad)")),
-                (0.645, 0.045, 0.355, 1.000, _("Ease In/Out (Cubic)")),
-                (0.770, 0.000, 0.175, 1.000, _("Ease In/Out (Quart)")),
-                (0.860, 0.000, 0.070, 1.000, _("Ease In/Out (Quint)")),
-                (0.445, 0.050, 0.550, 0.950, _("Ease In/Out (Sine)")),
-                (1.000, 0.000, 0.000, 1.000, _("Ease In/Out (Expo)")),
-                (0.785, 0.135, 0.150, 0.860, _("Ease In/Out (Circ)")),
-                (0.680, -0.550, 0.265, 1.550, _("Ease In/Out (Back)"))
-            ]
-
             # Add menu options for keyframes
             menu = StyledContextMenu(parent=self)
             if self.property_type == "color":
@@ -1458,15 +1509,15 @@ class PropertiesTableView(QTableView):
                 menu.addSeparator()
             if points > 1:
                 # Menu items only for multiple points
-                Bezier_Menu = menu.addMenu(self.bezier_icon, _("Bezier"))
-                for bezier_preset in bezier_presets:
-                    preset_action = Bezier_Menu.addAction(bezier_preset[4])
-                    preset_action.triggered.connect(functools.partial(
-                        self.Bezier_Action_Triggered, bezier_preset))
-                Linear_Action = menu.addAction(self.linear_icon, _("Linear"))
-                Linear_Action.triggered.connect(self.Linear_Action_Triggered)
-                Constant_Action = menu.addAction(self.constant_icon, _("Constant"))
-                Constant_Action.triggered.connect(self.Constant_Action_Triggered)
+                populate_keyframe_context_menu(
+                    menu,
+                    bezier_callback=self.Bezier_Action_Triggered,
+                    linear_callback=self.Linear_Action_Triggered,
+                    constant_callback=self.Constant_Action_Triggered,
+                    bezier_icon=self.bezier_icon,
+                    linear_icon=self.linear_icon,
+                    constant_icon=self.constant_icon,
+                )
                 menu.addSeparator()
             if points >= 1:
                 # Menu items for one or more points
@@ -1557,11 +1608,11 @@ class PropertiesTableView(QTableView):
         if self.property_type == "colorgrade_curve":
             current_value = normalize_curve_data(self.selected_label.data()[1].get("curve"))
             reset_value = default_curve_data()
-            reset_value["enabled"] = current_value.get("enabled", True)
+            reset_value["enabled"] = copy.deepcopy(current_value.get("enabled"))
         elif self.property_type == "colorgrade_wheels":
             current_value = normalize_wheels_data(self.selected_label.data()[1].get("wheels"))
             reset_value = default_wheels_data()
-            reset_value["enabled"] = current_value.get("enabled", True)
+            reset_value["enabled_keyframes"] = copy.deepcopy(current_value.get("enabled_keyframes"))
         else:
             return
 
@@ -1728,7 +1779,10 @@ class PropertiesTableView(QTableView):
 
         self.color_grade_wheels_dock = QDockWidget(get_app()._tr("Color Wheels"), self.win)
         self.color_grade_wheels_dock.setObjectName("dockColorGradeWheels")
-        self.color_grade_wheels_panel = ColorGradeWheelsPanel(parent=self.color_grade_wheels_dock)
+        self.color_grade_wheels_panel = ColorGradeWheelsPanel(
+            frame_number=self.clip_properties_model.frame_number,
+            parent=self.color_grade_wheels_dock,
+        )
         self.color_grade_wheels_scroll = QScrollArea(self.color_grade_wheels_dock)
         self.color_grade_wheels_panel.adjustSize()
         self.color_grade_wheels_panel.setMinimumSize(self.color_grade_wheels_panel.sizeHint())
