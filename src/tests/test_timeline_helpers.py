@@ -93,11 +93,15 @@ class TimelineHelperTests(unittest.TestCase):
         cls.geometry_clip_module = importlib.import_module("windows.views.timeline_backend.geometry.clip")
         cls.geometry_transition_module = importlib.import_module("windows.views.timeline_backend.geometry.transition")
         cls.clip_paint_module = importlib.import_module("windows.views.timeline_backend.paint.clip")
+        cls.transition_paint_module = importlib.import_module("windows.views.timeline_backend.paint.transition")
         cls.qwidget_clip_module = importlib.import_module("windows.views.timeline_backend.qwidget.clip")
+        cls.qwidget_transition_module = importlib.import_module("windows.views.timeline_backend.qwidget.transition")
         cls.qwidget_keyframe_module = importlib.import_module("windows.views.timeline_backend.qwidget.keyframe")
         cls.qwidget_keyframe_panel_module = importlib.import_module("windows.views.timeline_backend.qwidget.keyframe_panel")
         cls.thumbnails_module = importlib.import_module("windows.views.timeline_backend.qwidget.thumbnails")
         cls.waveform_module = importlib.import_module("classes.waveform")
+        cls.humanity_theme_module = importlib.import_module("themes.humanity.styles")
+        cls.cosmic_theme_module = importlib.import_module("themes.cosmic.styles")
 
     def make_helper(self):
         timeline_module = self.timeline_module
@@ -786,6 +790,118 @@ class TimelineHelperTests(unittest.TestCase):
 
         return Helper(), EventStub
 
+    def make_qwidget_pending_clip_menu_helper(self):
+        qwidget_base_module = self.qwidget_base_module
+
+        class GeometryStub:
+            def iter_clips(self, reverse=False):
+                return []
+
+        class Helper:
+            def __init__(self):
+                self._clip_text_rects = []
+                self._pending_clip_menu_target = None
+                self._pending_clip_menu_press_pos = None
+                self._pending_clip_menu_dragged = False
+                self.geometry = GeometryStub()
+                self.clip_painter = types.SimpleNamespace(
+                    menu_pix=None,
+                    clip_pen=types.SimpleNamespace(widthF=lambda: 2.0),
+                    menu_margin=0,
+                    logical_size=lambda pix: (0.0, 0.0),
+                )
+                self.selected = []
+                self.menu_calls = []
+                self.win = types.SimpleNamespace(
+                    timeline=types.SimpleNamespace(
+                        ShowClipMenu=lambda clip_id: self.menu_calls.append(clip_id)
+                    )
+                )
+
+            def _clip_menu_rect(self, rect):
+                return qwidget_base_module.TimelineWidgetBase._clip_menu_rect(self, rect)
+
+            def _select_timeline_item(self, item_id, item_type, clear_existing):
+                self.selected.append((item_id, item_type, clear_existing))
+
+            def _clear_pending_clip_menu_click(self):
+                return qwidget_base_module.TimelineWidgetBase._clear_pending_clip_menu_click(self)
+
+            def _clip_menu_target_at(self, pos):
+                return qwidget_base_module.TimelineWidgetBase._clip_menu_target_at(self, pos)
+
+            def _begin_pending_clip_menu_click(self, pos):
+                return qwidget_base_module.TimelineWidgetBase._begin_pending_clip_menu_click(self, pos)
+
+            def _update_pending_clip_menu_drag(self, pos):
+                return qwidget_base_module.TimelineWidgetBase._update_pending_clip_menu_drag(self, pos)
+
+            def _handle_pending_clip_menu_release(self, pos):
+                return qwidget_base_module.TimelineWidgetBase._handle_pending_clip_menu_release(self, pos)
+
+        return Helper()
+
+    def make_qwidget_pending_transition_menu_helper(self):
+        qwidget_base_module = self.qwidget_base_module
+        qwidget_transition_module = self.qwidget_transition_module
+
+        class GeometryStub:
+            def __init__(self):
+                self.transitions = []
+
+            def iter_transitions(self, reverse=False):
+                items = list(self.transitions)
+                if reverse:
+                    items.reverse()
+                return items
+
+        class Helper:
+            def __init__(self):
+                self._pending_transition_menu_target = None
+                self._pending_transition_menu_press_pos = None
+                self._pending_transition_menu_dragged = False
+                self._transition_text_rects = []
+                self.geometry = GeometryStub()
+                self.selected = []
+                self.menu_calls = []
+                self.win = types.SimpleNamespace(
+                    timeline=types.SimpleNamespace(
+                        ShowTransitionMenu=lambda tran_id: self.menu_calls.append(tran_id)
+                    )
+                )
+                self.transition_painter = types.SimpleNamespace(
+                    transition_menu_geometry=lambda rect, tran=None: (
+                        QRectF(rect.x(), rect.y(), 18.0, min(rect.height(), 20.0)),
+                        QRectF(rect.x(), rect.y(), 18.0, min(rect.height(), 20.0)),
+                        None,
+                        QRectF(rect.x() + 6.0, rect.y() + 4.0, 8.0, 8.0),
+                        "",
+                    )
+                )
+
+            def _transition_menu_rect(self, rect, tran=None):
+                return qwidget_transition_module.TransitionInteractionMixin._transition_menu_rect(self, rect, tran)
+
+            def _select_timeline_item(self, item_id, item_type, clear_existing):
+                self.selected.append((item_id, item_type, clear_existing))
+
+            def _transition_menu_target_at(self, pos):
+                return qwidget_base_module.TimelineWidgetBase._transition_menu_target_at(self, pos)
+
+            def _clear_pending_transition_menu_click(self):
+                return qwidget_base_module.TimelineWidgetBase._clear_pending_transition_menu_click(self)
+
+            def _begin_pending_transition_menu_click(self, pos):
+                return qwidget_base_module.TimelineWidgetBase._begin_pending_transition_menu_click(self, pos)
+
+            def _update_pending_transition_menu_drag(self, pos):
+                return qwidget_base_module.TimelineWidgetBase._update_pending_transition_menu_drag(self, pos)
+
+            def _handle_pending_transition_menu_release(self, pos):
+                return qwidget_base_module.TimelineWidgetBase._handle_pending_transition_menu_release(self, pos)
+
+        return Helper()
+
     def make_qwidget_cursor_helper(self):
         qwidget_base_module = self.qwidget_base_module
 
@@ -845,7 +961,7 @@ class TimelineHelperTests(unittest.TestCase):
             def _track_toolbar_button_at(self, pos):
                 return None
 
-            def _transition_menu_rect(self, rect):
+            def _transition_menu_rect(self, rect, tran=None):
                 return QRectF()
 
             def _marker_at(self, pos):
@@ -1920,6 +2036,172 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertEqual(len(helper.transition_entries), 1)
         self.assertTrue(helper.transition_entries[0].selected)
 
+    def test_transition_themes_use_two_pixel_border_width(self):
+        humanity = self.humanity_theme_module.HumanityDarkTimelineTheme()
+        retro = self.humanity_theme_module.RetroTimelineTheme()
+        cosmic = self.cosmic_theme_module.CosmicDuskTimelineTheme()
+
+        self.assertEqual(humanity.transition.border_width, 2.0)
+        self.assertEqual(retro.transition.border_width, 2.0)
+        self.assertEqual(cosmic.transition.border_width, 2.0)
+
+    def test_transition_selected_state_stays_translucent_but_brighter(self):
+        painter_cls = self.transition_paint_module.TransitionPainter
+
+        self.assertLess(painter_cls.DEFAULT_OPACITY, painter_cls.SELECTED_OPACITY)
+        self.assertLess(painter_cls.SELECTED_OPACITY, 1.0)
+        self.assertGreater(painter_cls.SELECTED_OVERLAY_ALPHA, 0)
+
+    def test_transition_label_uses_friendly_resource_name(self):
+        helper = types.SimpleNamespace()
+        tran = types.SimpleNamespace(
+            data={"reader": {"path": "/tmp/transitions/common/wipe_left_to_right.svg"}}
+        )
+
+        with patch.object(self.qwidget_base_module, "get_app", return_value=types.SimpleNamespace(_tr=lambda text: text)):
+            label = self.qwidget_base_module.TimelineWidgetBase._transition_label(helper, tran)
+
+        self.assertEqual(label, "Wipe left to right")
+
+    def test_preview_transition_model_includes_reader_path_for_friendly_label(self):
+        helper = types.SimpleNamespace()
+        entry = {
+            "type": "transition",
+            "source_id": "/tmp/transitions/common/fade.svg",
+            "position": 2.0,
+            "duration": 1.5,
+            "layer": 4,
+        }
+
+        model = self.qwidget_base_module.TimelineWidgetBase._preview_entry_model(helper, entry)
+
+        self.assertEqual(model.data["reader"]["path"], "/tmp/transitions/common/fade.svg")
+        self.assertEqual(model.data["position"], 2.0)
+        self.assertEqual(model.data["end"], 1.5)
+
+    def test_transition_menu_rect_uses_large_hit_target_for_dropdown_arrow(self):
+        rect = QRectF(100.0, 40.0, 60.0, 24.0)
+        widget = types.SimpleNamespace(
+            theme=self.humanity_theme_module.HumanityDarkTimelineTheme(),
+            clip_selected=QColor("red"),
+        )
+        painter = self.transition_paint_module.TransitionPainter(widget)
+
+        class Helper(self.qwidget_transition_module.TransitionInteractionMixin):
+            def __init__(self, transition_painter):
+                self.transition_painter = transition_painter
+
+        helper = Helper(painter)
+        tran = types.SimpleNamespace(data={"title": "Fade"})
+        hit_rect = helper._transition_menu_rect(rect, tran)
+        container_rect, _hit_rect, _scaled_arrow, arrow_rect, _title = painter.transition_menu_geometry(rect, tran)
+
+        self.assertFalse(hit_rect.isNull())
+        self.assertFalse(container_rect.isNull())
+        self.assertFalse(arrow_rect.isNull())
+        self.assertAlmostEqual(hit_rect.x(), rect.x())
+        self.assertAlmostEqual(hit_rect.y(), rect.y())
+        self.assertAlmostEqual(hit_rect.width(), container_rect.width())
+        self.assertAlmostEqual(hit_rect.height(), container_rect.height())
+        self.assertGreater(hit_rect.width(), arrow_rect.width())
+        self.assertGreaterEqual(hit_rect.height(), arrow_rect.height())
+
+    def test_qwidget_pending_transition_menu_release_opens_without_drag_threshold(self):
+        helper = self.make_qwidget_pending_transition_menu_helper()
+        tran = types.SimpleNamespace(id="T1")
+        helper._transition_text_rects = [
+            {"rect": QRectF(10.0, 10.0, 36.0, 18.0), "transition": tran, "open_menu": True}
+        ]
+
+        self.assertTrue(helper._begin_pending_transition_menu_click(QPointF(20.0, 20.0)))
+        helper._update_pending_transition_menu_drag(QPointF(21.0, 20.0))
+
+        opened = helper._handle_pending_transition_menu_release(QPointF(20.0, 20.0))
+
+        self.assertTrue(opened)
+        self.assertEqual(helper.selected, [("T1", "transition", True)])
+        self.assertEqual(helper.menu_calls, ["T1"])
+
+    def test_qwidget_pending_transition_menu_release_ignores_drag_motion(self):
+        helper = self.make_qwidget_pending_transition_menu_helper()
+        tran = types.SimpleNamespace(id="T1")
+        helper._transition_text_rects = [
+            {"rect": QRectF(10.0, 10.0, 36.0, 18.0), "transition": tran, "open_menu": True}
+        ]
+
+        self.assertTrue(helper._begin_pending_transition_menu_click(QPointF(20.0, 20.0)))
+        helper._update_pending_transition_menu_drag(
+            QPointF(20.0 + QApplication.startDragDistance(), 20.0)
+        )
+
+        opened = helper._handle_pending_transition_menu_release(
+            QPointF(20.0 + QApplication.startDragDistance(), 20.0)
+        )
+
+        self.assertFalse(opened)
+        self.assertEqual(helper.selected, [])
+        self.assertEqual(helper.menu_calls, [])
+
+    def test_transition_painter_border_width_does_not_change_geometry_or_snap_edges(self):
+        module = self.geometry_transition_module
+        snap_module = importlib.import_module("windows.views.timeline_backend.snap")
+
+        class GeometryHelper(module.TransitionGeometryMixin):
+            def __init__(self, widget):
+                self.widget = widget
+                self.transition_entries = []
+                self._transition_starts = []
+                self._transition_max_rights = []
+
+        widget = types.SimpleNamespace(
+            theme=self.humanity_theme_module.HumanityDarkTimelineTheme(),
+            track_name_width=140.0,
+            pixels_per_second=10.0,
+            ruler_height=40.0,
+            vertical_factor=48.0,
+            normalize_track_number=lambda value: value,
+            scrollbar_position=(0.0, 1.0, 200.0, 200.0),
+            _snap_ignore_ids=set(),
+            _snap_active_targets={},
+            snap_tolerance_px=12.0,
+            current_frame=1.0,
+            fps_float=24.0,
+        )
+        geometry = GeometryHelper(widget)
+        transition = types.SimpleNamespace(
+            id="T1",
+            data={"position": 2.0, "start": 0.0, "end": 5.0, "layer": 0},
+        )
+        ctx = {"track_offsets": {0: 0.0}, "spacing": 56.0, "top_margin": 0.0}
+        win = types.SimpleNamespace(selected_transitions=[])
+
+        with patch.object(module.Transition, "filter", return_value=[transition]):
+            geometry._populate_transition_rects({0: 0}, ctx, win)
+
+        rect = geometry.transition_entries[0].rect
+
+        class GeometryStub:
+            marker_rects = []
+
+            def ensure(self):
+                return None
+
+            def iter_clips(self, viewport=False):
+                return []
+
+            def iter_transitions(self, viewport=False):
+                return [(rect, transition, False)]
+
+        painter = self.transition_paint_module.TransitionPainter(widget)
+        self.assertEqual(painter.border_width, 2.0)
+        self.assertAlmostEqual(rect.left(), 160.0)
+        self.assertAlmostEqual(rect.right(), 210.0)
+
+        snap = snap_module.SnapHelper(widget, GeometryStub())
+        targets = snap._target_edges_px(viewport=False)
+        self.assertIn(rect.left(), targets)
+        self.assertIn(rect.right(), targets)
+
     def test_qwidget_ctrl_mouse_zoom_starts_on_ctrl_middle_press(self):
         helper, _event_cls, _wheel_event_cls = self.make_qwidget_ctrl_zoom_helper()
         pos = QPointF(20.0, 120.0)
@@ -2415,6 +2697,42 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertEqual(helper._press_hit, "clip-edge")
         self.assertEqual(helper._resize_edge, "right")
         self.assertEqual([item.id for item in helper._resize_items], ["A"])
+
+    def test_qwidget_pending_clip_menu_release_opens_without_drag_threshold(self):
+        helper = self.make_qwidget_pending_clip_menu_helper()
+        clip = types.SimpleNamespace(id="C1")
+        helper._clip_text_rects = [
+            {"rect": QRectF(10.0, 10.0, 48.0, 18.0), "clip": clip, "open_menu": True}
+        ]
+
+        self.assertTrue(helper._begin_pending_clip_menu_click(QPointF(20.0, 20.0)))
+        helper._update_pending_clip_menu_drag(QPointF(21.0, 20.0))
+
+        opened = helper._handle_pending_clip_menu_release(QPointF(20.0, 20.0))
+
+        self.assertTrue(opened)
+        self.assertEqual(helper.selected, [("C1", "clip", True)])
+        self.assertEqual(helper.menu_calls, ["C1"])
+
+    def test_qwidget_pending_clip_menu_release_ignores_drag_motion(self):
+        helper = self.make_qwidget_pending_clip_menu_helper()
+        clip = types.SimpleNamespace(id="C1")
+        helper._clip_text_rects = [
+            {"rect": QRectF(10.0, 10.0, 48.0, 18.0), "clip": clip, "open_menu": True}
+        ]
+
+        self.assertTrue(helper._begin_pending_clip_menu_click(QPointF(20.0, 20.0)))
+        helper._update_pending_clip_menu_drag(
+            QPointF(20.0 + QApplication.startDragDistance(), 20.0)
+        )
+
+        opened = helper._handle_pending_clip_menu_release(
+            QPointF(20.0 + QApplication.startDragDistance(), 20.0)
+        )
+
+        self.assertFalse(opened)
+        self.assertEqual(helper.selected, [])
+        self.assertEqual(helper.menu_calls, [])
 
     def test_slice_triggered_keep_both_splits_transition_and_updates_duration(self):
         helper = self.make_slice_helper()

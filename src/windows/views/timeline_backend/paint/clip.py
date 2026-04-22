@@ -1660,21 +1660,9 @@ class ClipPainter(BasePainter):
         container_y = inner.y()
         container_rect = QRectF(container_x, container_y, container_w, container_h)
 
-        # Background: square top-left corner (flush with clip border), rounded elsewhere
-        radius = container_h / 2.0
+        radius = min(4.0, container_rect.width() / 2.0, container_rect.height() / 2.0)
         path = QPainterPath()
-        path.moveTo(container_x, container_y)
-        path.lineTo(container_x + container_w - radius, container_y)
-        path.quadTo(container_x + container_w, container_y,
-                    container_x + container_w, container_y + radius)
-        path.lineTo(container_x + container_w, container_y + container_h - radius)
-        path.quadTo(container_x + container_w, container_y + container_h,
-                    container_x + container_w - radius, container_y + container_h)
-        path.lineTo(container_x + radius, container_y + container_h)
-        path.quadTo(container_x, container_y + container_h,
-                    container_x, container_y + container_h - radius)
-        path.lineTo(container_x, container_y)
-        path.closeSubpath()
+        path.addRoundedRect(container_rect, radius, radius)
         painter.save()
         painter.setRenderHint(QPainter.Antialiasing, True)
         painter.fillPath(path, QColor(0, 0, 0, 140))

@@ -96,6 +96,7 @@ class HumanityDarkTimelineTheme(TimelineTheme):
         self.transition.background2      = QColor("#3FA1BF")
         self.transition.border_color     = QColor("#0192C1")
         self.transition.border_radius    = 8
+        self.transition.border_width     = 2.0
         self.transition.font_color       = QColor("#FFFFFF")
         self.transition.font_size        = 9
         self.transition.height           = 64
@@ -113,7 +114,6 @@ class HumanityDarkTimelineTheme(TimelineTheme):
         _h = "themes/humanity/images/"
         _c = "themes/cosmic/images/"    # fallback for icons missing a Humanity Dark variant
 
-        self.menu_icon               = _icon("themes/humanity/images/menu.svg")
         self.menu_size               = 12
         self.menu_margin             = 4
         self.playhead_icon           = _icon("themes/humanity/images/playhead.svg")
