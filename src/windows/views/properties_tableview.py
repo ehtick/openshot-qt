@@ -531,7 +531,7 @@ class PropertiesTableView(QTableView):
                 self.accept_live_property_session()
             else:
                 self.cancel_live_property_session()
-        if not self.clip_properties_model.ignore_update_signal and property_type != "colorgrade_curve":
+        if not self.clip_properties_model.ignore_update_signal and property_type not in ("colorgrade_curve", "colorgrade_wheels"):
             self.start_transaction(item)
         self.live_property_session = {
             "item": item,
@@ -683,6 +683,23 @@ class PropertiesTableView(QTableView):
             return
         self.live_property_cache_paused = False
         log.debug("resume_live_property_caching")
+
+    def _wheels_drag_started(self):
+        """Open a per-drag undo transaction when user starts dragging a wheel control."""
+        self.pause_live_property_caching()
+        session = self.live_property_session
+        if session and session.get("property_type") == "colorgrade_wheels":
+            item = session.get("item")
+            if item:
+                self.start_transaction(item)
+
+    def _wheels_drag_finished(self):
+        """Commit the drag as one undo step when the user releases a wheel control."""
+        if self.transaction_id:
+            self.finalize_transaction()
+        # Keep history suppressed between drags so incidental signals don't leak in.
+        get_app().updates.ignore_history = True
+        self.resume_live_property_caching()
 
     def accept_live_property_session(self):
         if not self.live_property_session:
@@ -1855,8 +1872,8 @@ class PropertiesTableView(QTableView):
         self.color_grade_wheels_dock.hide()
         self.win.addDockWidget(Qt.RightDockWidgetArea, self.color_grade_wheels_dock)
         self.color_grade_wheels_panel.wheelsChanged.connect(self.preview_live_property_value)
-        self.color_grade_wheels_panel.dragStarted.connect(self.pause_live_property_caching)
-        self.color_grade_wheels_panel.dragFinished.connect(self.resume_live_property_caching)
+        self.color_grade_wheels_panel.dragStarted.connect(self._wheels_drag_started)
+        self.color_grade_wheels_panel.dragFinished.connect(self._wheels_drag_finished)
         self.color_grade_wheels_dock.visibilityChanged.connect(self._color_grade_wheels_visibility_changed)
 
     def _show_scope_docks_if_hidden(self):
