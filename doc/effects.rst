@@ -544,18 +544,30 @@ impossible or impractical to shoot in.
 Color Grade
 """""""""""
 The Color Grade effect combines primary correction, tonal wheels, RGB curves, and LUT support into one effect.
-It is designed as a grading workflow instead of a collection of unrelated controls, making it easier to build a
-look in one place and animate it over time.
+It can be used for both **color correction** (fixing white balance, exposure, contrast, and saturation issues) and
+**color grading** (building a stylized look). Instead of scattering these controls across multiple effects, OpenShot
+keeps them together in one animated effect payload.
 
 In the :guilabel:`Properties` dock, the :guilabel:`Color Wheels` row opens the :guilabel:`Color Wheels` dock, and
 each curve row opens a :guilabel:`Curve Editor` popup. The properties list also shows tiny previews for the wheel
 and curve rows. Right-click a preview for :guilabel:`Edit` or :guilabel:`Reset`, or double-click it to open the
 matching editor.
 
+For a more focused grading workspace, switch to :guilabel:`View -> Views -> Color View`. This view enlarges the
+video preview, hides unrelated docks, keeps grading controls visible, puts the :guilabel:`Color Wheels` dock
+on the right, and places the :guilabel:`Luma Waveform` and :guilabel:`Histogram` scopes below it.
+
+You can also apply this effect quickly from the clip context menu. Right-click a video clip and use
+:guilabel:`Color -> Auto Contrast`, :guilabel:`Lift Shadows`, :guilabel:`Warm Up`, or :guilabel:`Boost Color`.
+These presets automatically add a :guilabel:`Color Grade` effect when needed and set a useful starting combination
+of Color Grade properties. :guilabel:`Color -> Reset Color` removes the Color Grade effect, and
+:guilabel:`Color -> Analyze Colors` opens the video scopes.
+
 Workflow
 ^^^^^^^^
 
-1. Add the :guilabel:`Color Grade` effect to a clip.
+1. Add the :guilabel:`Color Grade` effect to a clip, or apply one of the clip
+   :guilabel:`Color` presets to create it automatically.
 2. Open the effect :guilabel:`Properties`.
 3. Use the main controls for broad correction: :guilabel:`Temperature`, :guilabel:`Tint`, :guilabel:`Exposure`,
    :guilabel:`Contrast`, :guilabel:`Highlights`, :guilabel:`Shadows`, :guilabel:`Saturation`, and :guilabel:`Vibrance`.
@@ -577,21 +589,21 @@ Properties
    ==========================  ============
    Property Name               Description
    ==========================  ============
-   temperature                 ``(float, -1 to 1)`` Warm or cool the image with a white-balance style adjustment.
-   tint                        ``(float, -1 to 1)`` Shift the image toward magenta or green.
-   exposure                    ``(float, -2 to 2)`` Brighten or darken the image in stops.
-   contrast                    ``(float, -1 to 1)`` Expand or flatten tonal separation.
-   highlights                  ``(float, -1 to 1)`` Recover or boost bright tonal regions.
-   shadows                     ``(float, -1 to 1)`` Lift or deepen darker tonal regions.
-   saturation                  ``(float, 0 to 4)`` Increase or decrease color intensity.
-   vibrance                    ``(float, -1 to 1)`` Protect low-color areas while increasing or decreasing colorfulness.
-   mix                         ``(float, 0 to 1)`` Blend between the original frame and the graded result.
-   wheels                      ``(rich wheels editor)`` Opens the Color Wheels dock, with a preview thumbnail and :guilabel:`Edit` / :guilabel:`Reset` context menu.
-   curve_all                   ``(rich curve editor)`` Opens the all-channels Curve Editor popup for overall tonal shaping, with a preview thumbnail and :guilabel:`Edit` / :guilabel:`Reset` context menu.
-   curve_red                   ``(rich curve editor)`` Opens the red channel Curve Editor popup.
-   curve_green                 ``(rich curve editor)`` Opens the green channel Curve Editor popup.
-   curve_blue                  ``(rich curve editor)`` Opens the blue channel Curve Editor popup.
-   lut_path                    ``(string)`` Filesystem path to the `.cube` LUT file.
+   temperature                 ``(float, -1 to 1)`` White-balance style warm/cool adjustment. Positive values warm the image; negative values cool it.
+   tint                        ``(float, -1 to 1)`` Green/magenta balance adjustment for fine white-balance correction.
+   exposure                    ``(float, -2 to 2)`` Overall brightness adjustment in stops.
+   contrast                    ``(float, -1 to 1)`` Expand or compress tonal separation around the midtones.
+   highlights                  ``(float, -1 to 1)`` Recover or brighten bright tonal regions.
+   shadows                     ``(float, -1 to 1)`` Lift or deepen dark tonal regions.
+   saturation                  ``(float, 0 to 4)`` Global color intensity multiplier.
+   vibrance                    ``(float, -1 to 1)`` Adaptive colorfulness adjustment that affects lower-saturation pixels more strongly.
+   mix                         ``(float, 0 to 1)`` Blend between the original frame and the fully graded result.
+   wheels                      ``(rich wheels editor)`` Opens the Color Wheels dock for animated :guilabel:`Global`, :guilabel:`Shadows`, :guilabel:`Midtones`, and :guilabel:`Highlights` color and luma adjustments. Includes a preview thumbnail and :guilabel:`Edit` / :guilabel:`Reset` context menu.
+   curve_all                   ``(rich curve editor)`` Opens the all-channels Curve Editor popup for overall tonal shaping. Includes a preview thumbnail and :guilabel:`Edit` / :guilabel:`Reset` context menu.
+   curve_red                   ``(rich curve editor)`` Opens the red channel Curve Editor popup for animated red-channel shaping.
+   curve_green                 ``(rich curve editor)`` Opens the green channel Curve Editor popup for animated green-channel shaping.
+   curve_blue                  ``(rich curve editor)`` Opens the blue channel Curve Editor popup for animated blue-channel shaping.
+   lut_path                    ``(string)`` Filesystem path to the `.cube` LUT file applied after the correction and curve stages.
    lut_intensity               ``(float, 0 to 1)`` Blend amount for the selected LUT.
    ==========================  ============
 
