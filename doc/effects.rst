@@ -547,9 +547,10 @@ The Color Grade effect combines primary correction, tonal wheels, RGB curves, an
 It is designed as a grading workflow instead of a collection of unrelated controls, making it easier to build a
 look in one place and animate it over time.
 
-In the :guilabel:`Properties` dock, the :guilabel:`Wheels` row opens the :guilabel:`Color Wheels` dock, and each :guilabel:`Curve` row opens a dedicated curve editor dialog. The property
-list also shows tiny preview indicators for the wheels and curve rows, so you can tell at a glance which controls
-are active and how they are shaped before opening them.
+In the :guilabel:`Properties` dock, the :guilabel:`Color Wheels` row opens the :guilabel:`Color Wheels` dock, and
+each curve row opens a :guilabel:`Curve Editor` popup. The properties list also shows tiny previews for the wheel
+and curve rows. Right-click a preview for :guilabel:`Edit` or :guilabel:`Reset`, or double-click it to open the
+matching editor.
 
 Workflow
 ^^^^^^^^
@@ -558,11 +559,14 @@ Workflow
 2. Open the effect :guilabel:`Properties`.
 3. Use the main controls for broad correction: :guilabel:`Temperature`, :guilabel:`Tint`, :guilabel:`Exposure`,
    :guilabel:`Contrast`, :guilabel:`Highlights`, :guilabel:`Shadows`, :guilabel:`Saturation`, and :guilabel:`Vibrance`.
-4. Open the :guilabel:`Wheels` row to balance global tone, shadows, midtones, and highlights.
-5. Open the :guilabel:`Curve: All`, :guilabel:`Curve: Red`, :guilabel:`Curve: Green`, and :guilabel:`Curve: Blue`
-   rows to shape overall contrast or individual channels.
-6. Optionally choose a :guilabel:`LUT File` and blend it with :guilabel:`LUT Intensity`.
-7. Use :guilabel:`Mix` to blend the graded result back toward the original image.
+4. Open the :guilabel:`Color Wheels` row to balance :guilabel:`Global`, :guilabel:`Shadows`, :guilabel:`Midtones`,
+   and :guilabel:`Highlights` in the right-side dock.
+5. Open :guilabel:`Curve: All`, :guilabel:`Curve: Red`, :guilabel:`Curve: Green`, and :guilabel:`Curve: Blue`
+   to shape overall contrast or individual channels in the :guilabel:`Curve Editor`.
+6. In the :guilabel:`Curve Editor`, click or drag in the graph to add points, drag points to reshape the curve,
+   and right-click a point to change interpolation or remove it.
+7. Optionally choose a :guilabel:`LUT File` and blend it with :guilabel:`LUT Intensity`.
+8. Use :guilabel:`Mix` to blend the graded result back toward the original image.
 
 Properties
 ^^^^^^^^^^
@@ -582,11 +586,11 @@ Properties
    saturation                  ``(float, 0 to 4)`` Increase or decrease color intensity.
    vibrance                    ``(float, -1 to 1)`` Protect low-color areas while increasing or decreasing colorfulness.
    mix                         ``(float, 0 to 1)`` Blend between the original frame and the graded result.
-   wheels                      ``(rich wheels editor)`` Opens the Color Wheels dock for global, shadows, midtones, and highlights adjustments.
-   curve_all                   ``(rich curve editor)`` Opens the all-channels curve dialog for overall tonal shaping.
-   curve_red                   ``(rich curve editor)`` Opens the red channel curve dialog.
-   curve_green                 ``(rich curve editor)`` Opens the green channel curve dialog.
-   curve_blue                  ``(rich curve editor)`` Opens the blue channel curve dialog.
+   wheels                      ``(rich wheels editor)`` Opens the Color Wheels dock, with a preview thumbnail and :guilabel:`Edit` / :guilabel:`Reset` context menu.
+   curve_all                   ``(rich curve editor)`` Opens the all-channels Curve Editor popup for overall tonal shaping, with a preview thumbnail and :guilabel:`Edit` / :guilabel:`Reset` context menu.
+   curve_red                   ``(rich curve editor)`` Opens the red channel Curve Editor popup.
+   curve_green                 ``(rich curve editor)`` Opens the green channel Curve Editor popup.
+   curve_blue                  ``(rich curve editor)`` Opens the blue channel Curve Editor popup.
    lut_path                    ``(string)`` Filesystem path to the `.cube` LUT file.
    lut_intensity               ``(float, 0 to 1)`` Blend amount for the selected LUT.
    ==========================  ============

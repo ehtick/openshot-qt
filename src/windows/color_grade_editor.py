@@ -963,7 +963,7 @@ class ColorGradeCurveDialog(QDialog):
         self._widget = CurvePreviewWidget(curve_data, self._frame_number, self)
 
         layout = QVBoxLayout(self)
-        layout.addWidget(ElidedLabel(_("Drag to reshape. Right-click a node for interpolation and remove actions."), self))
+        layout.addWidget(ElidedLabel(_("Drag to reshape. Right-click points for options."), self))
         layout.addWidget(self._widget)
 
         button_row = QHBoxLayout()
