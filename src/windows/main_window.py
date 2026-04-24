@@ -124,7 +124,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
     KeyFrameTransformSignal = pyqtSignal(str, str)
     SelectRegionSignal = pyqtSignal(str)
     MaxSizeChanged = pyqtSignal(object)
-    RunScopeSignal = pyqtSignal(int, bool, bool, bool, bool, object, object)   # Route scope GetFrame to worker thread to avoid mutex contention
+    RunScopeSignal = pyqtSignal(int, bool, bool, bool, bool, object, object, object)   # Route scope GetFrame to worker thread to avoid mutex contention
     InsertKeyframe = pyqtSignal()
     OpenProjectSignal = pyqtSignal(str)
     ThumbnailUpdated = pyqtSignal(str, int)
@@ -1407,12 +1407,15 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         self._scope_hist_vis = hist_vis
         self._scope_vec_vis  = vec_vis
         self._scope_aud_vis  = aud_vis
+        waveform_render = None
+        if wf_vis and getattr(self, "waveform_content", None):
+            waveform_render = self.waveform_content.render_settings()
         vectorscope_render = None
         if vec_vis and getattr(self, "vectorscope_content", None):
             vectorscope_render = self.vectorscope_content.render_settings()
         self.RunScopeSignal.emit(
             frame_number, wf_vis, hist_vis, vec_vis, aud_vis,
-            self._scope_region_payload(), vectorscope_render)
+            self._scope_region_payload(), waveform_render, vectorscope_render)
 
     @pyqtSlot(int, dict, dict)
     def _on_scope_ready(self, frame_number, video, audio):
@@ -4693,6 +4696,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         # Create individual scope docks (before addViewDocksMenu so they appear in Docks menu)
         self.waveform_content = WaveformDockContent()
         self.waveform_content.scopeRegionToggled.connect(self._on_scope_region_toggled)
+        self.waveform_content.renderSettingsChanged.connect(self._request_scope_refresh)
         self.dockLumaWaveform = QDockWidget(_("Luma Waveform"), self)
         self.dockLumaWaveform.setObjectName("dockLumaWaveform")
         self.dockLumaWaveform.setProperty("_skip_auto_tab_order", True)

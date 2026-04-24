@@ -784,6 +784,7 @@ def _restore_combo(combo, value):
 class WaveformDockContent(QWidget):
     """Waveform dock widget: filter toolbar above the waveform painter."""
     scopeRegionToggled = pyqtSignal(bool)
+    renderSettingsChanged = pyqtSignal()
 
     _MODES = [
         ("luma",        "Luma"),
@@ -838,9 +839,19 @@ class WaveformDockContent(QWidget):
     def _on_mode(self):
         self.waveform.set_mode(self._mode_cb.currentData())
         self._sync_color_visibility()
+        self.renderSettingsChanged.emit()
 
     def _on_color(self):
         self.waveform.set_color(self._color_cb.currentData())
+
+    def render_settings(self):
+        return {
+            "columns": max(32, int(self.waveform.width() or 256)),
+        }
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.renderSettingsChanged.emit()
 
     def set_scope_region_enabled(self, enabled):
         self._region_btn.blockSignals(True)

@@ -384,12 +384,12 @@ class PlayerWorker(QObject):
         refresh_frame = int(self.player.Position())
         self.Seek(refresh_frame, False)
 
-    @pyqtSlot(int, bool, bool, bool, bool, object, object)
-    def queue_scope_analysis(self, frame_number, need_waveform, need_histogram, need_vectorscope, need_audio, scope_region, vectorscope_render):
+    @pyqtSlot(int, bool, bool, bool, bool, object, object, object)
+    def queue_scope_analysis(self, frame_number, need_waveform, need_histogram, need_vectorscope, need_audio, scope_region, waveform_render, vectorscope_render):
         with self._scope_lock:
             self._pending_scope_request = (
                 frame_number, need_waveform, need_histogram, need_vectorscope,
-                need_audio, scope_region, vectorscope_render,
+                need_audio, scope_region, waveform_render, vectorscope_render,
             )
             if self._scope_analysis_active:
                 return
@@ -405,7 +405,7 @@ class PlayerWorker(QObject):
                 return
             self.run_scope_analysis(*request)
 
-    def run_scope_analysis(self, frame_number, need_waveform, need_histogram, need_vectorscope, need_audio, scope_region, vectorscope_render):
+    def run_scope_analysis(self, frame_number, need_waveform, need_histogram, need_vectorscope, need_audio, scope_region, waveform_render, vectorscope_render):
         """Compute FrameScope data on the worker thread and emit scope_ready.
 
         Running here keeps scope analysis work off the UI thread.
@@ -424,6 +424,12 @@ class PlayerWorker(QObject):
             need_video = bool(need_waveform or need_histogram or need_vectorscope)
             frame = timeline.GetFrame(frame_number)
             scope = openshot.FrameScope()
+            if need_waveform:
+                waveform_settings = waveform_render if isinstance(waveform_render, dict) else {}
+                try:
+                    scope.SetWaveformColumns(max(32, int(waveform_settings.get("columns", 256) or 256)))
+                except Exception:
+                    pass
             if need_vectorscope:
                 is_playing = False
                 try:
