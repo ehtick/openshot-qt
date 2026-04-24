@@ -32,6 +32,11 @@ you are fixing a problem shot or building a cinematic look from scratch.
 *The OpenShot Color View: video preview in the center, Color Wheels dock on the right, and video scopes
 (Luma Waveform and Histogram) below.*
 
+.. seealso::
+
+   :ref:`effects_color_grade` in :doc:`effects` — full property reference and keyframe details for the
+   Color Grade effect.
+
 .. _color_basics_ref:
 
 Understanding Color

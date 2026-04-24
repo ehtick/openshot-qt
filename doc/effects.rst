@@ -541,44 +541,19 @@ impossible or impractical to shoot in.
    keymethod                   ``(int, choices: ['Basic keying', 'HSV/HSL hue', 'HSV saturation', 'HSL saturation', 'HSV value', 'HSL luminance', 'LCH luminosity', 'LCH chroma', 'LCH hue', 'CIE Distance', 'Cb,Cr vector'])`` The keying method or algorithm to use.
    ==========================  ============
 
+.. _effects_color_grade:
+
 Color Grade
 """""""""""
-The Color Grade effect combines primary correction, tonal wheels, RGB curves, and LUT support into one effect.
-It can be used for both **color correction** (fixing white balance, exposure, contrast, and saturation issues) and
-**color grading** (building a stylized look). Instead of scattering these controls across multiple effects, OpenShot
-keeps them together in one animated effect payload.
+The Color Grade effect combines primary correction, tonal wheels, RGB curves, and LUT support into one
+fully animated effect. Use it for **color correction** (white balance, exposure, contrast) and
+**color grading** (building a stylized look). Right-click a clip and use :guilabel:`Color` presets to
+apply it instantly, or switch to :guilabel:`View → Views → Color View` for a dedicated grading workspace.
 
-In the :guilabel:`Properties` dock, the :guilabel:`Color Wheels` row opens the :guilabel:`Color Wheels` dock, and
-each curve row opens a :guilabel:`Curve Editor` popup. The properties list also shows tiny previews for the wheel
-and curve rows. Right-click a preview for :guilabel:`Edit` or :guilabel:`Reset`, or double-click it to open the
-matching editor.
+.. seealso::
 
-For a more focused grading workspace, switch to :guilabel:`View -> Views -> Color View`. This view enlarges the
-video preview, hides unrelated docks, keeps grading controls visible, puts the :guilabel:`Color Wheels` dock
-on the right, and places the :guilabel:`Luma Waveform` and :guilabel:`Histogram` scopes below it.
-
-You can also apply this effect quickly from the clip context menu. Right-click a video clip and use
-:guilabel:`Color -> Auto Contrast`, :guilabel:`Lift Shadows`, :guilabel:`Warm Up`, or :guilabel:`Boost Color`.
-These presets automatically add a :guilabel:`Color Grade` effect when needed and set a useful starting combination
-of Color Grade properties. :guilabel:`Color -> Reset Color` removes the Color Grade effect, and
-:guilabel:`Color -> Analyze Colors` opens the video scopes.
-
-Workflow
-^^^^^^^^
-
-1. Add the :guilabel:`Color Grade` effect to a clip, or apply one of the clip
-   :guilabel:`Color` presets to create it automatically.
-2. Open the effect :guilabel:`Properties`.
-3. Use the main controls for broad correction: :guilabel:`Temperature`, :guilabel:`Tint`, :guilabel:`Exposure`,
-   :guilabel:`Contrast`, :guilabel:`Highlights`, :guilabel:`Shadows`, :guilabel:`Saturation`, and :guilabel:`Vibrance`.
-4. Open the :guilabel:`Color Wheels` row to balance :guilabel:`Global`, :guilabel:`Shadows`, :guilabel:`Midtones`,
-   and :guilabel:`Highlights` in the right-side dock.
-5. Open :guilabel:`Curve: All`, :guilabel:`Curve: Red`, :guilabel:`Curve: Green`, and :guilabel:`Curve: Blue`
-   to shape overall contrast or individual channels in the :guilabel:`Curve Editor`.
-6. In the :guilabel:`Curve Editor`, click or drag in the graph to add points, drag points to reshape the curve,
-   and right-click a point to change interpolation or remove it.
-7. Optionally choose a :guilabel:`LUT File` and blend it with :guilabel:`LUT Intensity`.
-8. Use :guilabel:`Mix` to blend the graded result back toward the original image.
+   :doc:`color` — full workflow guide covering the Color Wheels dock, Curve Editor, video scopes,
+   color presets, skin tone matching, and step-by-step grading examples.
 
 Properties
 ^^^^^^^^^^
