@@ -1582,7 +1582,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             Analyze_Colors = Color_Menu.addAction(
                 QIcon(os.path.join(info.PATH, "themes/cosmic/images/view-analysis.svg")),
                 _("Analyze Colors"))
-            Analyze_Colors.triggered.connect(lambda: get_app().window.show_color_grading_docks())
+            Analyze_Colors.triggered.connect(lambda: get_app().window.show_scope_video_docks())
             menu.addMenu(Color_Menu)
 
         # Layout Menu
