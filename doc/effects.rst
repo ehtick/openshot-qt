@@ -84,7 +84,7 @@ identify a clip's start is by utilizing the 'next/previous marker' feature on th
 
 List of Effects
 ---------------
-OpenShot Video Editor has a total of 36 built-in video and audio effects: 27 video effects and 9 audio effects.
+OpenShot Video Editor has a total of 37 built-in video and audio effects: 28 video effects and 9 audio effects.
 These effects can be added to a clip by dragging the effect onto a clip. The following table contains
 the name and short description of each effect.
 
@@ -143,6 +143,10 @@ the name and short description of each effect.
 .. |displace_icon| image:: ../src/effects/icons/displace@2x.png
    :width: 50px
    :alt: Displacement Map Icon
+
+.. |filmgrain_icon| image:: ../src/effects/icons/filmgrain@2x.png
+   :width: 50px
+   :alt: Film Grain Icon
 
 .. |glow_icon| image:: ../src/effects/icons/glow@2x.png
    :width: 50px
@@ -256,6 +260,7 @@ the name and short description of each effect.
    |crop_icon|                 Crop                          Crop out parts of your video.
    |deinterlace_icon|          Deinterlace                   Remove interlacing from video.
    |displace_icon|             Displacement Map              Use a grayscale image or video to warp the frame.
+   |filmgrain_icon|            Film Grain                    Add natural film-inspired texture and motion.
    |glow_icon|                 Glow                          Add a soft outer or inner glow to visible pixels.
    |hue_icon|                  Hue                           Adjust hue / color.
    |lensflare_icon|            Lens Flare                    Simulate sunlight hitting a lens with flares.
@@ -931,6 +936,60 @@ Usage Notes
    contrast                    ``(float, 0 to 20)`` Contrast adjustment applied to the displacement map before warping
    replace_image               ``(int, choices: ['Yes', 'No'])`` Replace the output image with the processed map, useful for previewing or debugging the distortion map
    ==========================  ============================================================================
+
+Film Grain
+""""""""""
+The **Film Grain** effect adds a gentle moving texture to your video, similar to the tiny speckles you see in
+real film photography. This can make very clean digital footage feel warmer, more natural, or more cinematic.
+It can also help blend mixed footage together, especially when one clip looks too sharp or too smooth compared
+to the rest of your project.
+
+If you are new to film grain, start small. A little grain can add life and texture without calling attention to
+itself. Stronger settings can be useful for vintage looks, music videos, horror scenes, documentary recreations,
+or footage that should feel like older 16mm or Super 8 film.
+
+You can add Film Grain from the :guilabel:`Effects` tab, or right-click a clip and choose
+:guilabel:`Film Grain` to start with a preset such as :guilabel:`35mm Fine`,
+:guilabel:`35mm Classic`, :guilabel:`16mm Classic`, :guilabel:`Super 8`, or
+:guilabel:`High ISO`. Presets only set the properties for you; all controls remain visible and editable.
+
+Simple starting points:
+
+- **Clean cinematic texture**: try :guilabel:`35mm Fine`, then lower ``amount`` if it feels too visible.
+- **Classic film look**: try :guilabel:`35mm Classic` for a balanced grain pattern.
+- **Older home-movie style**: try :guilabel:`Super 8`, which uses larger, more active grain.
+- **Low-light camera noise style**: try :guilabel:`High ISO`, then adjust ``color_amount`` to control how colorful the grain feels.
+
+The grain is deterministic, which means the same settings render the same grain pattern each time. Change
+``seed`` when you want a different repeatable grain pattern on a clip.
+
+.. table::
+   :widths: 26 80
+
+   ==========================  ============================================================================
+   Property Name               Description
+   ==========================  ============================================================================
+   amount                      ``(float, 0 to 1)`` Overall grain intensity. Lower values are subtle; higher values are more visible and gritty.
+   size                        ``(float, 0 to 1)`` Grain scale. Lower values create fine grain; higher values create larger, coarser grain.
+   softness                    ``(float, 0 to 1)`` Softens the grain texture. Lower values look crisp; higher values look smoother and more organic.
+   clump                       ``(float, 0 to 1)`` Controls how even or clustered the grain appears. Higher values create more irregular groups of grain.
+   shadows                     ``(float, 0 to 1)`` Grain strength in dark areas of the image.
+   midtones                    ``(float, 0 to 1)`` Grain strength in middle brightness areas, such as skin tones and everyday objects.
+   highlights                  ``(float, 0 to 1)`` Grain strength in bright areas, such as skies, windows, and lights.
+   color_amount                ``(float, 0 to 1)`` How much the grain affects color. Lower values are mostly luma grain; higher values add more chroma grain.
+   color_variation             ``(float, 0 to 1)`` How independently the red, green, and blue grain changes. Higher values feel more colorful and random.
+   evolution                   ``(float, 0 to 1)`` How much the grain renews over time. Higher values make the texture change more from frame to frame.
+   coherence                   ``(float, 0 to 1)`` How stable and smooth the grain remains between frames. Higher values feel calmer and less jumpy.
+   seed                        ``(int, 0 to 1000000)`` Selects the exact repeatable grain pattern. Change this to get a different look without changing intensity.
+   ==========================  ============================================================================
+
+**Usage notes**
+
+- Grain is easiest to judge while the video is playing, not on a single paused frame.
+- If faces or bright skies look too noisy, lower ``highlights`` or ``amount``.
+- If shadows look too clean compared to the rest of the image, raise ``shadows`` slightly.
+- If the grain looks too digital or sharp, raise ``softness`` or lower ``color_variation``.
+- If the grain looks too busy during motion, lower ``evolution`` or raise ``coherence``.
 
 Glow
 """"
