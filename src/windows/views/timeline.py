@@ -1453,9 +1453,9 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             Fade_Menu.addMenu(Position_Menu)
         menu.addMenu(Fade_Menu)
 
-        # Animate Menu
-        Animate_Menu = StyledContextMenu(title=_("Animate"), parent=self)
-        Animate_None = Animate_Menu.addAction(_("No Animation"))
+        # Motion Menu
+        Animate_Menu = StyledContextMenu(title=_("Motion"), parent=self)
+        Animate_None = Animate_Menu.addAction(_("No Motion"))
         Animate_None.triggered.connect(partial(self.Animate_Triggered, MenuAnimate.NONE, clip_ids))
         Animate_Menu.addSeparator()
         for position, position_label in [
@@ -1546,7 +1546,12 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         # Add Each position menu
         menu.addMenu(Animate_Menu)
 
-        # Rotate Menu
+        # Transform Menu (Rotate, Crop, Layout)
+        Transform_Menu = StyledContextMenu(title=_("Transform"), parent=self)
+        No_Transform = Transform_Menu.addAction(_("No Transform"))
+        No_Transform.triggered.connect(partial(self.No_Transform_Triggered, clip_ids))
+        Transform_Menu.addSeparator()
+
         Rotation_Menu = StyledContextMenu(title=_("Rotate"), parent=self)
         Rotation_None = Rotation_Menu.addAction(_("No Rotation"))
         Rotation_None.triggered.connect(partial(
@@ -1561,7 +1566,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         Rotation_180_Flip = Rotation_Menu.addAction(_("Rotate 180 (Flip)"))
         Rotation_180_Flip.triggered.connect(partial(
             self.Rotate_Triggered, MenuRotate.FLIP_180, clip_ids))
-        menu.addMenu(Rotation_Menu)
+        Transform_Menu.addMenu(Rotation_Menu)
 
         Crop_Menu = StyledContextMenu(title=_("Crop"), parent=self)
         Crop_None = Crop_Menu.addAction(_("No Crop"))
@@ -1571,58 +1576,8 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         Crop_NoResize.triggered.connect(partial(self.Crop_Triggered, clip_ids, 'crop'))
         Crop_Resize = Crop_Menu.addAction(_("Crop (Resize)"))
         Crop_Resize.triggered.connect(partial(self.Crop_Triggered, clip_ids, 'resize'))
-        menu.addMenu(Crop_Menu)
+        Transform_Menu.addMenu(Crop_Menu)
 
-        if self._clip_has_video(clip):
-            Color_Menu = StyledContextMenu(title=_("Color"), parent=self)
-            Reset_Color = Color_Menu.addAction(_("Reset Color"))
-            Reset_Color.triggered.connect(partial(self.Color_Triggered, COLOR_PRESET_RESET, clip_ids))
-            Color_Menu.addSeparator()
-            Auto_Contrast = Color_Menu.addAction(_("Auto Contrast"))
-            Auto_Contrast.triggered.connect(partial(self.Color_Triggered, COLOR_PRESET_AUTO_CONTRAST, clip_ids))
-            Lift_Shadows = Color_Menu.addAction(_("Lift Shadows"))
-            Lift_Shadows.triggered.connect(partial(self.Color_Triggered, COLOR_PRESET_LIFT_SHADOWS, clip_ids))
-            Warm_Up = Color_Menu.addAction(_("Warm Up"))
-            Warm_Up.triggered.connect(partial(self.Color_Triggered, COLOR_PRESET_WARM_UP, clip_ids))
-            Boost_Color = Color_Menu.addAction(_("Boost Color"))
-            Boost_Color.triggered.connect(partial(self.Color_Triggered, COLOR_PRESET_BOOST_COLOR, clip_ids))
-            Color_Menu.addSeparator()
-            Adjust_Colors = Color_Menu.addAction(
-                QIcon(os.path.join(info.PATH, "themes/cosmic/images/view-color.svg")),
-                _("Adjust Colors"))
-            Adjust_Colors.triggered.connect(partial(self.Adjust_Colors_Triggered, clip_ids))
-            Analyze_Colors = Color_Menu.addAction(
-                QIcon(os.path.join(info.PATH, "themes/cosmic/images/view-analysis.svg")),
-                _("Analyze Colors"))
-            Analyze_Colors.triggered.connect(lambda: get_app().window.show_scope_video_docks())
-            menu.addMenu(Color_Menu)
-
-            Film_Grain_Menu = StyledContextMenu(title=_("Film Grain"), parent=self)
-            Film_Grain_None = Film_Grain_Menu.addAction(_("No Film Grain"))
-            Film_Grain_None.triggered.connect(partial(
-                self.Film_Grain_Triggered, FILM_GRAIN_PRESET_NONE, clip_ids))
-            Film_Grain_Menu.addSeparator()
-            Film_Grain_35mm_Fine = Film_Grain_Menu.addAction(_("35mm Fine"))
-            Film_Grain_35mm_Fine.triggered.connect(partial(
-                self.Film_Grain_Triggered, FILM_GRAIN_PRESET_35MM_FINE, clip_ids))
-            Film_Grain_35mm_Classic = Film_Grain_Menu.addAction(_("35mm Classic"))
-            Film_Grain_35mm_Classic.triggered.connect(partial(
-                self.Film_Grain_Triggered, FILM_GRAIN_PRESET_35MM_CLASSIC, clip_ids))
-            Film_Grain_35mm_Gritty = Film_Grain_Menu.addAction(_("35mm Gritty"))
-            Film_Grain_35mm_Gritty.triggered.connect(partial(
-                self.Film_Grain_Triggered, FILM_GRAIN_PRESET_35MM_GRITTY, clip_ids))
-            Film_Grain_16mm_Classic = Film_Grain_Menu.addAction(_("16mm Classic"))
-            Film_Grain_16mm_Classic.triggered.connect(partial(
-                self.Film_Grain_Triggered, FILM_GRAIN_PRESET_16MM_CLASSIC, clip_ids))
-            Film_Grain_Super_8 = Film_Grain_Menu.addAction(_("Super 8"))
-            Film_Grain_Super_8.triggered.connect(partial(
-                self.Film_Grain_Triggered, FILM_GRAIN_PRESET_SUPER_8, clip_ids))
-            Film_Grain_High_ISO = Film_Grain_Menu.addAction(_("High ISO"))
-            Film_Grain_High_ISO.triggered.connect(partial(
-                self.Film_Grain_Triggered, FILM_GRAIN_PRESET_HIGH_ISO, clip_ids))
-            menu.addMenu(Film_Grain_Menu)
-
-        # Layout Menu
         Layout_Menu = StyledContextMenu(title=_("Layout"), parent=self)
         Layout_None = Layout_Menu.addAction(_("Reset Layout"))
         Layout_None.triggered.connect(partial(
@@ -1650,11 +1605,71 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         Layout_Bottom_All_Without_Aspect = Layout_Menu.addAction(_("Show All (Distort)"))
         Layout_Bottom_All_Without_Aspect.triggered.connect(partial(
             self.Layout_Triggered, MenuLayout.ALL_WITHOUT_ASPECT, clip_ids))
-        menu.addMenu(Layout_Menu)
+        Transform_Menu.addMenu(Layout_Menu)
 
-        # Time Menu
-        Time_Menu = StyledContextMenu(title=_("Time"), parent=self)
-        Time_None = Time_Menu.addAction(_("Reset Time"))
+        menu.addMenu(Transform_Menu)
+
+        if self._clip_has_video(clip):
+            # Look Menu (Color + Film Grain)
+            Look_Menu = StyledContextMenu(title=_("Look"), parent=self)
+            Reset_Look = Look_Menu.addAction(_("Reset Look"))
+            Reset_Look.triggered.connect(lambda: (
+                self.Color_Triggered(COLOR_PRESET_RESET, clip_ids),
+                self.Film_Grain_Triggered(FILM_GRAIN_PRESET_NONE, clip_ids)
+            ))
+            Look_Menu.addSeparator()
+
+            Color_Menu = StyledContextMenu(title=_("Color"), parent=self)
+            Auto_Contrast = Color_Menu.addAction(_("Auto Contrast"))
+            Auto_Contrast.triggered.connect(partial(self.Color_Triggered, COLOR_PRESET_AUTO_CONTRAST, clip_ids))
+            Lift_Shadows = Color_Menu.addAction(_("Lift Shadows"))
+            Lift_Shadows.triggered.connect(partial(self.Color_Triggered, COLOR_PRESET_LIFT_SHADOWS, clip_ids))
+            Warm_Up = Color_Menu.addAction(_("Warm Up"))
+            Warm_Up.triggered.connect(partial(self.Color_Triggered, COLOR_PRESET_WARM_UP, clip_ids))
+            Boost_Color = Color_Menu.addAction(_("Boost Color"))
+            Boost_Color.triggered.connect(partial(self.Color_Triggered, COLOR_PRESET_BOOST_COLOR, clip_ids))
+            Look_Menu.addMenu(Color_Menu)
+
+            Film_Grain_Menu = StyledContextMenu(title=_("Film Grain"), parent=self)
+            Film_Grain_None = Film_Grain_Menu.addAction(_("No Film Grain"))
+            Film_Grain_None.triggered.connect(partial(
+                self.Film_Grain_Triggered, FILM_GRAIN_PRESET_NONE, clip_ids))
+            Film_Grain_Menu.addSeparator()
+            Film_Grain_35mm_Fine = Film_Grain_Menu.addAction(_("35mm Fine"))
+            Film_Grain_35mm_Fine.triggered.connect(partial(
+                self.Film_Grain_Triggered, FILM_GRAIN_PRESET_35MM_FINE, clip_ids))
+            Film_Grain_35mm_Classic = Film_Grain_Menu.addAction(_("35mm Classic"))
+            Film_Grain_35mm_Classic.triggered.connect(partial(
+                self.Film_Grain_Triggered, FILM_GRAIN_PRESET_35MM_CLASSIC, clip_ids))
+            Film_Grain_35mm_Gritty = Film_Grain_Menu.addAction(_("35mm Gritty"))
+            Film_Grain_35mm_Gritty.triggered.connect(partial(
+                self.Film_Grain_Triggered, FILM_GRAIN_PRESET_35MM_GRITTY, clip_ids))
+            Film_Grain_16mm_Classic = Film_Grain_Menu.addAction(_("16mm Classic"))
+            Film_Grain_16mm_Classic.triggered.connect(partial(
+                self.Film_Grain_Triggered, FILM_GRAIN_PRESET_16MM_CLASSIC, clip_ids))
+            Film_Grain_Super_8 = Film_Grain_Menu.addAction(_("Super 8"))
+            Film_Grain_Super_8.triggered.connect(partial(
+                self.Film_Grain_Triggered, FILM_GRAIN_PRESET_SUPER_8, clip_ids))
+            Film_Grain_High_ISO = Film_Grain_Menu.addAction(_("High ISO"))
+            Film_Grain_High_ISO.triggered.connect(partial(
+                self.Film_Grain_Triggered, FILM_GRAIN_PRESET_HIGH_ISO, clip_ids))
+            Look_Menu.addMenu(Film_Grain_Menu)
+
+            Look_Menu.addSeparator()
+            Adjust_Colors = Look_Menu.addAction(
+                QIcon(os.path.join(info.PATH, "themes/cosmic/images/view-color.svg")),
+                _("Adjust Colors"))
+            Adjust_Colors.triggered.connect(partial(self.Adjust_Colors_Triggered, clip_ids))
+            Analyze_Colors = Look_Menu.addAction(
+                QIcon(os.path.join(info.PATH, "themes/cosmic/images/view-analysis.svg")),
+                _("Analyze Colors"))
+            Analyze_Colors.triggered.connect(lambda: get_app().window.show_scope_video_docks())
+
+            menu.addMenu(Look_Menu)
+
+        # Speed Menu
+        Time_Menu = StyledContextMenu(title=_("Speed"), parent=self)
+        Time_None = Time_Menu.addAction(_("Reset"))
         Time_None.triggered.connect(partial(self.Time_Triggered, MenuTime.NONE, clip_ids, '1X'))
         Time_Menu.addSeparator()
 
@@ -1665,8 +1680,8 @@ class TimelineView(updates.UpdateInterface, ViewClass):
 
         Time_Menu.addSeparator()
         for speed, speed_values in [
-            (_("Fast"), ['2X', '4X', '8X', '16X']),
-            (_("Slow"), ['1/2X', '1/4X', '1/8X', '1/16X'])
+            (_("Speed Up"), ['2X', '4X', '8X', '16X']),
+            (_("Slow Down"), ['1/2X', '1/4X', '1/8X', '1/16X'])
         ]:
             Speed_Menu = StyledContextMenu(title=speed, parent=self)
 
@@ -1723,7 +1738,9 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         # Add menu to parent
         menu.addMenu(Time_Menu)
 
-        # Volume Menu
+        # Audio Menu (Volume, Separate Audio, Waveform, Analyze Levels)
+        Audio_Menu = StyledContextMenu(title=_("Audio"), parent=self)
+
         Volume_Menu = StyledContextMenu(title=_("Volume"), parent=self)
         Volume_None = Volume_Menu.addAction(_("Reset Volume"))
         Volume_None.triggered.connect(partial(self.Volume_Triggered, MenuVolume.NONE, clip_ids))
@@ -1769,28 +1786,41 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             # Add levels
             Position_Menu.addSeparator()
 
-            # Volume levels menu optinos
+            # Volume levels menu options
             for level in reversed(range(0, 140, 10)):
                 action = Position_Menu.addAction(_("Level {level}%").format(level=level))
                 action.triggered.connect(partial(self.Volume_Triggered, MenuVolume.LEVEL, clip_ids, position, level))
 
             Volume_Menu.addMenu(Position_Menu)
-        Volume_Menu.addSeparator()
-        Analyze_Audio = Volume_Menu.addAction(
-            QIcon(os.path.join(info.PATH, "themes/cosmic/images/view-analysis.svg")),
-            _("Audio Levels"))
-        Analyze_Audio.triggered.connect(lambda: get_app().window.show_scope_audio_dock())
-        menu.addMenu(Volume_Menu)
+        Audio_Menu.addMenu(Volume_Menu)
 
-        # Add separate audio menu
-        Split_Audio_Channels_Menu = StyledContextMenu(title=_("Separate Audio"), parent=self)
+        Split_Audio_Channels_Menu = StyledContextMenu(title=_("Separate"), parent=self)
         Split_Single_Clip = Split_Audio_Channels_Menu.addAction(_("Single Clip (all channels)"))
         Split_Single_Clip.triggered.connect(partial(
             self.Split_Audio_Triggered, MenuSplitAudio.SINGLE, clip_ids))
         Split_Multiple_Clips = Split_Audio_Channels_Menu.addAction(_("Multiple Clips (each channel)"))
         Split_Multiple_Clips.triggered.connect(partial(
             self.Split_Audio_Triggered, MenuSplitAudio.MULTIPLE, clip_ids))
-        menu.addMenu(Split_Audio_Channels_Menu)
+        Audio_Menu.addMenu(Split_Audio_Channels_Menu)
+
+        Audio_Menu.addSeparator()
+        if not self._clip_has_video(clip):
+            if self._clip_has_visible_waveform(clip):
+                ToggleWaveform = Audio_Menu.addAction(
+                    QIcon(os.path.join(info.PATH, "themes/cosmic/images/view-waveform-flat.svg")),
+                    _("Hide Waveform"))
+                ToggleWaveform.triggered.connect(partial(self.Hide_Waveform_Triggered, clip_ids))
+            else:
+                ToggleWaveform = Audio_Menu.addAction(
+                    QIcon(os.path.join(info.PATH, "themes/cosmic/images/view-waveform.svg")),
+                    _("Show Waveform"))
+                ToggleWaveform.triggered.connect(partial(self.Show_Waveform_Triggered, clip_ids))
+        Analyze_Levels = Audio_Menu.addAction(
+            QIcon(os.path.join(info.PATH, "themes/cosmic/images/view-analysis.svg")),
+            _("Analyze Levels"))
+        Analyze_Levels.triggered.connect(lambda: get_app().window.show_scope_audio_dock())
+
+        menu.addMenu(Audio_Menu)
 
         # If Playhead overlapping clip
         if clip:
@@ -1824,16 +1854,8 @@ class TimelineView(updates.UpdateInterface, ViewClass):
 
                 menu.addMenu(Slice_Menu)
 
-        # Add clip display menu (waveform or thumbnail)
-        menu.addSeparator()
-        Waveform_Menu = StyledContextMenu(title=_("Display"), parent=self)
-        ShowWaveform = Waveform_Menu.addAction(_("Show Waveform"))
-        ShowWaveform.triggered.connect(partial(self.Show_Waveform_Triggered, clip_ids))
-        HideWaveform = Waveform_Menu.addAction(_("Show Thumbnail"))
-        HideWaveform.triggered.connect(partial(self.Hide_Waveform_Triggered, clip_ids))
-        menu.addMenu(Waveform_Menu)
-
         # Properties
+        menu.addSeparator()
         menu.addAction(self.window.actionProperties)
 
         # Remove Clip Menu
@@ -3459,6 +3481,17 @@ class TimelineView(updates.UpdateInterface, ViewClass):
 
             # Save changes
             self.update_clip_data(clip.data, only_basic_props=False, ignore_reader=True)
+
+    def No_Transform_Triggered(self, clip_ids):
+        """Reset rotation, crop, and layout for all selected clips in a single undo step."""
+        tid = self.get_uuid()
+        get_app().updates.transaction_id = tid
+        try:
+            self.Rotate_Triggered(MenuRotate.NONE, clip_ids)
+            self.Crop_Triggered(clip_ids, 'none')
+            self.Layout_Triggered(MenuLayout.NONE, clip_ids)
+        finally:
+            get_app().updates.transaction_id = None
 
     def Time_Triggered(self, action, clip_ids, speed="1X", playhead_position=0.0):
         """Callback for time context menus"""
