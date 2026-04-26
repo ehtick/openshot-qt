@@ -932,15 +932,25 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
                 return
             app.setOverrideCursor(QCursor(Qt.WaitCursor))
             try:
-                self.dockFiles.setVisible(True)
-                self.dockFiles.raise_()
-                self.dockFiles.activateWindow()
+                self._raise_project_files_dock_if_open()
                 self.files_model.process_urls(qurl_list)
                 self.refreshFilesSignal.emit()
             finally:
                 app.restoreOverrideCursor()
 
         show_open_file_dialog(self, _("Import Files..."), recommended_path, "", _on_files_selected)
+
+    def _raise_project_files_dock_if_open(self):
+        """Select Project Files only when it is already open in the current layout."""
+        dock = getattr(self, "dockFiles", None)
+        if not dock:
+            return
+        if self.dockWidgetArea(dock) == Qt.NoDockWidgetArea:
+            return
+        if not dock.toggleViewAction().isChecked():
+            return
+        dock.raise_()
+        dock.activateWindow()
 
     def invalidImage(self, filename=None):
         """ Show a popup when an image file can't be loaded """
@@ -1382,6 +1392,17 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
     def _clear_scope_region_mode(self):
         if getattr(self, "_scope_region_enabled", False):
             self._on_scope_region_toggled(False)
+
+    def _any_video_scope_dock_open(self):
+        for dock_name in ("dockLumaWaveform", "dockHistogram", "dockVectorscope"):
+            dock = getattr(self, dock_name, None)
+            if dock and dock.toggleViewAction().isChecked():
+                return True
+        return False
+
+    def _on_video_scope_visibility_changed(self, _visible):
+        if not self._any_video_scope_dock_open():
+            self._clear_scope_region_mode()
 
     @pyqtSlot(str, str, bool)
     def _clear_scope_region_on_selection(self, _item_id, _item_type, _clear_existing=False):
@@ -1851,24 +1872,30 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             positions.append(clip_start_time)
             positions.append(clip_stop_time)
 
+            def add_keyframe_positions(value):
+                if isinstance(value, dict):
+                    points = value.get("Points")
+                    if isinstance(points, list):
+                        for point in points:
+                            try:
+                                keyframe_time = (
+                                    (point["co"]["X"] - 1) / fps_float
+                                    - obj.data["start"] + obj.data["position"]
+                                )
+                                if clip_start_time < keyframe_time < clip_stop_time:
+                                    positions.append(keyframe_time)
+                            except (TypeError, KeyError):
+                                pass
+                        return
+                    for child in value.values():
+                        add_keyframe_positions(child)
+                elif isinstance(value, list):
+                    for child in value:
+                        add_keyframe_positions(child)
+
             # add all object keyframes
             for property in obj.data:
-                try:
-                    # Try looping through keyframe points
-                    for point in obj.data[property]["Points"]:
-                        keyframe_time = (point["co"]["X"]-1)/fps_float - obj.data["start"] + obj.data["position"]
-                        if clip_start_time < keyframe_time < clip_stop_time:
-                            positions.append(keyframe_time)
-                except (TypeError, KeyError):
-                    pass
-                try:
-                    # Try looping through color keyframe points
-                    for point in obj.data[property]["red"]["Points"]:
-                        keyframe_time = (point["co"]["X"]-1)/fps_float - obj.data["start"] + obj.data["position"]
-                        if clip_start_time < keyframe_time < clip_stop_time:
-                            positions.append(keyframe_time)
-                except (TypeError, KeyError):
-                    pass
+                add_keyframe_positions(obj.data[property])
 
             return positions
 
@@ -1899,21 +1926,27 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
                 clip_stop_time = clip_orig_time + parent["end"] - frame_duration
                 # Always include parent clip boundaries
                 all_marker_positions.extend([clip_start_time, clip_stop_time])
+
+                def add_effect_keyframe_positions(value):
+                    if isinstance(value, dict):
+                        points = value.get("Points")
+                        if isinstance(points, list):
+                            for point in points:
+                                try:
+                                    keyframe_time = (point["co"]["X"] - 1) / fps_float + clip_orig_time
+                                    if clip_start_time < keyframe_time < clip_stop_time:
+                                        all_marker_positions.append(keyframe_time)
+                                except (TypeError, KeyError):
+                                    pass
+                            return
+                        for child in value.values():
+                            add_effect_keyframe_positions(child)
+                    elif isinstance(value, list):
+                        for child in value:
+                            add_effect_keyframe_positions(child)
+
                 for prop in effect.data:
-                    try:
-                        for point in effect.data[prop]["Points"]:
-                            keyframe_time = (point["co"]["X"]-1)/fps_float + clip_orig_time
-                            if clip_start_time < keyframe_time < clip_stop_time:
-                                all_marker_positions.append(keyframe_time)
-                    except (TypeError, KeyError):
-                        pass
-                    try:
-                        for point in effect.data[prop]["red"]["Points"]:
-                            keyframe_time = (point["co"]["X"]-1)/fps_float + clip_orig_time
-                            if clip_start_time < keyframe_time < clip_stop_time:
-                                all_marker_positions.append(keyframe_time)
-                    except (TypeError, KeyError):
-                        pass
+                    add_effect_keyframe_positions(effect.data[prop])
         else:
             # Loop through selected clips (and add key positions)
             for clip_id in self.selected_clips:
@@ -4940,6 +4973,8 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         for _dock in [self.dockLumaWaveform, self.dockHistogram, self.dockVectorscope, self.dockAudio]:
             _dock.toggleViewAction().triggered.connect(
                 functools.partial(self._on_scope_dock_toggled, dock=_dock))
+        for _dock in [self.dockLumaWaveform, self.dockHistogram, self.dockVectorscope]:
+            _dock.visibilityChanged.connect(self._on_video_scope_visibility_changed)
 
         # Ensure toolbar is movable when floated (even with docks frozen)
         self.toolBar.topLevelChanged.connect(
