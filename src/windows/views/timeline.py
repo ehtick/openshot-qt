@@ -1215,8 +1215,6 @@ class TimelineView(updates.UpdateInterface, ViewClass):
 
         # Get clipboard
         copied_object = ClipboardManager.from_mime(get_app().clipboard().mimeData())
-        if copied_object:
-            print(f"Copied object found: {type(copied_object).__name__}")
 
         # Determine if clipboard has FULL clip or transition data (or a list of multiple objects)
         has_clipboard = False
@@ -1316,13 +1314,16 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         fps = get_app().project.get("fps")
         fps_float = float(fps["num"]) / float(fps["den"])
 
+        # Determine visual/audio capability from reader and clip properties
+        _reader = clip.data.get("reader", {}) if clip else {}
+        clip_has_visual = bool(_reader.get("has_video", True)) or bool(clip.data.get("waveform", False))
+        clip_has_audio = bool(_reader.get("has_audio", True))
+
         # Get playhead position
         playhead_position = float(self.window.preview_thread.current_frame - 1) / fps_float
 
         # Get clipboard
         copied_object = ClipboardManager.from_mime(get_app().clipboard().mimeData())
-        if copied_object:
-            print(f"Copied object found: {type(copied_object).__name__}")
         has_clipboard = False
         if copied_object and isinstance(copied_object, Clip):
             has_clipboard = True
@@ -1407,50 +1408,33 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             # Add menu to parent
             menu.addMenu(Alignment_Menu)
 
-        # Fade In Menu
+        # Fade Menu
         Fade_Menu = StyledContextMenu(title=_("Fade"), parent=self)
         Fade_None = Fade_Menu.addAction(_("No Fade"))
         Fade_None.triggered.connect(partial(self.Fade_Triggered, MenuFade.NONE, clip_ids))
         Fade_Menu.addSeparator()
-        for position, position_label in [
-            ("Start of Clip", _("Start of Clip")),
-            ("End of Clip", _("End of Clip")),
-            ("Entire Clip", _("Entire Clip"))
-        ]:
-            Position_Menu = StyledContextMenu(title=position_label, parent=self)
 
-            if position == "Start of Clip":
-                Fade_In_Fast = Position_Menu.addAction(_("Fade In (Fast)"))
-                Fade_In_Fast.triggered.connect(partial(
-                    self.Fade_Triggered, MenuFade.IN_FAST, clip_ids, position))
-                Fade_In_Slow = Position_Menu.addAction(_("Fade In (Slow)"))
-                Fade_In_Slow.triggered.connect(partial(
-                    self.Fade_Triggered, MenuFade.IN_SLOW, clip_ids, position))
+        Fade_In_Menu = StyledContextMenu(title=_("Fade In"), parent=self)
+        Fade_In_Fast = Fade_In_Menu.addAction(_("Fast"))
+        Fade_In_Fast.triggered.connect(partial(self.Fade_Triggered, MenuFade.IN_FAST, clip_ids, "Start of Clip"))
+        Fade_In_Slow = Fade_In_Menu.addAction(_("Slow"))
+        Fade_In_Slow.triggered.connect(partial(self.Fade_Triggered, MenuFade.IN_SLOW, clip_ids, "Start of Clip"))
+        Fade_Menu.addMenu(Fade_In_Menu)
 
-            elif position == "End of Clip":
-                Fade_Out_Fast = Position_Menu.addAction(_("Fade Out (Fast)"))
-                Fade_Out_Fast.triggered.connect(partial(
-                    self.Fade_Triggered, MenuFade.OUT_FAST, clip_ids, position))
-                Fade_Out_Slow = Position_Menu.addAction(_("Fade Out (Slow)"))
-                Fade_Out_Slow.triggered.connect(partial(
-                    self.Fade_Triggered, MenuFade.OUT_SLOW, clip_ids, position))
+        Fade_Out_Menu = StyledContextMenu(title=_("Fade Out"), parent=self)
+        Fade_Out_Fast = Fade_Out_Menu.addAction(_("Fast"))
+        Fade_Out_Fast.triggered.connect(partial(self.Fade_Triggered, MenuFade.OUT_FAST, clip_ids, "End of Clip"))
+        Fade_Out_Slow = Fade_Out_Menu.addAction(_("Slow"))
+        Fade_Out_Slow.triggered.connect(partial(self.Fade_Triggered, MenuFade.OUT_SLOW, clip_ids, "End of Clip"))
+        Fade_Menu.addMenu(Fade_Out_Menu)
 
-            else:
-                Fade_In_Out_Fast = Position_Menu.addAction(_("Fade In and Out (Fast)"))
-                Fade_In_Out_Fast.triggered.connect(partial(
-                    self.Fade_Triggered, MenuFade.IN_OUT_FAST, clip_ids, position))
-                Fade_In_Out_Slow = Position_Menu.addAction(_("Fade In and Out (Slow)"))
-                Fade_In_Out_Slow.triggered.connect(partial(
-                    self.Fade_Triggered, MenuFade.IN_OUT_SLOW, clip_ids, position))
-                Position_Menu.addSeparator()
-                Fade_In_Slow = Position_Menu.addAction(_("Fade In (Entire Clip)"))
-                Fade_In_Slow.triggered.connect(partial(
-                    self.Fade_Triggered, MenuFade.IN_SLOW, clip_ids, position))
-                Fade_Out_Slow = Position_Menu.addAction(_("Fade Out (Entire Clip)"))
-                Fade_Out_Slow.triggered.connect(partial(
-                    self.Fade_Triggered, MenuFade.OUT_SLOW, clip_ids, position))
+        Fade_In_Out_Menu = StyledContextMenu(title=_("Fade In and Out"), parent=self)
+        Fade_In_Out_Fast = Fade_In_Out_Menu.addAction(_("Fast"))
+        Fade_In_Out_Fast.triggered.connect(partial(self.Fade_Triggered, MenuFade.IN_OUT_FAST, clip_ids, "Entire Clip"))
+        Fade_In_Out_Slow = Fade_In_Out_Menu.addAction(_("Slow"))
+        Fade_In_Out_Slow.triggered.connect(partial(self.Fade_Triggered, MenuFade.IN_OUT_SLOW, clip_ids, "Entire Clip"))
+        Fade_Menu.addMenu(Fade_In_Out_Menu)
 
-            Fade_Menu.addMenu(Position_Menu)
         menu.addMenu(Fade_Menu)
 
         # Motion Menu
@@ -1544,7 +1528,8 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             Animate_Menu.addMenu(Position_Menu)
 
         # Add Each position menu
-        menu.addMenu(Animate_Menu)
+        if clip_has_visual:
+            menu.addMenu(Animate_Menu)
 
         # Transform Menu (Rotate, Crop, Layout)
         Transform_Menu = StyledContextMenu(title=_("Transform"), parent=self)
@@ -1607,9 +1592,10 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             self.Layout_Triggered, MenuLayout.ALL_WITHOUT_ASPECT, clip_ids))
         Transform_Menu.addMenu(Layout_Menu)
 
-        menu.addMenu(Transform_Menu)
+        if clip_has_visual:
+            menu.addMenu(Transform_Menu)
 
-        if self._clip_has_video(clip):
+        if clip_has_visual:
             # Look Menu (Color + Film Grain)
             Look_Menu = StyledContextMenu(title=_("Look"), parent=self)
             Reset_Look = Look_Menu.addAction(_("Reset Look"))
@@ -1745,54 +1731,38 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         Volume_None = Volume_Menu.addAction(_("Reset Volume"))
         Volume_None.triggered.connect(partial(self.Volume_Triggered, MenuVolume.NONE, clip_ids))
         Volume_Menu.addSeparator()
-        for position, position_label in [
-            ("Start of Clip", _("Start of Clip")),
-            ("End of Clip", _("End of Clip")),
-            ("Entire Clip", _("Entire Clip"))
-        ]:
-            Position_Menu = StyledContextMenu(title=position_label, parent=self)
 
-            if position == "Start of Clip":
-                Fade_In_Fast = Position_Menu.addAction(_("Fade In (Fast)"))
-                Fade_In_Fast.triggered.connect(partial(
-                    self.Volume_Triggered, MenuVolume.FADE_IN_FAST, clip_ids, position))
-                Fade_In_Slow = Position_Menu.addAction(_("Fade In (Slow)"))
-                Fade_In_Slow.triggered.connect(partial(
-                    self.Volume_Triggered, MenuVolume.FADE_IN_SLOW, clip_ids, position))
+        Vol_Level_Menu = StyledContextMenu(title=_("Level"), parent=self)
+        for level in reversed(range(0, 140, 10)):
+            vol_action = Vol_Level_Menu.addAction(_("Level {level}%").format(level=level))
+            vol_action.triggered.connect(partial(self.Volume_Triggered, MenuVolume.LEVEL, clip_ids, "Entire Clip", level))
+        Volume_Menu.addMenu(Vol_Level_Menu)
 
-            elif position == "End of Clip":
-                Fade_Out_Fast = Position_Menu.addAction(_("Fade Out (Fast)"))
-                Fade_Out_Fast.triggered.connect(partial(
-                    self.Volume_Triggered, MenuVolume.FADE_OUT_FAST, clip_ids, position))
-                Fade_Out_Slow = Position_Menu.addAction(_("Fade Out (Slow)"))
-                Fade_Out_Slow.triggered.connect(partial(
-                    self.Volume_Triggered, MenuVolume.FADE_OUT_SLOW, clip_ids, position))
+        Volume_Menu.addSeparator()
 
-            else:
-                Fade_In_Out_Fast = Position_Menu.addAction(_("Fade In and Out (Fast)"))
-                Fade_In_Out_Fast.triggered.connect(partial(
-                    self.Volume_Triggered, MenuVolume.FADE_IN_OUT_FAST, clip_ids, position))
-                Fade_In_Out_Slow = Position_Menu.addAction(_("Fade In and Out (Slow)"))
-                Fade_In_Out_Slow.triggered.connect(partial(
-                    self.Volume_Triggered, MenuVolume.FADE_IN_OUT_SLOW, clip_ids, position))
-                Position_Menu.addSeparator()
-                Fade_In_Slow = Position_Menu.addAction(_("Fade In (Entire Clip)"))
-                Fade_In_Slow.triggered.connect(partial(
-                    self.Volume_Triggered, MenuVolume.FADE_IN_SLOW, clip_ids, position))
-                Fade_Out_Slow = Position_Menu.addAction(_("Fade Out (Entire Clip)"))
-                Fade_Out_Slow.triggered.connect(partial(
-                    self.Volume_Triggered, MenuVolume.FADE_OUT_SLOW, clip_ids, position))
+        Vol_Fade_In_Menu = StyledContextMenu(title=_("Fade In"), parent=self)
+        Vol_Fade_In_Fast = Vol_Fade_In_Menu.addAction(_("Fast"))
+        Vol_Fade_In_Fast.triggered.connect(partial(self.Volume_Triggered, MenuVolume.FADE_IN_FAST, clip_ids, "Start of Clip"))
+        Vol_Fade_In_Slow = Vol_Fade_In_Menu.addAction(_("Slow"))
+        Vol_Fade_In_Slow.triggered.connect(partial(self.Volume_Triggered, MenuVolume.FADE_IN_SLOW, clip_ids, "Start of Clip"))
+        Volume_Menu.addMenu(Vol_Fade_In_Menu)
 
-            # Add levels
-            Position_Menu.addSeparator()
+        Vol_Fade_Out_Menu = StyledContextMenu(title=_("Fade Out"), parent=self)
+        Vol_Fade_Out_Fast = Vol_Fade_Out_Menu.addAction(_("Fast"))
+        Vol_Fade_Out_Fast.triggered.connect(partial(self.Volume_Triggered, MenuVolume.FADE_OUT_FAST, clip_ids, "End of Clip"))
+        Vol_Fade_Out_Slow = Vol_Fade_Out_Menu.addAction(_("Slow"))
+        Vol_Fade_Out_Slow.triggered.connect(partial(self.Volume_Triggered, MenuVolume.FADE_OUT_SLOW, clip_ids, "End of Clip"))
+        Volume_Menu.addMenu(Vol_Fade_Out_Menu)
 
-            # Volume levels menu options
-            for level in reversed(range(0, 140, 10)):
-                action = Position_Menu.addAction(_("Level {level}%").format(level=level))
-                action.triggered.connect(partial(self.Volume_Triggered, MenuVolume.LEVEL, clip_ids, position, level))
+        Vol_Fade_In_Out_Menu = StyledContextMenu(title=_("Fade In and Out"), parent=self)
+        Vol_Fade_In_Out_Fast = Vol_Fade_In_Out_Menu.addAction(_("Fast"))
+        Vol_Fade_In_Out_Fast.triggered.connect(partial(self.Volume_Triggered, MenuVolume.FADE_IN_OUT_FAST, clip_ids, "Entire Clip"))
+        Vol_Fade_In_Out_Slow = Vol_Fade_In_Out_Menu.addAction(_("Slow"))
+        Vol_Fade_In_Out_Slow.triggered.connect(partial(self.Volume_Triggered, MenuVolume.FADE_IN_OUT_SLOW, clip_ids, "Entire Clip"))
+        Volume_Menu.addMenu(Vol_Fade_In_Out_Menu)
 
-            Volume_Menu.addMenu(Position_Menu)
-        Audio_Menu.addMenu(Volume_Menu)
+        if clip_has_audio:
+            Audio_Menu.addMenu(Volume_Menu)
 
         Split_Audio_Channels_Menu = StyledContextMenu(title=_("Separate"), parent=self)
         Split_Single_Clip = Split_Audio_Channels_Menu.addAction(_("Single Clip (all channels)"))
@@ -1801,9 +1771,11 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         Split_Multiple_Clips = Split_Audio_Channels_Menu.addAction(_("Multiple Clips (each channel)"))
         Split_Multiple_Clips.triggered.connect(partial(
             self.Split_Audio_Triggered, MenuSplitAudio.MULTIPLE, clip_ids))
-        Audio_Menu.addMenu(Split_Audio_Channels_Menu)
+        if clip_has_audio:
+            Audio_Menu.addMenu(Split_Audio_Channels_Menu)
 
-        Audio_Menu.addSeparator()
+        if clip_has_audio:
+            Audio_Menu.addSeparator()
         if not self._clip_has_video(clip):
             if self._clip_has_visible_waveform(clip):
                 ToggleWaveform = Audio_Menu.addAction(
@@ -2245,6 +2217,23 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         has_video = reader.get("has_video")
         return True if has_video is None else bool(has_video)
 
+    def _clip_has_audio(self, clip):
+        if not clip:
+            return False
+        reader = clip.data.get("reader", {}) if isinstance(clip.data, dict) else {}
+        has_audio = reader.get("has_audio")
+        return True if has_audio is None else bool(has_audio)
+
+    def _clip_has_visual(self, clip):
+        """Return True if the clip has video OR has waveform rendering enabled."""
+        if not clip:
+            return False
+        reader = clip.data.get("reader", {}) if isinstance(clip.data, dict) else {}
+        has_video = reader.get("has_video")
+        if has_video is None or bool(has_video):
+            return True
+        return bool(clip.data.get("waveform", False))
+
     def _create_color_grade_effect_json(self):
         effect = openshot.EffectInfo().CreateEffect(COLOR_GRADE_CLASS_NAME)
         if effect is None:
@@ -2260,7 +2249,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         return json.loads(effect.Json())
 
     def _ensure_color_grade_effect(self, clip):
-        if not clip or not self._clip_has_video(clip):
+        if not clip or not self._clip_has_visual(clip):
             return None, False
 
         effects = clip.data.get("effects")
@@ -2280,7 +2269,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         """Apply or reset Color Grade presets for selected clips."""
         for clip_id in clip_ids:
             clip = Clip.get(id=clip_id)
-            if not clip or not self._clip_has_video(clip):
+            if not clip or not self._clip_has_visual(clip):
                 continue
 
             original_clip_data = json.loads(json.dumps(clip.data))
@@ -2329,7 +2318,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         """Apply Film Grain presets for selected clips."""
         for clip_id in clip_ids:
             clip = Clip.get(id=clip_id)
-            if not clip or not self._clip_has_video(clip):
+            if not clip or not self._clip_has_visual(clip):
                 continue
 
             original_clip_data = json.loads(json.dumps(clip.data))
@@ -2382,7 +2371,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         first_clip_id = None
         for clip_id in clip_ids:
             clip = Clip.get(id=clip_id)
-            if not clip or not self._clip_has_video(clip):
+            if not clip or not self._clip_has_visual(clip):
                 continue
 
             original_clip_data = json.loads(json.dumps(clip.data))
@@ -2692,6 +2681,13 @@ class TimelineView(updates.UpdateInterface, ViewClass):
 
         # Replace points with new list
         keyframe["Points"] = cleaned_points
+
+    def _remove_keypoints_in_range(self, points_data, frame_start, frame_end):
+        """Remove all keyframe points with X in [frame_start, frame_end]."""
+        points_data["Points"] = [
+            p for p in points_data["Points"]
+            if not (frame_start <= p.get("co", {}).get("X", -1) <= frame_end)
+        ]
 
 
     def Copy_Triggered(self, action, clip_ids, tran_ids, effect_ids):
@@ -3014,12 +3010,13 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             self.update_transition_data(tran.data, only_basic_props=False)
 
     def Fade_Triggered(self, action, clip_ids, position="Entire Clip", transaction_id=None):
-        """Callback for fade context menus"""
+        """Callback for fade context menus — fades both alpha (video) and volume (audio)"""
         log.debug(action)
 
         # Get FPS from project
         fps = get_app().project.get("fps")
         fps_float = float(fps["num"]) / float(fps["den"])
+        clips_with_waveforms = []
 
         # Create a transaction ID for all operations in this function (if not provided)
         tid = transaction_id or self.get_uuid()
@@ -3034,7 +3031,6 @@ class TimelineView(updates.UpdateInterface, ViewClass):
                 # Get existing clip object
                 clip = Clip.get(id=clip_id)
                 if not clip:
-                    # Invalid clip, skip to next item
                     continue
 
                 start_of_clip = round(float(clip.data["start"]) * fps_float) + 1
@@ -3057,9 +3053,8 @@ class TimelineView(updates.UpdateInterface, ViewClass):
                     start_animation = max(1.0, end_of_clip - (3.0 * fps_float))
                     end_animation = end_of_clip
 
-                # Fade in and out (special case)
+                # Fade in and out (special case) — recurse for start + end independently
                 if position == "Entire Clip" and action in [MenuFade.IN_OUT_FAST, MenuFade.IN_OUT_SLOW]:
-                    # Call this method for the start and end of the clip
                     if action == MenuFade.IN_OUT_FAST:
                         self.Fade_Triggered(MenuFade.IN_FAST, clip_ids, "Start of Clip", transaction_id=tid)
                         self.Fade_Triggered(MenuFade.OUT_FAST, clip_ids, "End of Clip", transaction_id=tid)
@@ -3068,32 +3063,67 @@ class TimelineView(updates.UpdateInterface, ViewClass):
                         self.Fade_Triggered(MenuFade.OUT_SLOW, clip_ids, "End of Clip", transaction_id=tid)
                     return
 
+                reader = clip.data.get("reader", {}) if isinstance(clip.data, dict) else {}
+                fade_alpha = bool(reader.get("has_video", True)) or bool(clip.data.get("waveform", False))
+                fade_volume = bool(reader.get("has_audio", True))
+
                 if action == MenuFade.NONE:
-                    # Clear all keyframes
-                    p = openshot.Point(1, 1.0, openshot.BEZIER)
-                    p_object = json.loads(p.Json())
-                    clip.data['alpha'] = {"Points": [p_object]}
+                    p_object = json.loads(openshot.Point(1, 1.0, openshot.BEZIER).Json())
+                    if fade_alpha:
+                        clip.data['alpha'] = {"Points": [p_object]}
+                    if fade_volume:
+                        clip.data['volume'] = {"Points": [p_object]}
 
-                if action in [MenuFade.IN_FAST, MenuFade.IN_SLOW]:
-                    # Add keyframes
-                    start = openshot.Point(start_animation, 0.0, openshot.BEZIER)
-                    start_object = json.loads(start.Json())
-                    end = openshot.Point(end_animation, 1.0, openshot.BEZIER)
-                    end_object = json.loads(end.Json())
-                    self.AddPoint(clip.data['alpha'], start_object)
-                    self.AddPoint(clip.data['alpha'], end_object)
+                elif action in [MenuFade.IN_FAST, MenuFade.IN_SLOW]:
+                    # Clear the full slow-fade zone (3 sec from start) so Fast can replace Slow
+                    # and vice versa. No midpoint cap — it caused short clips to miss the start keypoint.
+                    fade_in_zone_end = min(start_of_clip + (3.0 * fps_float), end_of_clip)
 
-                if action in [MenuFade.OUT_FAST, MenuFade.OUT_SLOW]:
-                    # Add keyframes
-                    start = openshot.Point(start_animation, 1.0, openshot.BEZIER)
-                    start_object = json.loads(start.Json())
-                    end = openshot.Point(end_animation, 0.0, openshot.BEZIER)
-                    end_object = json.loads(end.Json())
-                    self.AddPoint(clip.data['alpha'], start_object)
-                    self.AddPoint(clip.data['alpha'], end_object)
+                    # Read the steady-state value at the zone boundary BEFORE clearing —
+                    # any previous fade has fully settled there.
+                    c = self.window.timeline_sync.timeline.GetClip(clip_id)
+                    target_alpha = c.alpha.GetValue(int(round(fade_in_zone_end))) if c else 1.0
+                    target_vol = c.volume.GetValue(int(round(fade_in_zone_end))) if c else 1.0
+
+                    if fade_alpha:
+                        self._remove_keypoints_in_range(clip.data['alpha'], start_of_clip, fade_in_zone_end)
+                        self.AddPoint(clip.data['alpha'], json.loads(openshot.Point(start_animation, 0.0, openshot.BEZIER).Json()))
+                        self.AddPoint(clip.data['alpha'], json.loads(openshot.Point(end_animation, target_alpha, openshot.BEZIER).Json()))
+                    if fade_volume:
+                        self._remove_keypoints_in_range(clip.data['volume'], start_of_clip, fade_in_zone_end)
+                        self.AddPoint(clip.data['volume'], json.loads(openshot.Point(start_animation, 0.0, openshot.BEZIER).Json()))
+                        self.AddPoint(clip.data['volume'], json.loads(openshot.Point(end_animation, target_vol, openshot.BEZIER).Json()))
+
+                elif action in [MenuFade.OUT_FAST, MenuFade.OUT_SLOW]:
+                    # Clear the full slow-fade zone (3 sec from end) so Fast can replace Slow
+                    # and vice versa. No midpoint cap — it caused short clips to miss the start keypoint.
+                    fade_out_zone_start = max(1.0, end_of_clip - (3.0 * fps_float))
+
+                    # Read the steady-state value at the zone boundary BEFORE clearing —
+                    # any previous fade starts at or after this point.
+                    c = self.window.timeline_sync.timeline.GetClip(clip_id)
+                    source_alpha = c.alpha.GetValue(int(round(fade_out_zone_start))) if c else 1.0
+                    source_vol = c.volume.GetValue(int(round(fade_out_zone_start))) if c else 1.0
+
+                    if fade_alpha:
+                        self._remove_keypoints_in_range(clip.data['alpha'], fade_out_zone_start, end_of_clip)
+                        self.AddPoint(clip.data['alpha'], json.loads(openshot.Point(start_animation, source_alpha, openshot.BEZIER).Json()))
+                        self.AddPoint(clip.data['alpha'], json.loads(openshot.Point(end_animation, 0.0, openshot.BEZIER).Json()))
+                    if fade_volume:
+                        self._remove_keypoints_in_range(clip.data['volume'], fade_out_zone_start, end_of_clip)
+                        self.AddPoint(clip.data['volume'], json.loads(openshot.Point(start_animation, source_vol, openshot.BEZIER).Json()))
+                        self.AddPoint(clip.data['volume'], json.loads(openshot.Point(end_animation, 0.0, openshot.BEZIER).Json()))
 
                 # Save changes
                 self.update_clip_data(clip.data, only_basic_props=False, ignore_reader=True, transaction_id=tid)
+
+                # Track clips with waveforms for refresh
+                if clip.data.get("ui", {}).get("audio_data", []):
+                    clips_with_waveforms.append(clip.id)
+
+            # Refresh waveforms affected by volume change
+            if clips_with_waveforms:
+                self.Show_Waveform_Triggered(clips_with_waveforms, transaction_id=tid)
         finally:
             # Reset transaction id only if we created it (not if it was passed in)
             if not transaction_id:
@@ -3313,132 +3343,77 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         """Callback for volume context menus"""
         log.debug(action)
 
-        # Get FPS from project
         fps = get_app().project.get("fps")
         fps_float = float(fps["num"]) / float(fps["den"])
         clips_with_waveforms = []
 
-        # Create a transaction ID for all operations in this function (if not provided)
         tid = transaction_id or self.get_uuid()
 
         try:
-            # Set transaction ID
             get_app().updates.transaction_id = tid
 
-            # Loop through each selected clip
             for clip_id in clip_ids:
-
-                # Get existing clip object
                 clip = Clip.get(id=clip_id)
                 if not clip:
-                    # Invalid clip, skip to next item
                     continue
 
                 start_of_clip = round(float(clip.data["start"]) * fps_float) + 1
                 end_of_clip = round(float(clip.data["end"]) * fps_float) + 1
 
-                # Determine the beginning and ending of this animation
-                # ["Start of Clip", "End of Clip", "Entire Clip"]
+                # Speed-dependent animation boundaries
                 start_animation = start_of_clip
                 end_animation = end_of_clip
-                if position == "Start of Clip" and action in [
-                    MenuVolume.FADE_IN_FAST,
-                    MenuVolume.FADE_OUT_FAST
-                ]:
-                    start_animation = start_of_clip
+                if position == "Start of Clip" and action in [MenuVolume.FADE_IN_FAST, MenuVolume.FADE_OUT_FAST]:
                     end_animation = min(start_of_clip + (1.0 * fps_float), end_of_clip)
-
-                elif position == "Start of Clip" and action in [
-                    MenuVolume.FADE_IN_SLOW,
-                    MenuVolume.FADE_OUT_SLOW
-                ]:
-                    start_animation = start_of_clip
+                elif position == "Start of Clip" and action in [MenuVolume.FADE_IN_SLOW, MenuVolume.FADE_OUT_SLOW]:
                     end_animation = min(start_of_clip + (3.0 * fps_float), end_of_clip)
-
-                elif position == "End of Clip" and action in [
-                    MenuVolume.FADE_IN_FAST,
-                    MenuVolume.FADE_OUT_FAST
-                ]:
+                elif position == "End of Clip" and action in [MenuVolume.FADE_IN_FAST, MenuVolume.FADE_OUT_FAST]:
                     start_animation = max(1.0, end_of_clip - (1.0 * fps_float))
-                    end_animation = end_of_clip
-
-                elif position == "End of Clip" and action in [
-                    MenuVolume.FADE_IN_SLOW,
-                    MenuVolume.FADE_OUT_SLOW
-                ]:
+                elif position == "End of Clip" and action in [MenuVolume.FADE_IN_SLOW, MenuVolume.FADE_OUT_SLOW]:
                     start_animation = max(1.0, end_of_clip - (3.0 * fps_float))
-                    end_animation = end_of_clip
 
-                elif position == "Start of Clip":
-                    # Only used when setting levels (a single keyframe)
-                    start_animation = start_of_clip
-                    end_animation = start_of_clip
-
-                elif position == "End of Clip":
-                    # Only used when setting levels (a single keyframe)
-                    start_animation = end_of_clip
-                    end_animation = end_of_clip
-
-                # Fade in and out (special case)
-                if position == "Entire Clip" and action == MenuVolume.FADE_IN_OUT_FAST:
-                    # Call this method for the start and end of the clip
-                    self.Volume_Triggered(MenuVolume.FADE_IN_FAST, clip_ids, "Start of Clip", transaction_id=tid)
-                    self.Volume_Triggered(MenuVolume.FADE_OUT_FAST, clip_ids, "End of Clip", transaction_id=tid)
-                    return
-                if position == "Entire Clip" and action == MenuVolume.FADE_IN_OUT_SLOW:
-                    # Call this method for the start and end of the clip
-                    self.Volume_Triggered(MenuVolume.FADE_IN_SLOW, clip_ids, "Start of Clip", transaction_id=tid)
-                    self.Volume_Triggered(MenuVolume.FADE_OUT_SLOW, clip_ids, "End of Clip", transaction_id=tid)
+                # Fade in and out — recurse for start + end independently
+                if position == "Entire Clip" and action in [MenuVolume.FADE_IN_OUT_FAST, MenuVolume.FADE_IN_OUT_SLOW]:
+                    if action == MenuVolume.FADE_IN_OUT_FAST:
+                        self.Volume_Triggered(MenuVolume.FADE_IN_FAST, clip_ids, "Start of Clip", transaction_id=tid)
+                        self.Volume_Triggered(MenuVolume.FADE_OUT_FAST, clip_ids, "End of Clip", transaction_id=tid)
+                    else:
+                        self.Volume_Triggered(MenuVolume.FADE_IN_SLOW, clip_ids, "Start of Clip", transaction_id=tid)
+                        self.Volume_Triggered(MenuVolume.FADE_OUT_SLOW, clip_ids, "End of Clip", transaction_id=tid)
                     return
 
                 if action == MenuVolume.NONE:
-                    # Clear all keyframes
-                    p = openshot.Point(1, 1.0, openshot.BEZIER)
-                    p_object = json.loads(p.Json())
-                    clip.data['volume'] = {"Points": [p_object]}
+                    clip.data['volume'] = {"Points": [json.loads(openshot.Point(1, 1.0, openshot.BEZIER).Json())]}
 
-                if action in [
-                    MenuVolume.FADE_IN_FAST,
-                    MenuVolume.FADE_IN_SLOW
-                ]:
-                    # Add keyframes
-                    start = openshot.Point(start_animation, 0.0, openshot.BEZIER)
-                    start_object = json.loads(start.Json())
-                    end = openshot.Point(end_animation, 1.0, openshot.BEZIER)
-                    end_object = json.loads(end.Json())
-                    self.AddPoint(clip.data['volume'], start_object)
-                    self.AddPoint(clip.data['volume'], end_object)
+                elif action == MenuVolume.LEVEL:
+                    # Replace entire volume curve with a flat keyframe at the chosen level
+                    clip.data['volume'] = {"Points": [json.loads(openshot.Point(1, float(level) / 100.0, openshot.BEZIER).Json())]}
 
-                if action in [
-                    MenuVolume.FADE_OUT_FAST,
-                    MenuVolume.FADE_OUT_SLOW
-                ]:
-                    # Add keyframes
-                    start = openshot.Point(start_animation, 1.0, openshot.BEZIER)
-                    start_object = json.loads(start.Json())
-                    end = openshot.Point(end_animation, 0.0, openshot.BEZIER)
-                    end_object = json.loads(end.Json())
-                    self.AddPoint(clip.data['volume'], start_object)
-                    self.AddPoint(clip.data['volume'], end_object)
+                elif action in [MenuVolume.FADE_IN_FAST, MenuVolume.FADE_IN_SLOW]:
+                    fade_in_zone_end = min(start_of_clip + (3.0 * fps_float), end_of_clip)
+                    c = self.window.timeline_sync.timeline.GetClip(clip_id)
+                    target_vol = c.volume.GetValue(int(round(fade_in_zone_end))) if c else 1.0
+                    self._remove_keypoints_in_range(clip.data['volume'], start_of_clip, fade_in_zone_end)
+                    self.AddPoint(clip.data['volume'], json.loads(openshot.Point(start_animation, 0.0, openshot.BEZIER).Json()))
+                    self.AddPoint(clip.data['volume'], json.loads(openshot.Point(end_animation, target_vol, openshot.BEZIER).Json()))
 
-                if action == MenuVolume.LEVEL:
-                    # Add keyframes
-                    p = openshot.Point(start_animation, float(level) / 100.0, openshot.BEZIER)
-                    p_object = json.loads(p.Json())
-                    self.AddPoint(clip.data['volume'], p_object)
+                elif action in [MenuVolume.FADE_OUT_FAST, MenuVolume.FADE_OUT_SLOW]:
+                    fade_out_zone_start = max(1.0, end_of_clip - (3.0 * fps_float))
+                    c = self.window.timeline_sync.timeline.GetClip(clip_id)
+                    source_vol = c.volume.GetValue(int(round(fade_out_zone_start))) if c else 1.0
+                    self._remove_keypoints_in_range(clip.data['volume'], fade_out_zone_start, end_of_clip)
+                    self.AddPoint(clip.data['volume'], json.loads(openshot.Point(start_animation, source_vol, openshot.BEZIER).Json()))
+                    self.AddPoint(clip.data['volume'], json.loads(openshot.Point(end_animation, 0.0, openshot.BEZIER).Json()))
 
                 # Save changes
                 self.update_clip_data(clip.data, only_basic_props=False, ignore_reader=True, transaction_id=tid)
 
-                # Add any clips with waveforms to a list
                 if clip.data.get("ui", {}).get("audio_data", []):
                     clips_with_waveforms.append(clip.id)
 
-            # Update waveforms of all clips that have them
             if clips_with_waveforms:
                 self.Show_Waveform_Triggered(clips_with_waveforms, transaction_id=tid)
         finally:
-            # Reset transaction id only if we created it (not if it was passed in)
             if not transaction_id:
                 get_app().updates.transaction_id = None
 
@@ -3872,8 +3847,6 @@ class TimelineView(updates.UpdateInterface, ViewClass):
 
         # Get clipboard
         copied_object = ClipboardManager.from_mime(get_app().clipboard().mimeData())
-        if copied_object:
-            print(f"Copied object found: {type(copied_object).__name__}")
         has_clipboard = False
         if copied_object and isinstance(copied_object, Transition):
             has_clipboard = True
