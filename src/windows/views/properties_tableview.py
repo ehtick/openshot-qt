@@ -699,6 +699,7 @@ class PropertiesTableView(QTableView):
                     dialog.curve_widget().blockSignals(False)
             elif property_type == "colorgrade_wheels":
                 self._update_color_grade_preview_meta(property_meta)
+        self._sync_color_grade_wheels_dock_from_model()
         self.viewport().update()
 
     def property_model_refreshed(self):
@@ -792,7 +793,10 @@ class PropertiesTableView(QTableView):
     def _update_color_grade_wheels_enabled(self, selection=None):
         if selection is None:
             selection = getattr(self, "current_selection", [])
-        self.color_grade_wheels_panel.setEnabled(self._selection_is_color_grade(selection))
+        if self._selection_is_color_grade(selection):
+            self.color_grade_wheels_panel.setEnabled(True)
+        else:
+            self._set_color_grade_wheels_unbound()
 
     def _find_color_grade_wheels_item(self):
         model = self.clip_properties_model.model
@@ -807,6 +811,49 @@ class PropertiesTableView(QTableView):
             if cur_property[1].get("type") == "colorgrade_wheels":
                 return value_item, cur_property[0], normalize_wheels_data(cur_property[1].get("wheels"))
         return None, None, None
+
+    def _sync_color_grade_wheels_dock_from_model(self):
+        """Refresh the visible wheels dock from current model data after external edits."""
+        if not hasattr(self, "color_grade_wheels_dock") or not self.color_grade_wheels_dock.isVisible():
+            return
+        if not self._selection_is_color_grade(getattr(self, "current_selection", [])):
+            self._set_color_grade_wheels_unbound()
+            return
+
+        item, property_key, wheels_data = self._find_color_grade_wheels_item()
+        if not item or not property_key:
+            self._set_color_grade_wheels_unbound()
+            return
+
+        self.selected_item = item
+        self.color_grade_wheels_panel.setEnabled(True)
+        self.color_grade_wheels_panel.set_frame_number(self.clip_properties_model.frame_number)
+        self.color_grade_wheels_panel.blockSignals(True)
+        self.color_grade_wheels_panel.set_wheels_data(wheels_data)
+        self.color_grade_wheels_panel.blockSignals(False)
+
+        session = self.live_property_session or {}
+        if session.get("property_type") == "colorgrade_wheels":
+            session["item"] = item
+            session["item_data"] = copy.deepcopy(item.data())
+            session["property_key"] = property_key
+
+    def _disabled_color_grade_wheels_data(self):
+        data = default_wheels_data()
+        points = data.get("enabled_keyframes", {}).get("Points")
+        if points:
+            points[0].setdefault("co", {})["Y"] = 0.0
+        return data
+
+    def _set_color_grade_wheels_unbound(self):
+        """Show neutral disabled wheels when no editable ColorGrade effect is bound."""
+        if not hasattr(self, "color_grade_wheels_panel"):
+            return
+        self.color_grade_wheels_panel.blockSignals(True)
+        self.color_grade_wheels_panel.set_frame_number(self.clip_properties_model.frame_number)
+        self.color_grade_wheels_panel.set_wheels_data(self._disabled_color_grade_wheels_data())
+        self.color_grade_wheels_panel.setEnabled(False)
+        self.color_grade_wheels_panel.blockSignals(False)
 
     def _activate_color_grade_wheels_session(self, item, property_key, wheels_data):
         session = self.live_property_session or {}

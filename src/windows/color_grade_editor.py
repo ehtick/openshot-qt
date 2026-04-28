@@ -586,6 +586,9 @@ class ColorWheelControl(QWidget):
         self.changed.emit()
 
     def mousePressEvent(self, event):
+        if not self.isEnabled():
+            super().mousePressEvent(event)
+            return
         if event.button() != Qt.LeftButton:
             super().mousePressEvent(event)
             return
@@ -596,7 +599,7 @@ class ColorWheelControl(QWidget):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        if not self._dragging:
+        if not self._dragging or not self.isEnabled():
             return
         pos = event.position() if hasattr(event, "position") else QPointF(event.pos())
         self._update_from_position(pos)
@@ -609,6 +612,9 @@ class ColorWheelControl(QWidget):
         super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event):
+        if not self.isEnabled():
+            super().mouseDoubleClickEvent(event)
+            return
         self._data["amount"] = 0.0
         self._data["color"] = NEUTRAL_WHEEL_COLOR
         self.update()
@@ -620,7 +626,7 @@ class ColorWheelControl(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
 
         center, radius = self._center_and_radius()
-        color = display_wheel_color(self._data)
+        enabled = self.isEnabled()
 
         ring_rect = QRectF(center.x() - radius, center.y() - radius, radius * 2.0, radius * 2.0)
         ring_width = max(6.0, radius * 0.16)
@@ -630,10 +636,15 @@ class ColorWheelControl(QWidget):
         inner_radius = radius - ring_width
         inner_path.addEllipse(QRectF(center.x() - inner_radius, center.y() - inner_radius, inner_radius * 2.0, inner_radius * 2.0))
         ring_path = ring_path.subtracted(inner_path)
-        painter.save()
-        painter.setClipPath(ring_path)
-        draw_broadcast_hue_ring(painter, center, radius - (ring_width * 0.5), ring_width + 1.0)
-        painter.restore()
+        if enabled:
+            painter.save()
+            painter.setClipPath(ring_path)
+            draw_broadcast_hue_ring(painter, center, radius - (ring_width * 0.5), ring_width + 1.0)
+            painter.restore()
+        else:
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QBrush(self.palette().mid().color()))
+            painter.drawPath(ring_path)
 
         painter.setPen(QPen(self.palette().mid().color(), 1.0))
         painter.setBrush(QBrush(self.palette().base()))
@@ -644,15 +655,15 @@ class ColorWheelControl(QWidget):
         painter.drawLine(QPointF(center.x(), center.y() - inner_radius), QPointF(center.x(), center.y() + inner_radius))
 
         puck = self._puck_position()
-        painter.setPen(QPen(Qt.white, 1.0))
-        painter.setBrush(QBrush(puck_display_color(self._data)))
+        painter.setPen(QPen(Qt.white if enabled else self.palette().mid().color(), 1.0))
+        painter.setBrush(QBrush(puck_display_color(self._data) if enabled else self.palette().mid().color()))
         painter.drawEllipse(puck, 5.0, 5.0)
 
         if self._title:
             font = painter.font()
             font.setBold(True)
             painter.setFont(font)
-            painter.setPen(QPen(Qt.white))
+            painter.setPen(QPen(Qt.white if enabled else self.palette().mid().color()))
             text_rect = QRectF(center.x() - radius, center.y() - radius, radius * 2.0, ring_width)
             painter.drawText(text_rect, Qt.AlignCenter, self._title)
 
@@ -1282,6 +1293,9 @@ class PropertySlider(QWidget):
             if theme:
                 bg = theme.get_color(".property_value", "background-color")
                 fg = theme.get_color(".property_value", "foreground-color")
+        if not self.isEnabled():
+            bg = self.palette().base().color()
+            fg = self.palette().mid().color()
 
         path = QPainterPath()
         path.addRoundedRect(rect, 6, 6)
@@ -1307,7 +1321,7 @@ class PropertySlider(QWidget):
                 self._curve_pixmaps.get(self._interpolation, self._curve_pixmaps[openshot.LINEAR]))
             text_rect.adjust(0.0, 0.0, -24.0, 0.0)
 
-        painter.setPen(QPen(Qt.white))
+        painter.setPen(QPen(Qt.white if self.isEnabled() else self.palette().mid().color()))
         painter.drawText(text_rect, Qt.AlignCenter, self._fmt(self._value))
         painter.end()
 
@@ -1320,6 +1334,9 @@ class PropertySlider(QWidget):
         return self._min + pct * (self._max - self._min)
 
     def mousePressEvent(self, event):
+        if not self.isEnabled():
+            super().mousePressEvent(event)
+            return
         if event.button() == Qt.LeftButton:
             self._drag_active = True
             self.dragStarted.emit()
@@ -1328,7 +1345,7 @@ class PropertySlider(QWidget):
             self.update()
 
     def mouseMoveEvent(self, event):
-        if not self._drag_active:
+        if not self._drag_active or not self.isEnabled():
             return
         self.setValue(self._x_to_value(event.x()))
         self.valueChanged.emit(self._value)
@@ -1340,10 +1357,16 @@ class PropertySlider(QWidget):
             self.dragFinished.emit()
 
     def mouseDoubleClickEvent(self, event):
+        if not self.isEnabled():
+            super().mouseDoubleClickEvent(event)
+            return
         if event.button() == Qt.LeftButton:
             self._enter_edit_mode()
 
     def keyPressEvent(self, event):
+        if not self.isEnabled():
+            super().keyPressEvent(event)
+            return
         text = event.text()
         if text and (text.isdigit() or text in ('.', ',', '-')):
             self._enter_edit_mode(text)
