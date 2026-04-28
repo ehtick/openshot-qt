@@ -35,7 +35,6 @@ import time
 import uuid
 from functools import partial
 from operator import itemgetter
-from random import uniform
 
 import openshot
 from qt_api import pyqtSlot, Qt, QCoreApplication, QTimer, pyqtSignal, QPointF
@@ -94,6 +93,58 @@ JS_SCOPE_SELECTOR = "$('body').scope()"
 ViewClass = TimelineWidget
 
 log.info("Timeline backend: QWidget (%s)", getattr(ViewClass, "__name__", "unknown"))
+
+# ── Animation preset helpers ──────────────────────────────────────────────────
+
+from animation_presets import PRESETS as _ANIMATION_PRESETS, KEYFRAME_EASING as _KEYFRAME_EASING
+
+# JSON animation name for each MenuAnimate value
+_JSON_ANIM = {
+    MenuAnimate.BACK_IN_DOWN:    "backInDown",
+    MenuAnimate.BACK_IN_LEFT:    "backInLeft",
+    MenuAnimate.BACK_IN_RIGHT:   "backInRight",
+    MenuAnimate.BACK_IN_UP:      "backInUp",
+    MenuAnimate.BOUNCE_IN:       "bounceIn",
+    MenuAnimate.BOUNCE_IN_DOWN:  "bounceInDown",
+    MenuAnimate.BOUNCE_IN_LEFT:  "bounceInLeft",
+    MenuAnimate.BOUNCE_IN_RIGHT: "bounceInRight",
+    MenuAnimate.BOUNCE_IN_UP:    "bounceInUp",
+    MenuAnimate.BACK_OUT_DOWN:   "backOutDown",
+    MenuAnimate.BACK_OUT_LEFT:   "backOutLeft",
+    MenuAnimate.BACK_OUT_RIGHT:  "backOutRight",
+    MenuAnimate.BACK_OUT_UP:     "backOutUp",
+    MenuAnimate.BOUNCE_OUT:      "bounceOut",
+    MenuAnimate.BOUNCE_OUT_DOWN: "bounceOutDown",
+    MenuAnimate.BOUNCE_OUT_LEFT: "bounceOutLeft",
+    MenuAnimate.BOUNCE_OUT_RIGHT:"bounceOutRight",
+    MenuAnimate.BOUNCE_OUT_UP:   "bounceOutUp",
+    MenuAnimate.BOUNCE:          "bounce",
+    MenuAnimate.FLASH:           "flash",
+    MenuAnimate.PULSE:           "pulse",
+    MenuAnimate.RUBBER_BAND:     "rubberBand",
+    MenuAnimate.SHAKE_X:         "shakeX",
+    MenuAnimate.SHAKE_Y:         "shakeY",
+    MenuAnimate.SWING:           "swing",
+    MenuAnimate.TADA:            "tada",
+    MenuAnimate.WOBBLE:          "wobble",
+    MenuAnimate.JELLO:           "jello",
+    MenuAnimate.HEART_BEAT:      "heartBeat",
+}
+
+_EMPHASIS_ACTIONS = frozenset({
+    MenuAnimate.BOUNCE, MenuAnimate.FLASH, MenuAnimate.PULSE,
+    MenuAnimate.RUBBER_BAND, MenuAnimate.SHAKE_X, MenuAnimate.SHAKE_Y,
+    MenuAnimate.SWING, MenuAnimate.TADA,
+    MenuAnimate.WOBBLE, MenuAnimate.JELLO, MenuAnimate.HEART_BEAT,
+})
+
+_IN_ACTIONS = frozenset({
+    MenuAnimate.BACK_IN_DOWN, MenuAnimate.BACK_IN_LEFT,
+    MenuAnimate.BACK_IN_RIGHT, MenuAnimate.BACK_IN_UP,
+    MenuAnimate.BOUNCE_IN, MenuAnimate.BOUNCE_IN_DOWN,
+    MenuAnimate.BOUNCE_IN_LEFT, MenuAnimate.BOUNCE_IN_RIGHT,
+    MenuAnimate.BOUNCE_IN_UP,
+})
 
 
 def _event_posf(event):
@@ -1437,97 +1488,128 @@ class TimelineView(updates.UpdateInterface, ViewClass):
 
         menu.addMenu(Fade_Menu)
 
-        # Motion Menu
+        # ── Motion Menu ───────────────────────────────────────────────────────
         Animate_Menu = StyledContextMenu(title=_("Motion"), parent=self)
         Animate_None = Animate_Menu.addAction(_("No Motion"))
         Animate_None.triggered.connect(partial(self.Animate_Triggered, MenuAnimate.NONE, clip_ids))
         Animate_Menu.addSeparator()
-        for position, position_label in [
-            ("Start of Clip", _("Start of Clip")),
-            ("End of Clip", _("End of Clip")),
-            ("Entire Clip", _("Entire Clip"))
+
+        def _motion_act(menu_obj, label, action):
+            act = menu_obj.addAction(label)
+            act.triggered.connect(partial(self.Animate_Triggered, action, clip_ids))
+
+        def _motion_sub(title, items):
+            sub = StyledContextMenu(title=title, parent=self)
+            for label, action in items:
+                _motion_act(sub, label, action)
+            return sub
+
+        # ── In ▶ ───────────────────────────────────────────────────────────────
+        In_Menu = StyledContextMenu(title=_("In"), parent=self)
+        In_Menu.addMenu(_motion_sub(_("Back In"), [
+            (_("From Top"),    MenuAnimate.BACK_IN_DOWN),
+            (_("From Left"),   MenuAnimate.BACK_IN_LEFT),
+            (_("From Right"),  MenuAnimate.BACK_IN_RIGHT),
+            (_("From Bottom"), MenuAnimate.BACK_IN_UP),
+        ]))
+        In_Menu.addMenu(_motion_sub(_("Bounce In"), [
+            (_("Center"),      MenuAnimate.BOUNCE_IN),
+            (_("From Top"),    MenuAnimate.BOUNCE_IN_DOWN),
+            (_("From Left"),   MenuAnimate.BOUNCE_IN_LEFT),
+            (_("From Right"),  MenuAnimate.BOUNCE_IN_RIGHT),
+            (_("From Bottom"), MenuAnimate.BOUNCE_IN_UP),
+        ]))
+        In_Menu.addMenu(_motion_sub(_("Slide In"), [
+            (_("From Left"),   MenuAnimate.SLIDE_IN_LEFT),
+            (_("From Right"),  MenuAnimate.SLIDE_IN_RIGHT),
+            (_("From Top"),    MenuAnimate.SLIDE_IN_TOP),
+            (_("From Bottom"), MenuAnimate.SLIDE_IN_BOTTOM),
+        ]))
+        In_Menu.addMenu(_motion_sub(_("Wipe In"), [
+            (_("Circle Expand"),  MenuAnimate.WIPE_IN_CIRCLE_EXPAND),
+            (_("Circle Shrink"),  MenuAnimate.WIPE_IN_CIRCLE_SHRINK),
+            (_("Fade"),           MenuAnimate.WIPE_IN_FADE),
+            (_("From Left"),      MenuAnimate.WIPE_IN_LEFT),
+            (_("From Right"),     MenuAnimate.WIPE_IN_RIGHT),
+            (_("From Top"),       MenuAnimate.WIPE_IN_TOP),
+            (_("From Bottom"),    MenuAnimate.WIPE_IN_BOTTOM),
+        ]))
+        _motion_act(In_Menu, _("Blur In"),   MenuAnimate.BLUR_IN)
+        _motion_act(In_Menu, _("Pop In"),    MenuAnimate.POP_IN)
+        _motion_act(In_Menu, _("Spiral In"), MenuAnimate.SPIRAL_IN)
+        Animate_Menu.addMenu(In_Menu)
+
+        # ── Out ▶ ──────────────────────────────────────────────────────────────
+        Out_Menu = StyledContextMenu(title=_("Out"), parent=self)
+        Out_Menu.addMenu(_motion_sub(_("Back Out"), [
+            (_("To Bottom"), MenuAnimate.BACK_OUT_DOWN),
+            (_("To Left"),   MenuAnimate.BACK_OUT_LEFT),
+            (_("To Right"),  MenuAnimate.BACK_OUT_RIGHT),
+            (_("To Top"),    MenuAnimate.BACK_OUT_UP),
+        ]))
+        Out_Menu.addMenu(_motion_sub(_("Bounce Out"), [
+            (_("Center"),    MenuAnimate.BOUNCE_OUT),
+            (_("To Bottom"), MenuAnimate.BOUNCE_OUT_DOWN),
+            (_("To Right"),  MenuAnimate.BOUNCE_OUT_RIGHT),
+            (_("To Left"),   MenuAnimate.BOUNCE_OUT_LEFT),
+            (_("To Top"),    MenuAnimate.BOUNCE_OUT_UP),
+        ]))
+        Out_Menu.addMenu(_motion_sub(_("Slide Out"), [
+            (_("To Left"),   MenuAnimate.SLIDE_OUT_LEFT),
+            (_("To Right"),  MenuAnimate.SLIDE_OUT_RIGHT),
+            (_("To Top"),    MenuAnimate.SLIDE_OUT_TOP),
+            (_("To Bottom"), MenuAnimate.SLIDE_OUT_BOTTOM),
+        ]))
+        Out_Menu.addMenu(_motion_sub(_("Wipe Out"), [
+            (_("Circle Expand"),  MenuAnimate.WIPE_OUT_CIRCLE_EXPAND),
+            (_("Circle Shrink"),  MenuAnimate.WIPE_OUT_CIRCLE_SHRINK),
+            (_("Fade"),           MenuAnimate.WIPE_OUT_FADE),
+            (_("To Left"),        MenuAnimate.WIPE_OUT_LEFT),
+            (_("To Right"),       MenuAnimate.WIPE_OUT_RIGHT),
+            (_("To Top"),         MenuAnimate.WIPE_OUT_TOP),
+            (_("To Bottom"),      MenuAnimate.WIPE_OUT_BOTTOM),
+        ]))
+        _motion_act(Out_Menu, _("Blur Out"),  MenuAnimate.BLUR_OUT)
+        _motion_act(Out_Menu, _("Pop Out"),   MenuAnimate.POP_OUT)
+        _motion_act(Out_Menu, _("Spiral Out"), MenuAnimate.SPIRAL_OUT)
+        Animate_Menu.addMenu(Out_Menu)
+
+        # ── Emphasis ▶ ─────────────────────────────────────────────────────────
+        Animate_Menu.addMenu(_motion_sub(_("Emphasis"), [
+            (_("Bounce"),      MenuAnimate.BOUNCE),
+            (_("Flash"),       MenuAnimate.FLASH),
+            (_("Pulse"),       MenuAnimate.PULSE),
+            (_("Rubber Band"), MenuAnimate.RUBBER_BAND),
+            (_("Shake X"),     MenuAnimate.SHAKE_X),
+            (_("Shake Y"),     MenuAnimate.SHAKE_Y),
+            (_("Swing"),       MenuAnimate.SWING),
+            (_("Tada"),        MenuAnimate.TADA),
+            (_("Wobble"),      MenuAnimate.WOBBLE),
+            (_("Jello"),       MenuAnimate.JELLO),
+            (_("Heartbeat"),   MenuAnimate.HEART_BEAT),
+        ]))
+
+        # ── Camera ▶ ───────────────────────────────────────────────────────────
+        Camera_Menu = StyledContextMenu(title=_("Camera"), parent=self)
+        for label, action in [
+            (_("Push In"),       MenuAnimate.CAM_PUSH_IN),
+            (_("Pull Out"),      MenuAnimate.CAM_PULL_OUT),
+            (_("Pan Left"),      MenuAnimate.CAM_PAN_LEFT),
+            (_("Pan Right"),     MenuAnimate.CAM_PAN_RIGHT),
+            (_("Pan Up"),        MenuAnimate.CAM_PAN_UP),
+            (_("Pan Down"),      MenuAnimate.CAM_PAN_DOWN),
+            (_("Ken Burns In"),  MenuAnimate.KEN_BURNS_IN),
+            (_("Ken Burns Out"), MenuAnimate.KEN_BURNS_OUT),
         ]:
-            Position_Menu = StyledContextMenu(title=position_label, parent=self)
+            _motion_act(Camera_Menu, label, action)
+        Animate_Menu.addMenu(Camera_Menu)
 
-            # Scale
-            Scale_Menu = StyledContextMenu(title=_("Zoom"), parent=self)
-            Animate_In_50_100 = Scale_Menu.addAction(_("Zoom In (50% to 100%)"))
-            Animate_In_50_100.triggered.connect(partial(
-                self.Animate_Triggered, MenuAnimate.IN_50_100, clip_ids, position))
-            Animate_In_75_100 = Scale_Menu.addAction(_("Zoom In (75% to 100%)"))
-            Animate_In_75_100.triggered.connect(partial(
-                self.Animate_Triggered, MenuAnimate.IN_75_100, clip_ids, position))
-            Animate_In_100_150 = Scale_Menu.addAction(_("Zoom In (100% to 150%)"))
-            Animate_In_100_150.triggered.connect(partial(
-                self.Animate_Triggered, MenuAnimate.IN_100_150, clip_ids, position))
-            Animate_Out_100_75 = Scale_Menu.addAction(_("Zoom Out (100% to 75%)"))
-            Animate_Out_100_75.triggered.connect(partial(
-                self.Animate_Triggered, MenuAnimate.OUT_100_75, clip_ids, position))
-            Animate_Out_100_50 = Scale_Menu.addAction(_("Zoom Out (100% to 50%)"))
-            Animate_Out_100_50.triggered.connect(partial(
-                self.Animate_Triggered, MenuAnimate.OUT_100_50, clip_ids, position))
-            Animate_Out_150_100 = Scale_Menu.addAction(_("Zoom Out (150% to 100%)"))
-            Animate_Out_150_100.triggered.connect(partial(
-                self.Animate_Triggered, MenuAnimate.OUT_150_100, clip_ids, position))
-            Position_Menu.addMenu(Scale_Menu)
+        # ── Credits ▶ ──────────────────────────────────────────────────────────
+        Animate_Menu.addMenu(_motion_sub(_("Credits"), [
+            (_("Scroll Up"),   MenuAnimate.CREDITS_UP),
+            (_("Scroll Down"), MenuAnimate.CREDITS_DOWN),
+        ]))
 
-            # Center to Edge
-            Center_Edge_Menu = StyledContextMenu(title=_("Center to Edge"), parent=self)
-            Animate_Center_Top = Center_Edge_Menu.addAction(_("Center to Top"))
-            Animate_Center_Top.triggered.connect(partial(
-                self.Animate_Triggered, MenuAnimate.CENTER_TOP, clip_ids, position))
-            Animate_Center_Left = Center_Edge_Menu.addAction(_("Center to Left"))
-            Animate_Center_Left.triggered.connect(partial(
-                self.Animate_Triggered, MenuAnimate.CENTER_LEFT, clip_ids, position))
-            Animate_Center_Right = Center_Edge_Menu.addAction(_("Center to Right"))
-            Animate_Center_Right.triggered.connect(partial(
-                self.Animate_Triggered, MenuAnimate.CENTER_RIGHT, clip_ids, position))
-            Animate_Center_Bottom = Center_Edge_Menu.addAction(_("Center to Bottom"))
-            Animate_Center_Bottom.triggered.connect(partial(
-                self.Animate_Triggered, MenuAnimate.CENTER_BOTTOM, clip_ids, position))
-            Position_Menu.addMenu(Center_Edge_Menu)
-
-            # Edge to Center
-            Edge_Center_Menu = StyledContextMenu(title=_("Edge to Center"), parent=self)
-            Animate_Top_Center = Edge_Center_Menu.addAction(_("Top to Center"))
-            Animate_Top_Center.triggered.connect(partial(
-                self.Animate_Triggered, MenuAnimate.TOP_CENTER, clip_ids, position))
-            Animate_Left_Center = Edge_Center_Menu.addAction(_("Left to Center"))
-            Animate_Left_Center.triggered.connect(partial(
-                self.Animate_Triggered, MenuAnimate.LEFT_CENTER, clip_ids, position))
-            Animate_Right_Center = Edge_Center_Menu.addAction(_("Right to Center"))
-            Animate_Right_Center.triggered.connect(partial(
-                self.Animate_Triggered, MenuAnimate.RIGHT_CENTER, clip_ids, position))
-            Animate_Bottom_Center = Edge_Center_Menu.addAction(_("Bottom to Center"))
-            Animate_Bottom_Center.triggered.connect(partial(
-                self.Animate_Triggered, MenuAnimate.BOTTOM_CENTER, clip_ids, position))
-            Position_Menu.addMenu(Edge_Center_Menu)
-
-            # Edge to Edge
-            Edge_Edge_Menu = StyledContextMenu(title=_("Edge to Edge"), parent=self)
-            Animate_Top_Bottom = Edge_Edge_Menu.addAction(_("Top to Bottom"))
-            Animate_Top_Bottom.triggered.connect(partial(
-                self.Animate_Triggered, MenuAnimate.TOP_BOTTOM, clip_ids, position))
-            Animate_Left_Right = Edge_Edge_Menu.addAction(_("Left to Right"))
-            Animate_Left_Right.triggered.connect(partial(
-                self.Animate_Triggered, MenuAnimate.LEFT_RIGHT, clip_ids, position))
-            Animate_Right_Left = Edge_Edge_Menu.addAction(_("Right to Left"))
-            Animate_Right_Left.triggered.connect(partial(
-                self.Animate_Triggered, MenuAnimate.RIGHT_LEFT, clip_ids, position))
-            Animate_Bottom_Top = Edge_Edge_Menu.addAction(_("Bottom to Top"))
-            Animate_Bottom_Top.triggered.connect(partial(
-                self.Animate_Triggered, MenuAnimate.BOTTOM_TOP, clip_ids, position))
-            Position_Menu.addMenu(Edge_Edge_Menu)
-
-            # Random Animation
-            Position_Menu.addSeparator()
-            Random = Position_Menu.addAction(_("Random"))
-            Random.triggered.connect(partial(self.Animate_Triggered, MenuAnimate.RANDOM, clip_ids, position))
-
-            # Add Sub-Menu's to Position menu
-            Animate_Menu.addMenu(Position_Menu)
-
-        # Add Each position menu
         if clip_has_visual:
             menu.addMenu(Animate_Menu)
 
@@ -2463,208 +2545,399 @@ class TimelineView(updates.UpdateInterface, ViewClass):
                 # Save changes
                 self.update_clip_data(clip.data, only_basic_props=False, ignore_reader=True)
 
-    def Animate_Triggered(self, action, clip_ids, position="Entire Clip", transaction_id=None):
-        """Callback for the animate context menus"""
+    def Animate_Triggered(self, action, clip_ids, transaction_id=None):
+        """Apply one-click motion presets to selected clips.
+
+        Each MenuAnimate action encodes the animation type and its zone:
+          In actions  → first 1 second of the clip
+          Out actions → last 1 second of the clip
+          Continuous  → entire clip duration
+          Pan actions → entire clip, also sets scale mode to SCALE_CROP
+
+        Keyframe coordinates follow OpenShot conventions:
+          location ±1.0 ≈ one full frame dimension (offscreen)
+          scale    1.0  = 100%
+          rotation degrees (positive = clockwise)
+          shear    dimensionless skew factor
+          origin   0.0–1.0 (0 = top/left edge, 0.5 = center, 1.0 = bottom/right)
+        """
         log.debug(action)
-
-        # Create a transaction ID for all operations in this function (if not provided)
         tid = transaction_id or self.get_uuid()
-
         try:
-            # Set transaction ID
             get_app().updates.transaction_id = tid
 
-            # Loop through each selected clip
             for clip_id in clip_ids:
-
-                # Get existing clip object
                 clip = Clip.get(id=clip_id)
                 if not clip:
-                    # Invalid clip, skip to next item
                     continue
 
-                # Get framerate
                 fps = get_app().project.get("fps")
                 fps_float = float(fps["num"]) / float(fps["den"])
 
-                # Get existing clip object
-                start_of_clip = round(float(clip.data["start"]) * fps_float) + 1
-                end_of_clip = round(float(clip.data["end"]) * fps_float) + 1
+                # Clip frame boundaries (1-based, relative to clip content start)
+                s = round(float(clip.data["start"]) * fps_float) + 1   # first frame
+                e = round(float(clip.data["end"])   * fps_float) + 1   # last frame
+                dur = max(1, e - s)                                     # total frames
 
-                # Determine the beginning and ending of this animation
-                # ["Start of Clip", "End of Clip", "Entire Clip"]
-                start_animation = start_of_clip
-                end_animation = end_of_clip
-                if position == "Start of Clip":
-                    start_animation = start_of_clip
-                    end_animation = min(start_of_clip + (1.0 * fps_float), end_of_clip)
-                elif position == "End of Clip":
-                    start_animation = max(1.0, end_of_clip - (1.0 * fps_float))
-                    end_animation = end_of_clip
+                # 1-second enter / exit zones clamped to clip length
+                zone = max(1, round(fps_float))
+                in_end    = min(s + zone, e)   # end of "In" zone
+                out_start = max(s, e - zone)   # start of "Out" zone
+
+                # Emphasis: fixed 1-second window at playhead (if inside clip)
+                try:
+                    playhead = int(self.window.preview_thread.current_frame or 1)
+                except Exception:
+                    playhead = 1
+                if s <= playhead <= e:
+                    emph_start = playhead
+                else:
+                    emph_start = s
+                emph_end = min(emph_start + zone, e)
+
+                # ── helpers ───────────────────────────────────────────────────
+                def kf(frame, val, interp=openshot.BEZIER):
+                    """Build a keyframe point dict."""
+                    return json.loads(openshot.Point(int(frame), val, interp).Json())
+
+                def add(key, *pts):
+                    """Append keyframe points to a clip channel."""
+                    for p in pts:
+                        self.AddPoint(clip.data[key], p)
+
+                # Read current clip state from the live timeline BEFORE any edits
+                c = self.window.timeline_sync.timeline.GetClip(clip_id)
+
+                _PROP_IDENTITY = {
+                    'scale_x': 1.0, 'scale_y': 1.0,
+                    'location_x': 0.0, 'location_y': 0.0,
+                    'alpha': 1.0, 'rotation': 0.0,
+                    'shear_x': 0.0, 'shear_y': 0.0,
+                }
+
+                def _base(prop, frame):
+                    """Return the clip's current value of prop at frame (identity fallback)."""
+                    if c is not None:
+                        obj = getattr(c, prop, None)
+                        if obj is not None:
+                            return obj.GetValue(int(round(frame)))
+                    return _PROP_IDENTITY.get(prop, 0.0)
+
+                def _rel(prop, preset_val, base_val):
+                    """Adjust a preset value relative to the clip's current base value.
+                    Scale/alpha are multiplicative; location/rotation/shear are additive."""
+                    if prop in ('scale_x', 'scale_y', 'alpha'):
+                        return preset_val * base_val
+                    return preset_val + base_val
+
+                clip.data["gravity"] = openshot.GRAVITY_CENTER
+
+                # ── RESET (always runs first for non-NONE actions) ─────────────
+                # Clears all previous motion keyframes and removes Blur/Mask effects
+                # added by prior motion presets so animations are never additive.
+                def _reset_motion():
+                    clip.data["scale"]      = openshot.SCALE_FIT
+                    clip.data["scale_x"]    = {"Points": [kf(s, 1.0)]}
+                    clip.data["scale_y"]    = {"Points": [kf(s, 1.0)]}
+                    clip.data["location_x"] = {"Points": [kf(s, 0.0)]}
+                    clip.data["location_y"] = {"Points": [kf(s, 0.0)]}
+                    clip.data["rotation"]   = {"Points": [kf(s, 0.0)]}
+                    clip.data["shear_x"]    = {"Points": [kf(s, 0.0)]}
+                    clip.data["shear_y"]    = {"Points": [kf(s, 0.0)]}
+                    clip.data["alpha"]      = {"Points": [kf(s, 1.0)]}
+                    clip.data["origin_x"]   = {"Points": [kf(s, 0.5)]}
+                    clip.data["origin_y"]   = {"Points": [kf(s, 0.5)]}
+                    effects = clip.data.get("effects", [])
+                    clip.data["effects"] = [
+                        eff for eff in (effects if isinstance(effects, list) else [])
+                        if eff.get("class_name") not in ("Blur", "Mask")
+                    ]
+
+                def _make_wipe_fx(svg_filename, t_start, t_end, brightness_start, brightness_end):
+                    """Attach a Mask effect (wipe) to clip.data using the given SVG transition."""
+                    svg_path = os.path.join(info.PATH, "transitions", "common", svg_filename)
+                    reader_json = self._get_transition_reader_json(svg_path)
+                    if not reader_json:
+                        return
+                    effect = openshot.EffectInfo().CreateEffect("Mask")
+                    fx = json.loads(effect.Json())
+                    fx["id"] = get_app().project.generate_id()
+                    fx["mask_reader"] = deepcopy(reader_json)
+                    fx["reader"]      = deepcopy(reader_json)
+                    fx["brightness"]  = {"Points": [
+                        kf(t_start, brightness_start),
+                        kf(t_end,   brightness_end),
+                    ]}
+                    fx["contrast"] = {"Points": [kf(t_start, 20.0)]}
+                    clip.data["effects"].append(fx)
+
+                def _apply_preset(preset_name, t_start, t_end, resting_frame):
+                    """Apply an animation preset scaled to [t_start, t_end] frames.
+
+                    Values are applied relative to the clip's current state at resting_frame:
+                    scale/alpha are multiplied by the base value; location/rotation/shear
+                    are offset by it.  Easing handles from KEYFRAME_EASING are applied to
+                    consecutive point pairs.  The zone [t_start, t_end] is cleared of
+                    existing keyframes for each touched property before insertion.
+                    """
+                    preset = _ANIMATION_PRESETS.get(preset_name, {})
+                    if not preset:
+                        return
+                    src_dur = 30.0  # source frames span 1–31
+                    tgt_dur = max(1, t_end - t_start)
+
+                    for prop, points in preset.items():
+                        if prop not in clip.data:
+                            continue
+
+                        base = _base(prop, resting_frame)
+
+                        # Clear previous keyframes in the animation zone
+                        self._remove_keypoints_in_range(clip.data[prop], t_start, t_end)
+
+                        # Anchor keyframes at both zone boundaries so no drift occurs
+                        # when the first/last preset frame doesn't map exactly to t_start/t_end.
+                        # Preset keyframes that land on t_start or t_end will overwrite these.
+                        self.AddPoint(clip.data[prop], kf(t_start, base))
+                        self.AddPoint(clip.data[prop], kf(t_end,   base))
+
+                        # Scale frame positions, adjust values, and record easing names
+                        scaled = []
+                        for pt in points:
+                            src_frame = pt[0]
+                            src_val   = pt[1]
+                            easing    = pt[2] if len(pt) > 2 else None
+                            norm      = (src_frame - 1) / src_dur
+                            tgt_frame = t_start + round(norm * tgt_dur)
+                            adj_val   = _rel(prop, src_val, base)
+                            scaled.append((tgt_frame, adj_val, easing))
+
+                        # Build point dicts and apply cubic-bezier handles
+                        for i, (tgt_frame, adj_val, easing) in enumerate(scaled):
+                            p = kf(tgt_frame, adj_val)
+                            # handle_right on current point (controls curve TO next point)
+                            if easing and easing in _KEYFRAME_EASING:
+                                x1, y1, x2, y2 = _KEYFRAME_EASING[easing]
+                                p['handle_right'] = {'X': x1, 'Y': y1}
+                            # handle_left on current point (controls curve FROM previous)
+                            if i > 0:
+                                prev_easing = scaled[i - 1][2]
+                                if prev_easing and prev_easing in _KEYFRAME_EASING:
+                                    _, _, x2, y2 = _KEYFRAME_EASING[prev_easing]
+                                    p['handle_left'] = {'X': x2, 'Y': y2}
+                            self.AddPoint(clip.data[prop], p)
+
+                # SVG filename → enum mappings for Wipe In (brightness 1 → -1)
+                # and Wipe Out (brightness -1 → 1, same SVG file)
+                _WIPE_SVG = {
+                    MenuAnimate.WIPE_IN_CIRCLE_EXPAND:  "circle_in_to_out.svg",
+                    MenuAnimate.WIPE_IN_CIRCLE_SHRINK:  "circle_out_to_in.svg",
+                    MenuAnimate.WIPE_IN_FADE:           "fade.svg",
+                    MenuAnimate.WIPE_IN_LEFT:           "wipe_left_to_right.svg",
+                    MenuAnimate.WIPE_IN_RIGHT:          "wipe_right_to_left.svg",
+                    MenuAnimate.WIPE_IN_TOP:            "wipe_top_to_bottom.svg",
+                    MenuAnimate.WIPE_IN_BOTTOM:         "wipe_bottom_to_top.svg",
+                    MenuAnimate.WIPE_OUT_CIRCLE_EXPAND: "circle_in_to_out.svg",
+                    MenuAnimate.WIPE_OUT_CIRCLE_SHRINK: "circle_out_to_in.svg",
+                    MenuAnimate.WIPE_OUT_FADE:          "fade.svg",
+                    MenuAnimate.WIPE_OUT_LEFT:          "wipe_left_to_right.svg",
+                    MenuAnimate.WIPE_OUT_RIGHT:         "wipe_right_to_left.svg",
+                    MenuAnimate.WIPE_OUT_TOP:           "wipe_top_to_bottom.svg",
+                    MenuAnimate.WIPE_OUT_BOTTOM:        "wipe_bottom_to_top.svg",
+                }
 
                 if action == MenuAnimate.NONE:
-                    # Clear all keyframes
-                    default_zoom = openshot.Point(start_animation, 1.0, openshot.BEZIER)
-                    default_zoom_object = json.loads(default_zoom.Json())
-                    default_loc = openshot.Point(start_animation, 0.0, openshot.BEZIER)
-                    default_loc_object = json.loads(default_loc.Json())
-                    default_origin = openshot.Point(start_animation, 0.5, openshot.BEZIER)
-                    default_origin_object = json.loads(default_origin.Json())
-                    clip.data["gravity"] = openshot.GRAVITY_CENTER
-                    clip.data["scale_x"] = {"Points": [default_zoom_object]}
-                    clip.data["scale_y"] = {"Points": [default_zoom_object]}
-                    clip.data["shear_x"] = {"Points": [default_loc_object]}
-                    clip.data["shear_y"] = {"Points": [default_loc_object]}
-                    clip.data["rotation"] = {"Points": [default_loc_object]}
-                    clip.data["location_x"] = {"Points": [default_loc_object]}
-                    clip.data["location_y"] = {"Points": [default_loc_object]}
-                    clip.data["origin_x"] = {"Points": [default_origin_object]}
-                    clip.data["origin_y"] = {"Points": [default_origin_object]}
+                    _reset_motion()
 
-                if action in [
-                    MenuAnimate.IN_50_100,
-                    MenuAnimate.IN_75_100,
-                    MenuAnimate.IN_100_150,
-                    MenuAnimate.OUT_100_75,
-                    MenuAnimate.OUT_100_50,
-                    MenuAnimate.OUT_150_100
-                ]:
-                    # Scale animation
-                    start_scale = 1.0
-                    end_scale = 1.0
-                    if action == MenuAnimate.IN_50_100:
-                        start_scale = 0.5
-                    elif action == MenuAnimate.IN_75_100:
-                        start_scale = 0.75
-                    elif action == MenuAnimate.IN_100_150:
-                        end_scale = 1.5
-                    elif action == MenuAnimate.OUT_100_75:
-                        end_scale = 0.75
-                    elif action == MenuAnimate.OUT_100_50:
-                        end_scale = 0.5
-                    elif action == MenuAnimate.OUT_150_100:
-                        start_scale = 1.5
+                else:
+                    # Ensure effects list exists (reset not called here)
+                    if not isinstance(clip.data.get("effects"), list):
+                        clip.data["effects"] = []
 
-                    # Add keyframes
-                    start = openshot.Point(start_animation, start_scale, openshot.BEZIER)
-                    start_object = json.loads(start.Json())
-                    end = openshot.Point(end_animation, end_scale, openshot.BEZIER)
-                    end_object = json.loads(end.Json())
-                    clip.data["gravity"] = openshot.GRAVITY_CENTER
-                    self.AddPoint(clip.data["scale_x"], start_object)
-                    self.AddPoint(clip.data["scale_x"], end_object)
-                    self.AddPoint(clip.data["scale_y"], start_object)
-                    self.AddPoint(clip.data["scale_y"], end_object)
+                    # ── SLIDE IN ──────────────────────────────────────────────
+                    if action == MenuAnimate.SLIDE_IN_LEFT:
+                        bx = _base('location_x', in_end)
+                        self._remove_keypoints_in_range(clip.data["location_x"], s, in_end)
+                        add("location_x", kf(s, bx - 1.0), kf(in_end, bx))
+                    elif action == MenuAnimate.SLIDE_IN_RIGHT:
+                        bx = _base('location_x', in_end)
+                        self._remove_keypoints_in_range(clip.data["location_x"], s, in_end)
+                        add("location_x", kf(s, bx + 1.0), kf(in_end, bx))
+                    elif action == MenuAnimate.SLIDE_IN_TOP:
+                        by = _base('location_y', in_end)
+                        self._remove_keypoints_in_range(clip.data["location_y"], s, in_end)
+                        add("location_y", kf(s, by - 1.0), kf(in_end, by))
+                    elif action == MenuAnimate.SLIDE_IN_BOTTOM:
+                        by = _base('location_y', in_end)
+                        self._remove_keypoints_in_range(clip.data["location_y"], s, in_end)
+                        add("location_y", kf(s, by + 1.0), kf(in_end, by))
 
-                if action in [
-                    MenuAnimate.CENTER_TOP,
-                    MenuAnimate.CENTER_LEFT,
-                    MenuAnimate.CENTER_RIGHT,
-                    MenuAnimate.CENTER_BOTTOM,
-                    MenuAnimate.TOP_CENTER,
-                    MenuAnimate.LEFT_CENTER,
-                    MenuAnimate.RIGHT_CENTER,
-                    MenuAnimate.BOTTOM_CENTER,
-                    MenuAnimate.TOP_BOTTOM,
-                    MenuAnimate.LEFT_RIGHT,
-                    MenuAnimate.RIGHT_LEFT,
-                    MenuAnimate.BOTTOM_TOP
-                ]:
-                    # Location animation
-                    animate_start_x = 0.0
-                    animate_end_x = 0.0
-                    animate_start_y = 0.0
-                    animate_end_y = 0.0
-                    # Center to edge...
-                    if action == MenuAnimate.CENTER_TOP:
-                        animate_end_y = -1.0
-                    elif action == MenuAnimate.CENTER_LEFT:
-                        animate_end_x = -1.0
-                    elif action == MenuAnimate.CENTER_RIGHT:
-                        animate_end_x = 1.0
-                    elif action == MenuAnimate.CENTER_BOTTOM:
-                        animate_end_y = 1.0
+                    # ── SLIDE OUT ─────────────────────────────────────────────
+                    elif action == MenuAnimate.SLIDE_OUT_LEFT:
+                        bx = _base('location_x', out_start)
+                        self._remove_keypoints_in_range(clip.data["location_x"], out_start, e)
+                        add("location_x", kf(out_start, bx), kf(e, bx - 1.0))
+                    elif action == MenuAnimate.SLIDE_OUT_RIGHT:
+                        bx = _base('location_x', out_start)
+                        self._remove_keypoints_in_range(clip.data["location_x"], out_start, e)
+                        add("location_x", kf(out_start, bx), kf(e, bx + 1.0))
+                    elif action == MenuAnimate.SLIDE_OUT_TOP:
+                        by = _base('location_y', out_start)
+                        self._remove_keypoints_in_range(clip.data["location_y"], out_start, e)
+                        add("location_y", kf(out_start, by), kf(e, by - 1.0))
+                    elif action == MenuAnimate.SLIDE_OUT_BOTTOM:
+                        by = _base('location_y', out_start)
+                        self._remove_keypoints_in_range(clip.data["location_y"], out_start, e)
+                        add("location_y", kf(out_start, by), kf(e, by + 1.0))
 
-                    # Edge to Center
-                    elif action == MenuAnimate.TOP_CENTER:
-                        animate_start_y = -1.0
-                    elif action == MenuAnimate.LEFT_CENTER:
-                        animate_start_x = -1.0
-                    elif action == MenuAnimate.RIGHT_CENTER:
-                        animate_start_x = 1.0
-                    elif action == MenuAnimate.BOTTOM_CENTER:
-                        animate_start_y = 1.0
+                    # ── BLUR IN — horizontal+vertical blur 50→0 + alpha fade ───
+                    elif action == MenuAnimate.BLUR_IN:
+                        effect = openshot.EffectInfo().CreateEffect("Blur")
+                        fx = json.loads(effect.Json())
+                        fx["id"] = get_app().project.generate_id()
+                        fx["horizontal_radius"] = {"Points": [kf(s, 50.0), kf(in_end, 0.0)]}
+                        fx["vertical_radius"]   = {"Points": [kf(s, 50.0), kf(in_end, 0.0)]}
+                        clip.data["effects"].append(fx)
+                        ba = _base('alpha', in_end)
+                        self._remove_keypoints_in_range(clip.data["alpha"], s, in_end)
+                        add("alpha", kf(s, 0.0), kf(in_end, ba))
 
-                    # Edge to Edge
-                    elif action == MenuAnimate.TOP_BOTTOM:
-                        animate_start_y = -1.0
-                        animate_end_y = 1.0
-                    elif action == MenuAnimate.LEFT_RIGHT:
-                        animate_start_x = -1.0
-                        animate_end_x = 1.0
-                    elif action == MenuAnimate.RIGHT_LEFT:
-                        animate_start_x = 1.0
-                        animate_end_x = -1.0
-                    elif action == MenuAnimate.BOTTOM_TOP:
-                        animate_start_y = 1.0
-                        animate_end_y = -1.0
+                    # ── BLUR OUT — alpha fade + blur grows 0→50 ───────────────
+                    elif action == MenuAnimate.BLUR_OUT:
+                        effect = openshot.EffectInfo().CreateEffect("Blur")
+                        fx = json.loads(effect.Json())
+                        fx["id"] = get_app().project.generate_id()
+                        fx["horizontal_radius"] = {"Points": [kf(out_start, 0.0), kf(e, 50.0)]}
+                        fx["vertical_radius"]   = {"Points": [kf(out_start, 0.0), kf(e, 50.0)]}
+                        clip.data["effects"].append(fx)
+                        ba = _base('alpha', out_start)
+                        self._remove_keypoints_in_range(clip.data["alpha"], out_start, e)
+                        add("alpha", kf(out_start, ba), kf(e, 0.0))
 
-                    # Add keyframes
-                    start_x = openshot.Point(start_animation, animate_start_x, openshot.BEZIER)
-                    start_x_object = json.loads(start_x.Json())
-                    end_x = openshot.Point(end_animation, animate_end_x, openshot.BEZIER)
-                    end_x_object = json.loads(end_x.Json())
-                    start_y = openshot.Point(start_animation, animate_start_y, openshot.BEZIER)
-                    start_y_object = json.loads(start_y.Json())
-                    end_y = openshot.Point(end_animation, animate_end_y, openshot.BEZIER)
-                    end_y_object = json.loads(end_y.Json())
-                    clip.data["gravity"] = openshot.GRAVITY_CENTER
-                    self.AddPoint(clip.data["location_x"], start_x_object)
-                    self.AddPoint(clip.data["location_x"], end_x_object)
-                    self.AddPoint(clip.data["location_y"], start_y_object)
-                    self.AddPoint(clip.data["location_y"], end_y_object)
+                    # ── WIPE IN — Mask effect, brightness 1 → -1 ──────────────
+                    elif action in (MenuAnimate.WIPE_IN_CIRCLE_EXPAND,
+                                    MenuAnimate.WIPE_IN_CIRCLE_SHRINK,
+                                    MenuAnimate.WIPE_IN_FADE,
+                                    MenuAnimate.WIPE_IN_LEFT, MenuAnimate.WIPE_IN_RIGHT,
+                                    MenuAnimate.WIPE_IN_TOP,  MenuAnimate.WIPE_IN_BOTTOM):
+                        _make_wipe_fx(_WIPE_SVG[action], s, in_end, 1.0, -1.0)
 
-                if action == MenuAnimate.RANDOM:
-                    # Location animation
-                    animate_start_x = uniform(-0.5, 0.5)
-                    animate_end_x = uniform(-0.15, 0.15)
-                    animate_start_y = uniform(-0.5, 0.5)
-                    animate_end_y = uniform(-0.15, 0.15)
+                    # ── WIPE OUT — Mask effect, brightness -1 → 1 ─────────────
+                    elif action in (MenuAnimate.WIPE_OUT_CIRCLE_EXPAND,
+                                    MenuAnimate.WIPE_OUT_CIRCLE_SHRINK,
+                                    MenuAnimate.WIPE_OUT_FADE,
+                                    MenuAnimate.WIPE_OUT_LEFT, MenuAnimate.WIPE_OUT_RIGHT,
+                                    MenuAnimate.WIPE_OUT_TOP,  MenuAnimate.WIPE_OUT_BOTTOM):
+                        _make_wipe_fx(_WIPE_SVG[action], out_start, e, -1.0, 1.0)
 
-                    # Scale animation
-                    start_scale = uniform(0.5, 1.5)
-                    end_scale = uniform(0.85, 1.15)
+                    # ── POP ───────────────────────────────────────────────────
+                    elif action == MenuAnimate.POP_IN:
+                        peak = in_end - max(1, round(0.2 * (in_end - s)))
+                        bsx = _base('scale_x', in_end)
+                        bsy = _base('scale_y', in_end)
+                        ba  = _base('alpha',   in_end)
+                        for prop in ("scale_x", "scale_y", "alpha"):
+                            self._remove_keypoints_in_range(clip.data[prop], s, in_end)
+                        add("scale_x", kf(s, 0.0), kf(peak, 1.1 * bsx), kf(in_end, bsx))
+                        add("scale_y", kf(s, 0.0), kf(peak, 1.1 * bsy), kf(in_end, bsy))
+                        add("alpha",   kf(s, 0.0), kf(in_end, ba))
+                    elif action == MenuAnimate.POP_OUT:
+                        peak = out_start + max(1, round(0.2 * (e - out_start)))
+                        bsx = _base('scale_x', out_start)
+                        bsy = _base('scale_y', out_start)
+                        ba  = _base('alpha',   out_start)
+                        for prop in ("scale_x", "scale_y", "alpha"):
+                            self._remove_keypoints_in_range(clip.data[prop], out_start, e)
+                        add("scale_x", kf(out_start, bsx), kf(peak, 1.1 * bsx), kf(e, 0.0))
+                        add("scale_y", kf(out_start, bsy), kf(peak, 1.1 * bsy), kf(e, 0.0))
+                        add("alpha",   kf(out_start, ba), kf(e, 0.0))
 
-                    # Add keyframes
-                    start = openshot.Point(start_animation, start_scale, openshot.BEZIER)
-                    start_object = json.loads(start.Json())
-                    end = openshot.Point(end_animation, end_scale, openshot.BEZIER)
-                    end_object = json.loads(end.Json())
-                    clip.data["gravity"] = openshot.GRAVITY_CENTER
-                    self.AddPoint(clip.data["scale_x"], start_object)
-                    self.AddPoint(clip.data["scale_x"], end_object)
-                    self.AddPoint(clip.data["scale_y"], start_object)
-                    self.AddPoint(clip.data["scale_y"], end_object)
+                    # ── SPIRAL ────────────────────────────────────────────────
+                    elif action == MenuAnimate.SPIRAL_IN:
+                        br  = _base('rotation', in_end)
+                        bsx = _base('scale_x',  in_end)
+                        bsy = _base('scale_y',  in_end)
+                        ba  = _base('alpha',    in_end)
+                        for prop in ("rotation", "scale_x", "scale_y", "alpha"):
+                            self._remove_keypoints_in_range(clip.data[prop], s, in_end)
+                        add("rotation", kf(s, -360.0 + br), kf(in_end, br))
+                        add("scale_x",  kf(s, 0.0),         kf(in_end, bsx))
+                        add("scale_y",  kf(s, 0.0),         kf(in_end, bsy))
+                        add("alpha",    kf(s, 0.0),         kf(in_end, ba))
+                    elif action == MenuAnimate.SPIRAL_OUT:
+                        br  = _base('rotation', out_start)
+                        bsx = _base('scale_x',  out_start)
+                        bsy = _base('scale_y',  out_start)
+                        ba  = _base('alpha',    out_start)
+                        for prop in ("rotation", "scale_x", "scale_y", "alpha"):
+                            self._remove_keypoints_in_range(clip.data[prop], out_start, e)
+                        add("rotation", kf(out_start, br),  kf(e, 360.0 + br))
+                        add("scale_x",  kf(out_start, bsx), kf(e, 0.0))
+                        add("scale_y",  kf(out_start, bsy), kf(e, 0.0))
+                        add("alpha",    kf(out_start, ba),  kf(e, 0.0))
 
-                    # Add keyframes
-                    start_x = openshot.Point(start_animation, animate_start_x, openshot.BEZIER)
-                    start_x_object = json.loads(start_x.Json())
-                    end_x = openshot.Point(end_animation, animate_end_x, openshot.BEZIER)
-                    end_x_object = json.loads(end_x.Json())
-                    start_y = openshot.Point(start_animation, animate_start_y, openshot.BEZIER)
-                    start_y_object = json.loads(start_y.Json())
-                    end_y = openshot.Point(end_animation, animate_end_y, openshot.BEZIER)
-                    end_y_object = json.loads(end_y.Json())
-                    clip.data["gravity"] = openshot.GRAVITY_CENTER
-                    self.AddPoint(clip.data["location_x"], start_x_object)
-                    self.AddPoint(clip.data["location_x"], end_x_object)
-                    self.AddPoint(clip.data["location_y"], start_y_object)
-                    self.AddPoint(clip.data["location_y"], end_y_object)
+                    # ── JSON PRESETS (Back/Bounce/Flip In/Out + all Emphasis) ──
+                    elif action in _JSON_ANIM:
+                        if action in _EMPHASIS_ACTIONS:
+                            _apply_preset(_JSON_ANIM[action], emph_start, emph_end, emph_start)
+                        elif action in _IN_ACTIONS:
+                            _apply_preset(_JSON_ANIM[action], s, in_end, in_end)
+                        else:
+                            _apply_preset(_JSON_ANIM[action], out_start, e, out_start)
 
-                # Save changes
+                    # ── CAMERA: PUSH IN / PULL OUT (zoom, SCALE_CROP) ──────────
+                    elif action == MenuAnimate.CAM_PUSH_IN:
+                        clip.data["scale"] = openshot.SCALE_CROP
+                        add("scale_x", kf(s, 1.0), kf(e, 1.3))
+                        add("scale_y", kf(s, 1.0), kf(e, 1.3))
+                    elif action == MenuAnimate.CAM_PULL_OUT:
+                        clip.data["scale"] = openshot.SCALE_CROP
+                        add("scale_x", kf(s, 1.3), kf(e, 1.0))
+                        add("scale_y", kf(s, 1.3), kf(e, 1.0))
+
+                    # ── CAMERA: PAN (1.3× constant, ±0.15 edge-to-edge) ────────
+                    elif action in (MenuAnimate.CAM_PAN_LEFT,  MenuAnimate.CAM_PAN_RIGHT,
+                                    MenuAnimate.CAM_PAN_UP,    MenuAnimate.CAM_PAN_DOWN):
+                        clip.data["scale"] = openshot.SCALE_CROP
+                        add("scale_x", kf(s, 1.3), kf(e, 1.3))
+                        add("scale_y", kf(s, 1.3), kf(e, 1.3))
+                        if action == MenuAnimate.CAM_PAN_LEFT:
+                            add("location_x", kf(s, -0.15), kf(e,  0.15))
+                        elif action == MenuAnimate.CAM_PAN_RIGHT:
+                            add("location_x", kf(s,  0.15), kf(e, -0.15))
+                        elif action == MenuAnimate.CAM_PAN_UP:
+                            add("location_y", kf(s, -0.15), kf(e,  0.15))
+                        elif action == MenuAnimate.CAM_PAN_DOWN:
+                            add("location_y", kf(s,  0.15), kf(e, -0.15))
+
+                    # ── CAMERA: KEN BURNS (scale + diagonal drift) ─────────────
+                    elif action == MenuAnimate.KEN_BURNS_IN:
+                        clip.data["scale"] = openshot.SCALE_CROP
+                        add("scale_x",    kf(s, 1.0), kf(e, 1.3))
+                        add("scale_y",    kf(s, 1.0), kf(e, 1.3))
+                        add("location_x", kf(s, 0.0), kf(e, -0.08))
+                        add("location_y", kf(s, 0.0), kf(e,  0.04))
+                    elif action == MenuAnimate.KEN_BURNS_OUT:
+                        clip.data["scale"] = openshot.SCALE_CROP
+                        add("scale_x",    kf(s, 1.3),   kf(e, 1.0))
+                        add("scale_y",    kf(s, 1.3),   kf(e, 1.0))
+                        add("location_x", kf(s, -0.08), kf(e, 0.0))
+                        add("location_y", kf(s,  0.04), kf(e, 0.0))
+
+                    # ── CREDITS (full scroll, SCALE_CROP) ─────────────────────
+                    elif action == MenuAnimate.CREDITS_UP:
+                        clip.data["scale"] = openshot.SCALE_CROP
+                        add("location_y",
+                            kf(s,  1.5, openshot.LINEAR),
+                            kf(e, -1.5, openshot.LINEAR))
+                    elif action == MenuAnimate.CREDITS_DOWN:
+                        clip.data["scale"] = openshot.SCALE_CROP
+                        add("location_y",
+                            kf(s, -1.5, openshot.LINEAR),
+                            kf(e,  1.5, openshot.LINEAR))
+
                 self.update_clip_data(clip.data, only_basic_props=False, ignore_reader=True, transaction_id=tid)
         finally:
-            # Reset transaction id only if we created it (not if it was passed in)
             if not transaction_id:
                 get_app().updates.transaction_id = None
 

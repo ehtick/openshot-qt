@@ -155,6 +155,61 @@ class TimelineHelperTests(unittest.TestCase):
 
         return Helper()
 
+    def make_motion_helper(self):
+        timeline_module = self.timeline_module
+
+        class Helper:
+            def __init__(self):
+                self.updated = []
+                self.show_wait_spinner = False
+                self.window = types.SimpleNamespace(
+                    timeline_sync=types.SimpleNamespace(
+                        timeline=types.SimpleNamespace(GetClip=lambda _clip_id: None)
+                    ),
+                    preview_thread=types.SimpleNamespace(current_frame=None),
+                )
+
+            def get_uuid(self):
+                return "tx-motion-1"
+
+            def AddPoint(self, keyframe, new_point):
+                return timeline_module.TimelineView.AddPoint(self, keyframe, new_point)
+
+            def _remove_keypoints_in_range(self, points_data, frame_start, frame_end):
+                return timeline_module.TimelineView._remove_keypoints_in_range(
+                    self, points_data, frame_start, frame_end)
+
+            def update_clip_data(self, clip_data, **kwargs):
+                self.updated.append((copy.deepcopy(clip_data), dict(kwargs)))
+
+            def _get_transition_reader_json(self, _path):
+                return {"path": "/tmp/wipe.svg", "has_single_image": True}
+
+        return Helper()
+
+    def make_motion_clip(self):
+        def kf(value):
+            return {"Points": [{"co": {"X": 1, "Y": value}, "interpolation": openshot.BEZIER}]}
+
+        data = {
+            "id": "C1",
+            "start": 0.0,
+            "end": 3.0,
+            "scale": openshot.SCALE_FIT,
+            "scale_x": kf(1.0),
+            "scale_y": kf(1.0),
+            "location_x": kf(0.0),
+            "location_y": kf(0.0),
+            "rotation": kf(0.0),
+            "shear_x": kf(0.0),
+            "shear_y": kf(0.0),
+            "alpha": kf(1.0),
+            "origin_x": kf(0.5),
+            "origin_y": kf(0.5),
+            "effects": [],
+        }
+        return types.SimpleNamespace(id="C1", data=data)
+
     def make_finalize_keyframe_helper(self):
         timeline_module = self.timeline_module
 
@@ -1474,6 +1529,57 @@ class TimelineHelperTests(unittest.TestCase):
         saved_data = saved[-1]
         self.assertEqual(saved_data["brightness"]["Points"][0]["co"]["X"], 1)
         self.assertEqual(saved_data["brightness"]["Points"][-1]["co"]["X"], 62)
+
+    def test_motion_wipe_mask_uses_high_static_contrast(self):
+        helper = self.make_motion_helper()
+        clip = self.make_motion_clip()
+        app = types.SimpleNamespace(
+            updates=types.SimpleNamespace(transaction_id=None),
+            project=types.SimpleNamespace(
+                get=lambda key: {"num": 30, "den": 1} if key == "fps" else None,
+                generate_id=lambda: "FX1",
+            ),
+        )
+
+        with patch.object(self.timeline_module, "get_app", return_value=app), \
+                patch.object(self.timeline_module.Clip, "get", return_value=clip):
+            self.timeline_module.TimelineView.Animate_Triggered(
+                helper,
+                self.timeline_module.MenuAnimate.WIPE_IN_LEFT,
+                ["C1"],
+                transaction_id="tx-motion-test",
+            )
+
+        self.assertEqual(len(clip.data["effects"]), 1)
+        effect = clip.data["effects"][0]
+        self.assertEqual(effect["class_name"], "Mask")
+        self.assertEqual(effect["contrast"]["Points"][0]["co"]["Y"], 20.0)
+
+    def test_motion_ken_burns_direction_sets_distinct_scale_and_location(self):
+        helper = self.make_motion_helper()
+        clip = self.make_motion_clip()
+        app = types.SimpleNamespace(
+            updates=types.SimpleNamespace(transaction_id=None),
+            project=types.SimpleNamespace(
+                get=lambda key: {"num": 30, "den": 1} if key == "fps" else None,
+                generate_id=lambda: "FX1",
+            ),
+        )
+
+        with patch.object(self.timeline_module, "get_app", return_value=app), \
+                patch.object(self.timeline_module.Clip, "get", return_value=clip):
+            self.timeline_module.TimelineView.Animate_Triggered(
+                helper,
+                self.timeline_module.MenuAnimate.KEN_BURNS_IN,
+                ["C1"],
+                transaction_id="tx-motion-test",
+            )
+
+        self.assertEqual(clip.data["scale"], openshot.SCALE_CROP)
+        self.assertAlmostEqual(clip.data["scale_x"]["Points"][-1]["co"]["Y"], 1.3)
+        self.assertAlmostEqual(clip.data["scale_y"]["Points"][-1]["co"]["Y"], 1.3)
+        self.assertAlmostEqual(clip.data["location_x"]["Points"][-1]["co"]["Y"], -0.08)
+        self.assertAlmostEqual(clip.data["location_y"]["Points"][-1]["co"]["Y"], 0.04)
 
     def test_find_missing_transition_details_returns_overlap(self):
         clip_data = {"id": "B", "layer": 1, "position": 4.0, "start": 0.0, "end": 6.0}
@@ -4201,6 +4307,9 @@ class TimelineHelperTests(unittest.TestCase):
             def _clip_has_video(self, candidate):
                 return timeline_module.TimelineView._clip_has_video(self, candidate)
 
+            def _clip_has_visual(self, candidate):
+                return timeline_module.TimelineView._clip_has_visual(self, candidate)
+
             def _create_film_grain_effect_json(self):
                 return {"class_name": "FilmGrain", "id": "FG-1", "seed": 77}
 
@@ -4252,6 +4361,9 @@ class TimelineHelperTests(unittest.TestCase):
             def _clip_has_video(self, candidate):
                 return timeline_module.TimelineView._clip_has_video(self, candidate)
 
+            def _clip_has_visual(self, candidate):
+                return timeline_module.TimelineView._clip_has_visual(self, candidate)
+
             def update_clip_data(self, clip_data, **kwargs):
                 self.updates.append(copy.deepcopy(clip_data))
 
@@ -4293,6 +4405,9 @@ class TimelineHelperTests(unittest.TestCase):
 
             def _clip_has_video(self, candidate):
                 return timeline_module.TimelineView._clip_has_video(self, candidate)
+
+            def _clip_has_visual(self, candidate):
+                return timeline_module.TimelineView._clip_has_visual(self, candidate)
 
             def update_clip_data(self, clip_data, **kwargs):
                 self.updates.append((copy.deepcopy(clip_data), dict(kwargs)))
