@@ -66,6 +66,70 @@ from classes.film_grain_presets import (
     apply_film_grain_preset,
     is_film_grain_effect,
 )
+
+LOOK_EFFECT_UI_MENU = "look"
+
+LOOK_RESET_EFFECT_CLASSES = {
+    COLOR_GRADE_CLASS_NAME,
+    FILM_GRAIN_CLASS_NAME,
+}
+
+LOOK_EFFECT_PRESETS = {
+    "AnalogTape": {
+        "none": {},
+        "subtle": {
+            "bleed": 0.25,
+            "noise": 0.18,
+            "softness": 0.15,
+            "static_bands": 0.05,
+            "stripe": 0.06,
+            "tracking": 0.20,
+        },
+        "vhs": {
+            "bleed": 0.55,
+            "noise": 0.35,
+            "softness": 0.35,
+            "static_bands": 0.18,
+            "stripe": 0.20,
+            "tracking": 0.45,
+        },
+        "heavy": {
+            "bleed": 0.85,
+            "noise": 0.60,
+            "softness": 0.55,
+            "static_bands": 0.35,
+            "stripe": 0.40,
+            "tracking": 0.75,
+        },
+    },
+    "Blur": {
+        "none": {},
+        "soft_focus": {"horizontal_radius": 3.0, "vertical_radius": 3.0, "sigma": 1.5, "iterations": 2.0},
+        "medium": {"horizontal_radius": 8.0, "vertical_radius": 8.0, "sigma": 4.0, "iterations": 3.0},
+        "heavy": {"horizontal_radius": 20.0, "vertical_radius": 20.0, "sigma": 8.0, "iterations": 4.0},
+    },
+    "Glow": {
+        "none": {},
+        "soft_white": {"mode": 0, "opacity": 0.35, "blur_radius": 18.0, "spread": 0.15, "color": "#ffffffff"},
+        "warm": {"mode": 0, "opacity": 0.45, "blur_radius": 24.0, "spread": 0.20, "color": "#ffd28cff"},
+        "neon": {"mode": 0, "opacity": 0.65, "blur_radius": 16.0, "spread": 0.35, "color": "#35d7ffff"},
+        "inner": {"mode": 1, "opacity": 0.45, "blur_radius": 12.0, "spread": 0.25, "color": "#ffffffff"},
+    },
+    "Shadow": {
+        "none": {},
+        "subtle": {"opacity": 0.30, "blur_radius": 12.0, "spread": 0.05, "distance": 8.0, "angle": 135.0, "color": "#000000ff"},
+        "soft": {"opacity": 0.45, "blur_radius": 28.0, "spread": 0.10, "distance": 14.0, "angle": 135.0, "color": "#000000ff"},
+        "strong": {"opacity": 0.70, "blur_radius": 18.0, "spread": 0.25, "distance": 16.0, "angle": 135.0, "color": "#000000ff"},
+        "long": {"opacity": 0.45, "blur_radius": 24.0, "spread": 0.12, "distance": 44.0, "angle": 135.0, "color": "#000000ff"},
+    },
+    "Sharpen": {
+        "none": {},
+        "subtle": {"amount": 4.0, "radius": 1.5, "threshold": 0.0},
+        "medium": {"amount": 9.0, "radius": 2.5, "threshold": 0.0},
+        "strong": {"amount": 16.0, "radius": 3.5, "threshold": 0.0},
+    },
+}
+
 from classes.camera_motion import (
     KEN_BURNS_AUTO,
     KEN_BURNS_BOTTOM_TO_TOP,
@@ -1712,13 +1776,10 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             menu.addMenu(Transform_Menu)
 
         if clip_has_visual:
-            # Look Menu (Color + Film Grain)
+            # Look Menu (color, film, focus, and lighting presets)
             Look_Menu = StyledContextMenu(title=_("Look"), parent=self)
             Reset_Look = Look_Menu.addAction(_("Reset Look"))
-            Reset_Look.triggered.connect(lambda: (
-                self.Color_Triggered(COLOR_PRESET_RESET, clip_ids),
-                self.Film_Grain_Triggered(FILM_GRAIN_PRESET_NONE, clip_ids)
-            ))
+            Reset_Look.triggered.connect(partial(self.Reset_Look_Triggered, clip_ids))
             Look_Menu.addSeparator()
 
             Color_Menu = StyledContextMenu(title=_("Color"), parent=self)
@@ -1732,6 +1793,7 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             Boost_Color.triggered.connect(partial(self.Color_Triggered, COLOR_PRESET_BOOST_COLOR, clip_ids))
             Look_Menu.addMenu(Color_Menu)
 
+            Film_Menu = StyledContextMenu(title=_("Film"), parent=self)
             Film_Grain_Menu = StyledContextMenu(title=_("Film Grain"), parent=self)
             Film_Grain_None = Film_Grain_Menu.addAction(_("No Film Grain"))
             Film_Grain_None.triggered.connect(partial(
@@ -1755,7 +1817,82 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             Film_Grain_High_ISO = Film_Grain_Menu.addAction(_("High ISO"))
             Film_Grain_High_ISO.triggered.connect(partial(
                 self.Film_Grain_Triggered, FILM_GRAIN_PRESET_HIGH_ISO, clip_ids))
-            Look_Menu.addMenu(Film_Grain_Menu)
+            Film_Menu.addMenu(Film_Grain_Menu)
+
+            self._add_effect_preset_menu(
+                Film_Menu,
+                _("Analog Tape"),
+                "AnalogTape",
+                _("No Analog Tape"),
+                [
+                    (_("Subtle"), "subtle"),
+                    (_("VHS"), "vhs"),
+                    (_("Heavy"), "heavy"),
+                ],
+                clip_ids,
+            )
+
+            Look_Menu.addMenu(Film_Menu)
+
+            Focus_Menu = StyledContextMenu(title=_("Focus"), parent=self)
+            self._add_effect_preset_menu(
+                Focus_Menu,
+                _("Sharpen"),
+                "Sharpen",
+                _("No Sharpen"),
+                [
+                    (_("Subtle"), "subtle"),
+                    (_("Medium"), "medium"),
+                    (_("Strong"), "strong"),
+                ],
+                clip_ids,
+            )
+            self._add_effect_preset_menu(
+                Focus_Menu,
+                _("Blur"),
+                "Blur",
+                _("No Blur"),
+                [
+                    (_("Soft Focus"), "soft_focus"),
+                    (_("Medium"), "medium"),
+                    (_("Heavy"), "heavy"),
+                ],
+                clip_ids,
+            )
+
+            if Focus_Menu.actions():
+                Look_Menu.addMenu(Focus_Menu)
+
+            Lighting_Menu = StyledContextMenu(title=_("Lighting"), parent=self)
+            self._add_effect_preset_menu(
+                Lighting_Menu,
+                _("Shadow"),
+                "Shadow",
+                _("No Shadow"),
+                [
+                    (_("Subtle"), "subtle"),
+                    (_("Soft"), "soft"),
+                    (_("Strong"), "strong"),
+                    (_("Long"), "long"),
+                ],
+                clip_ids,
+            )
+            self._add_effect_preset_menu(
+                Lighting_Menu,
+                _("Glow"),
+                "Glow",
+                _("No Glow"),
+                [
+                    (_("Soft White"), "soft_white"),
+                    (_("Warm"), "warm"),
+                    (_("Neon"), "neon"),
+                    (_("Inner Glow"), "inner"),
+                ],
+                clip_ids,
+            )
+
+            if Lighting_Menu.actions():
+                Look_Menu.addMenu(Lighting_Menu)
 
             Look_Menu.addSeparator()
             Adjust_Colors = Look_Menu.addAction(
@@ -2364,6 +2501,164 @@ class TimelineView(updates.UpdateInterface, ViewClass):
         effect.Id(get_app().project.generate_id())
         return json.loads(effect.Json())
 
+    def _can_create_effect(self, class_name):
+        return openshot.EffectInfo().CreateEffect(class_name) is not None
+
+    def _add_effect_preset_menu(self, parent_menu, title, class_name, reset_label, preset_items, clip_ids):
+        if not self._can_create_effect(class_name):
+            return None
+
+        preset_menu = StyledContextMenu(title=title, parent=self)
+        reset_action = preset_menu.addAction(reset_label)
+        reset_action.triggered.connect(partial(
+            self._apply_effect_preset, class_name, "none", clip_ids))
+        preset_menu.addSeparator()
+
+        for label, preset_name in preset_items:
+            preset_action = preset_menu.addAction(label)
+            preset_action.triggered.connect(partial(
+                self._apply_effect_preset, class_name, preset_name, clip_ids))
+
+        parent_menu.addMenu(preset_menu)
+        return preset_menu
+
+    def _create_effect_json(self, class_name):
+        effect = openshot.EffectInfo().CreateEffect(class_name)
+        if effect is None:
+            raise RuntimeError("Unable to create {} effect".format(class_name))
+        effect.Id(get_app().project.generate_id())
+        return json.loads(effect.Json())
+
+    def _is_look_managed_effect(self, effect_json, class_name=None):
+        if not isinstance(effect_json, dict):
+            return False
+        if effect_json.get("ui-menu") != LOOK_EFFECT_UI_MENU:
+            return False
+        return class_name is None or effect_json.get("class_name") == class_name
+
+    def _parse_effect_color(self, value):
+        if not isinstance(value, str):
+            return None
+        color = value.strip()
+        if color.startswith("#"):
+            color = color[1:]
+        if len(color) not in (6, 8):
+            return None
+        try:
+            red = int(color[0:2], 16)
+            green = int(color[2:4], 16)
+            blue = int(color[4:6], 16)
+            alpha = int(color[6:8], 16) if len(color) == 8 else 255
+        except ValueError:
+            return None
+        return {
+            "red": red,
+            "green": green,
+            "blue": blue,
+            "alpha": alpha,
+        }
+
+    def _set_effect_property_value(self, effect_json, property_name, value):
+        property_data = effect_json.get(property_name)
+        color_channels = self._parse_effect_color(value)
+        if color_channels and isinstance(property_data, dict):
+            for channel, channel_value in color_channels.items():
+                channel_data = property_data.get(channel)
+                if isinstance(channel_data, dict) and isinstance(channel_data.get("Points"), list):
+                    channel_data["Points"] = [
+                        json.loads(openshot.Point(1, float(channel_value), openshot.BEZIER).Json())
+                    ]
+        elif isinstance(property_data, dict) and isinstance(property_data.get("Points"), list):
+            property_data["Points"] = [json.loads(openshot.Point(1, float(value), openshot.BEZIER).Json())]
+        elif property_name in effect_json:
+            effect_json[property_name] = value
+
+    def _apply_effect_preset(self, class_name, preset_name, clip_ids):
+        """Apply a simple Look effect preset, or remove the effect for the none preset."""
+        presets = LOOK_EFFECT_PRESETS.get(class_name, {})
+        if preset_name not in presets:
+            return
+
+        for clip_id in clip_ids:
+            clip = Clip.get(id=clip_id)
+            if not clip or not self._clip_has_visual(clip):
+                continue
+
+            original_clip_data = json.loads(json.dumps(clip.data))
+            effects = clip.data.get("effects")
+            if not isinstance(effects, list):
+                effects = list(effects) if effects else []
+                clip.data["effects"] = effects
+
+            matching_indexes = [
+                index for index, effect_json in enumerate(effects)
+                if self._is_look_managed_effect(effect_json, class_name)
+            ]
+
+            if preset_name == "none":
+                if not matching_indexes:
+                    continue
+                clip.data["effects"] = [
+                    effect_json for effect_json in effects
+                    if not self._is_look_managed_effect(effect_json, class_name)
+                ]
+                self.update_clip_data(clip.data, only_basic_props=False, ignore_reader=True)
+                get_app().updates.apply_last_action_to_history(original_clip_data)
+                continue
+
+            try:
+                preset_effect = self._create_effect_json(class_name)
+            except RuntimeError:
+                continue
+            preset_effect["ui-menu"] = LOOK_EFFECT_UI_MENU
+
+            if matching_indexes:
+                existing_effect = effects[matching_indexes[0]]
+                if existing_effect.get("id"):
+                    preset_effect["id"] = existing_effect["id"]
+                if "order" in existing_effect:
+                    preset_effect["order"] = existing_effect["order"]
+
+            for property_name, value in presets[preset_name].items():
+                self._set_effect_property_value(preset_effect, property_name, value)
+
+            if matching_indexes:
+                effects[matching_indexes[0]] = preset_effect
+                for index in reversed(matching_indexes[1:]):
+                    del effects[index]
+            else:
+                effects.append(preset_effect)
+
+            self.update_clip_data(clip.data, only_basic_props=False, ignore_reader=True)
+            get_app().updates.apply_last_action_to_history(original_clip_data)
+
+    def Reset_Look_Triggered(self, clip_ids):
+        """Remove all effects managed by the clip Look menu."""
+        for clip_id in clip_ids:
+            clip = Clip.get(id=clip_id)
+            if not clip or not self._clip_has_visual(clip):
+                continue
+
+            effects = clip.data.get("effects")
+            if not isinstance(effects, list):
+                continue
+
+            filtered_effects = [
+                effect_json for effect_json in effects
+                if not isinstance(effect_json, dict)
+                or (
+                    effect_json.get("class_name") not in LOOK_RESET_EFFECT_CLASSES
+                    and not self._is_look_managed_effect(effect_json)
+                )
+            ]
+            if len(filtered_effects) == len(effects):
+                continue
+
+            original_clip_data = json.loads(json.dumps(clip.data))
+            clip.data["effects"] = filtered_effects
+            self.update_clip_data(clip.data, only_basic_props=False, ignore_reader=True)
+            get_app().updates.apply_last_action_to_history(original_clip_data)
+
     def _ensure_color_grade_effect(self, clip):
         if not clip or not self._clip_has_visual(clip):
             return None, False
@@ -2694,7 +2989,11 @@ class TimelineView(updates.UpdateInterface, ViewClass):
                     effects = clip.data.get("effects", [])
                     clip.data["effects"] = [
                         eff for eff in (effects if isinstance(effects, list) else [])
-                        if eff.get("class_name") not in ("Blur", "Mask")
+                        if not isinstance(eff, dict)
+                        or (
+                            eff.get("class_name") not in ("Blur", "Mask")
+                            or eff.get("ui-menu") == LOOK_EFFECT_UI_MENU
+                        )
                     ]
 
                 def _make_wipe_fx(svg_filename, t_start, t_end, brightness_start, brightness_end):
