@@ -557,7 +557,33 @@ class PropertiesTableView(QTableView):
         self._update_live_property_preview(value)
         get_app().updates.ignore_history = True
 
-    def preview_curve_property_value(self, item, property_key, value):
+    def _resolve_live_property_item(self, item, property_key, property_type, item_data=None):
+        if item:
+            try:
+                if not isdeleted(item):
+                    row = item.row()
+                    label_item = self.clip_properties_model.model.item(row, 0)
+                    if label_item:
+                        cur_property = label_item.data()
+                        if (
+                            isinstance(cur_property, tuple)
+                            and len(cur_property) == 2
+                            and cur_property[0] == property_key
+                            and cur_property[1].get("type") == property_type
+                        ):
+                            return item
+            except RuntimeError:
+                pass
+
+        resolved_item, _property_meta = self._find_property_value_item(
+            property_key,
+            property_type=property_type,
+            item_data=item_data,
+        )
+        return resolved_item
+
+    def preview_curve_property_value(self, item, property_key, value, item_data=None):
+        item = self._resolve_live_property_item(item, property_key, "colorgrade_curve", item_data)
         if not item:
             return
         self.update_in_progress = True
@@ -942,6 +968,10 @@ class PropertiesTableView(QTableView):
         self.start_transaction(item)
         get_app().updates.ignore_history = True
 
+    def start_curve_property_change(self, item, property_key, item_data=None):
+        item = self._resolve_live_property_item(item, property_key, "colorgrade_curve", item_data)
+        self.start_property_change(item)
+
     def finish_live_property_change(self):
         self.finish_property_change()
 
@@ -1251,9 +1281,12 @@ class PropertiesTableView(QTableView):
         self.color_grade_curve_dialogs.add(dialog)
         dialog.destroyed.connect(lambda *_args, dlg=dialog: self.color_grade_curve_dialogs.discard(dlg))
         dialog.curve_widget().curveChanged.connect(
-            lambda value, item=item, key=property_key: self.preview_curve_property_value(item, key, value)
+            lambda value, item=item, key=property_key, dlg=dialog: self.preview_curve_property_value(
+                item, key, value, getattr(dlg, "_item_data", None))
         )
-        dialog.changeStarted.connect(lambda item=item: self.start_property_change(item))
+        dialog.changeStarted.connect(
+            lambda item=item, key=property_key, dlg=dialog: self.start_curve_property_change(
+                item, key, getattr(dlg, "_item_data", None)))
         dialog.changeStarted.connect(self.pause_live_property_caching)
         dialog.changeFinished.connect(self.resume_live_property_caching)
         dialog.changeFinished.connect(self.finish_property_change)
@@ -1848,8 +1881,7 @@ class PropertiesTableView(QTableView):
             self.selected_item = None
 
         if self.selected_item:
-            current_value = QLocale().system().toDouble(self.selected_item.text())[0]
-            self.clip_properties_model.value_updated(self.selected_item, value=current_value)
+            self.clip_properties_model.insert_keyframe(self.selected_item)
 
     def Remove_Action_Triggered(self):
         log.info("Remove_Action_Triggered")

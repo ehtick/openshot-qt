@@ -238,25 +238,25 @@ def _evaluate_color(data, frame_number, default_color="#ffffff"):
     )
 
 
-def _set_color_value(data, frame_number, color):
+def _set_color_value(data, frame_number, color, interpolation=openshot.BEZIER):
     current = _normalize_color_data(data)
     return {
-        "red": _set_keyframe_value(current["red"], frame_number, color.red()),
-        "green": _set_keyframe_value(current["green"], frame_number, color.green()),
-        "blue": _set_keyframe_value(current["blue"], frame_number, color.blue()),
-        "alpha": _set_keyframe_value(current["alpha"], frame_number, color.alpha()),
+        "red": _set_keyframe_value(current["red"], frame_number, color.red(), interpolation),
+        "green": _set_keyframe_value(current["green"], frame_number, color.green(), interpolation),
+        "blue": _set_keyframe_value(current["blue"], frame_number, color.blue(), interpolation),
+        "alpha": _set_keyframe_value(current["alpha"], frame_number, color.alpha(), interpolation),
     }
 
 
 def _default_curve_node(node_id, x_value, y_value, frame_number=1):
     return {
         "id": int(node_id),
-        "x": _keyframe_value(frame_number=frame_number, value=x_value),
-        "y": _keyframe_value(frame_number=frame_number, value=y_value),
-        "left_handle_x": _keyframe_value(frame_number=frame_number, value=0.5),
-        "left_handle_y": _keyframe_value(frame_number=frame_number, value=1.0),
-        "right_handle_x": _keyframe_value(frame_number=frame_number, value=0.5),
-        "right_handle_y": _keyframe_value(frame_number=frame_number, value=0.0),
+        "x": _keyframe_value(frame_number=frame_number, value=x_value, interpolation=openshot.LINEAR),
+        "y": _keyframe_value(frame_number=frame_number, value=y_value, interpolation=openshot.LINEAR),
+        "left_handle_x": _keyframe_value(frame_number=frame_number, value=0.5, interpolation=openshot.LINEAR),
+        "left_handle_y": _keyframe_value(frame_number=frame_number, value=1.0, interpolation=openshot.LINEAR),
+        "right_handle_x": _keyframe_value(frame_number=frame_number, value=0.5, interpolation=openshot.LINEAR),
+        "right_handle_y": _keyframe_value(frame_number=frame_number, value=0.0, interpolation=openshot.LINEAR),
         "interpolation": int(openshot.LINEAR),
         "handle_type": int(openshot.AUTO),
     }
@@ -344,6 +344,26 @@ def default_wheels_data():
 NEUTRAL_WHEEL_COLOR = "#ffffff"
 NEUTRAL_PUCK_COLOR = "#ffffff"
 ACHROMATIC_SATURATION_THRESHOLD = 0.02
+
+
+def _mix_color(first, second, ratio):
+    ratio = max(0.0, min(1.0, float(ratio)))
+    return QColor(
+        int(round(first.red() + ((second.red() - first.red()) * ratio))),
+        int(round(first.green() + ((second.green() - first.green()) * ratio))),
+        int(round(first.blue() + ((second.blue() - first.blue()) * ratio))),
+        int(round(first.alpha() + ((second.alpha() - first.alpha()) * ratio))),
+    )
+
+
+def disabled_control_color(widget, text=False):
+    palette = widget.palette()
+    base = palette.base().color()
+    mid = palette.mid().color()
+    text_color = palette.text().color()
+    if text:
+        return _mix_color(mid, text_color, 0.32)
+    return _mix_color(base, mid, 0.36)
 
 
 def is_neutral_wheel(data):
@@ -627,6 +647,8 @@ class ColorWheelControl(QWidget):
 
         center, radius = self._center_and_radius()
         enabled = self.isEnabled()
+        disabled_color = disabled_control_color(self)
+        disabled_text_color = disabled_control_color(self, text=True)
 
         ring_rect = QRectF(center.x() - radius, center.y() - radius, radius * 2.0, radius * 2.0)
         ring_width = max(6.0, radius * 0.16)
@@ -643,27 +665,28 @@ class ColorWheelControl(QWidget):
             painter.restore()
         else:
             painter.setPen(Qt.NoPen)
-            painter.setBrush(QBrush(self.palette().mid().color()))
+            painter.setBrush(QBrush(disabled_color))
             painter.drawPath(ring_path)
 
-        painter.setPen(QPen(self.palette().mid().color(), 1.0))
+        outline_color = disabled_color if not enabled else self.palette().mid().color()
+        painter.setPen(QPen(outline_color, 1.0))
         painter.setBrush(QBrush(self.palette().base()))
         painter.drawEllipse(center, inner_radius - 1.0, inner_radius - 1.0)
 
-        painter.setPen(QPen(self.palette().mid().color(), 1.0, Qt.DashLine))
+        painter.setPen(QPen(outline_color, 1.0, Qt.DashLine))
         painter.drawLine(QPointF(center.x() - inner_radius, center.y()), QPointF(center.x() + inner_radius, center.y()))
         painter.drawLine(QPointF(center.x(), center.y() - inner_radius), QPointF(center.x(), center.y() + inner_radius))
 
         puck = self._puck_position()
-        painter.setPen(QPen(Qt.white if enabled else self.palette().mid().color(), 1.0))
-        painter.setBrush(QBrush(puck_display_color(self._data) if enabled else self.palette().mid().color()))
+        painter.setPen(QPen(Qt.white if enabled else disabled_text_color, 1.0))
+        painter.setBrush(QBrush(puck_display_color(self._data) if enabled else disabled_color))
         painter.drawEllipse(puck, 5.0, 5.0)
 
         if self._title:
             font = painter.font()
             font.setBold(True)
             painter.setFont(font)
-            painter.setPen(QPen(Qt.white if enabled else self.palette().mid().color()))
+            painter.setPen(QPen(Qt.white if enabled else disabled_text_color))
             text_rect = QRectF(center.x() - radius, center.y() - radius, radius * 2.0, ring_width)
             painter.drawText(text_rect, Qt.AlignCenter, self._title)
 
@@ -1295,7 +1318,7 @@ class PropertySlider(QWidget):
                 fg = theme.get_color(".property_value", "foreground-color")
         if not self.isEnabled():
             bg = self.palette().base().color()
-            fg = self.palette().mid().color()
+            fg = disabled_control_color(self)
 
         path = QPainterPath()
         path.addRoundedRect(rect, 6, 6)
@@ -1321,7 +1344,7 @@ class PropertySlider(QWidget):
                 self._curve_pixmaps.get(self._interpolation, self._curve_pixmaps[openshot.LINEAR]))
             text_rect.adjust(0.0, 0.0, -24.0, 0.0)
 
-        painter.setPen(QPen(Qt.white if self.isEnabled() else self.palette().mid().color()))
+        painter.setPen(QPen(Qt.white if self.isEnabled() else disabled_control_color(self, text=True)))
         painter.drawText(text_rect, Qt.AlignCenter, self._fmt(self._value))
         painter.end()
 
@@ -1574,16 +1597,6 @@ class WheelRow(QWidget):
                 continue
         return max(1, len(points)), interpolation
 
-    def _has_keyframe_at(self, kf_data, frame_number):
-        target = int(round(frame_number))
-        for point in self._keyframe_points(kf_data):
-            try:
-                if int(round(float(point["co"]["X"]))) == target:
-                    return True
-            except (KeyError, TypeError, ValueError):
-                continue
-        return False
-
     def _interpolation_target_frame(self):
         frames = sorted(self._frame_set())
         if not frames:
@@ -1741,7 +1754,7 @@ class WheelRow(QWidget):
         self.dragFinished.emit()
 
     def _remove_keyframe(self):
-        target = int(round(self._frame_number))
+        target = self._interpolation_target_frame()
         changed = False
 
         def _remove(kf_data):
@@ -1787,7 +1800,7 @@ class WheelRow(QWidget):
 
     def _remove_slider_keyframe(self, key):
         key_name = f"{key}_keyframes"
-        target = int(round(self._frame_number))
+        target = self._interpolation_target_frame_for(self._data.get(key_name))
         points = self._keyframe_points(self._data.get(key_name))
         if len(points) <= 1:
             return
@@ -1825,7 +1838,7 @@ class WheelRow(QWidget):
         insert_action.triggered.connect(lambda: self._insert_slider_keyframe(key))
         menu.addAction(insert_action)
         remove_action = QAction(_("Remove Keyframe"), self)
-        remove_action.setEnabled(self._has_keyframe_at(self._data.get(f"{key}_keyframes"), self._frame_number))
+        remove_action.setEnabled(len(self._keyframe_points(self._data.get(f"{key}_keyframes"))) > 1)
         remove_action.triggered.connect(lambda: self._remove_slider_keyframe(key))
         menu.addAction(remove_action)
         menu.exec_(source_widget.mapToGlobal(pos))
@@ -1851,7 +1864,7 @@ class WheelRow(QWidget):
         insert_action.triggered.connect(self._insert_keyframe)
         menu.addAction(insert_action)
         remove_action = QAction(_("Remove Keyframe"), self)
-        remove_action.setEnabled(int(round(self._frame_number)) in self._frame_set())
+        remove_action.setEnabled(len(self._frame_set()) > 1)
         remove_action.triggered.connect(self._remove_keyframe)
         menu.addAction(remove_action)
         menu.addSeparator()
