@@ -1516,6 +1516,21 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         """Show Audio Levels dock, anchoring to right if needed."""
         self._anchor_and_show_scope_dock(self.dockAudio)
 
+    def _scope_docks(self):
+        """Return docks that display video/audio scope data."""
+        return [
+            self.dockAudio,
+            self.dockHistogram,
+            self.dockLumaWaveform,
+            self.dockVectorscope,
+        ]
+
+    def show_all_scope_docks(self):
+        """Show all scope docks, anchoring them to the right if needed."""
+        for dock in self._scope_docks():
+            self._anchor_and_show_scope_dock(dock)
+        self.dockLumaWaveform.raise_()
+
     def actionSaveFrame_trigger(self, checked=True):
         log.info("actionSaveFrame_trigger")
 
@@ -2888,23 +2903,48 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             self.toolBar.setMovable(not frozen)
 
     def addViewDocksMenu(self):
-        """ Insert a Docks submenu into the View menu, rebuilt dynamically on each open """
+        """Insert dynamic Docks and Scopes submenus into the View menu."""
         _ = get_app()._tr
-        self.docks_menu = self.menuView.addMenu(_("Docks"))
+        self.docks_menu = QMenu(_("Docks"), self.menuView)
+        self.menuView.insertMenu(self.menuWindow.menuAction(), self.docks_menu)
         self.docks_menu.aboutToShow.connect(self._rebuild_docks_menu)
+        self.scopes_menu = QMenu(_("Scopes"), self.menuView)
+        self.menuView.insertMenu(self.menuWindow.menuAction(), self.scopes_menu)
+        self.scopes_menu.aboutToShow.connect(self._rebuild_scopes_menu)
 
     def _rebuild_docks_menu(self):
         """Repopulate the Docks menu so late-created docks (e.g. Color Wheels) are included."""
         self.docks_menu.clear()
+        scope_dock_names = {dock.objectName() for dock in self._scope_docks()}
         for dock in sorted(self.getDocks(), key=lambda d: d.windowTitle()):
-            if dock.features() & QDockWidget.DockWidgetClosable:
+            if (dock.features() & QDockWidget.DockWidgetClosable
+                    and dock.objectName() != "dockTutorial"
+                    and dock.objectName() not in scope_dock_names):
                 self.docks_menu.addAction(dock.toggleViewAction())
+
+        self.docks_menu.addSeparator()
+        self.docks_menu.addAction(self.actionFreeze_View)
+        self.docks_menu.addAction(self.actionUn_Freeze_View)
+        self.docks_menu.addAction(self.actionShow_All)
+
+    def _rebuild_scopes_menu(self):
+        """Repopulate the Scopes menu with scope docks and scope recovery actions."""
+        self.scopes_menu.clear()
+        _ = get_app()._tr
+        for dock in sorted(self._scope_docks(), key=lambda d: d.windowTitle()):
+            if dock.features() & QDockWidget.DockWidgetClosable:
+                self.scopes_menu.addAction(dock.toggleViewAction())
+        self.scopes_menu.addSeparator()
+        show_all_scopes = QAction(self.actionShow_All.icon(), _("Show All Scopes"), self.scopes_menu)
+        show_all_scopes.triggered.connect(self.show_all_scope_docks)
+        self.scopes_menu.addAction(show_all_scopes)
 
     def createPopupMenu(self):
         """Override Qt's right-click context menu to include all closable docks."""
         menu = QMenu(self)
         for dock in sorted(self.getDocks(), key=lambda d: d.windowTitle()):
-            if dock.features() & QDockWidget.DockWidgetClosable:
+            if (dock.features() & QDockWidget.DockWidgetClosable
+                    and dock.objectName() != "dockTutorial"):
                 menu.addAction(dock.toggleViewAction())
         menu.addSeparator()
         menu.addAction(self.actionView_Toolbar)
@@ -3060,7 +3100,8 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
 
     def actionShow_All_trigger(self):
         """ Show all dockable widgets """
-        self.showDocks(self.getDocks())
+        self.showDocks([dock for dock in self.getDocks()
+                        if dock.objectName() != "dockTutorial"])
 
     def actionTutorial_trigger(self):
         """ Show tutorial again """
@@ -4356,6 +4397,12 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
     def eventFilter(self, obj, event):
         """Filter out specific QActions/QShortcuts when certain docks have focus."""
 
+        if (isinstance(obj, QTabBar)
+                and event.type() == QEvent.MouseButtonRelease
+                and event.button() == Qt.MiddleButton):
+            if self._close_dock_tab_from_middle_click(obj, event):
+                return True
+
         # List of QAction names to ignore when non-timeline dock widgets have focus
         ignored_actions = [
             "seekPreviousFrame",
@@ -4423,6 +4470,35 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
 
         # Allow all other events to propagate normally
         return super(MainWindow, self).eventFilter(obj, event)
+
+    def _close_dock_tab_from_middle_click(self, tab_bar, event):
+        """Close a dock when its tabified dock tab is middle-clicked."""
+        tab_index = tab_bar.tabAt(event.pos())
+        if tab_index < 0:
+            return False
+
+        tabified_docks = [
+            dock
+            for dock in self.getDocks()
+            if dock.isVisible() and self.tabifiedDockWidgets(dock)
+        ]
+        if not tabified_docks:
+            return False
+
+        tab_title = tab_bar.tabText(tab_index)
+        tab_titles = {tab_bar.tabText(index) for index in range(tab_bar.count())}
+        dock_titles = {dock.windowTitle() for dock in tabified_docks}
+        if len(tab_titles & dock_titles) < 2:
+            return False
+
+        for dock in tabified_docks:
+            if (dock.windowTitle() == tab_title
+                    and dock.objectName() != "dockTutorial"
+                    and dock.features() & QDockWidget.DockWidgetClosable):
+                dock.close()
+                event.accept()
+                return True
+        return False
 
     def _blocks_timeline_shortcuts(self, widget):
         """Return True when focus should block timeline shortcuts like seek/play."""
@@ -4622,6 +4698,9 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             # Loop through all QTabBar objects
             tab_bars = self.findChildren(QTabBar)
             for tab_bar in tab_bars:
+                if not tab_bar.property("_openshot_middle_click_filter"):
+                    tab_bar.installEventFilter(self)
+                    tab_bar.setProperty("_openshot_middle_click_filter", True)
                 if draw_base is None:
                     tab_bar.setProperty("drawBase", True)
                 else:

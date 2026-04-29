@@ -1291,7 +1291,7 @@
   },
   {
     "category": "Keyboard",
-    "title": "Freeze View",
+    "title": "Lock Docks",
     "restart": false,
     "setting": "actionFreeze_View",
     "value": "Ctrl+F",
@@ -1299,7 +1299,7 @@
   },
   {
     "category": "Keyboard",
-    "title": "Un-Freeze View",
+    "title": "Unlock Docks",
     "restart": false,
     "setting": "actionUn_Freeze_View",
     "value": "Ctrl+Shift+F",

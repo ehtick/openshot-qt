@@ -165,7 +165,7 @@ Learning a few of these shortcuts can save you a bunch of time!
    Export Video / Media                  :kbd:`Ctrl+E`             :kbd:`Ctrl+M`
    Fast Forward                          :kbd:`L`
    File Properties                       :kbd:`Alt+I`              :kbd:`Ctrl+Double Click`
-   Freeze View                           :kbd:`Ctrl+F`
+   Lock Docks                            :kbd:`Ctrl+F`
    Fullscreen                            :kbd:`F11`
    Import Files...                       :kbd:`Ctrl+I`
    Insert Keyframe                       :kbd:`Alt+Shift+K`
@@ -217,7 +217,7 @@ Learning a few of these shortcuts can save you a bunch of time!
    Timing Toggle                         :kbd:`T`
    Title                                 :kbd:`Ctrl+T`
    Translate this Application...         :kbd:`F6`
-   Un-Freeze View                        :kbd:`Ctrl+Shift+F`
+   Unlock Docks                          :kbd:`Ctrl+Shift+F`
    Undo                                  :kbd:`Ctrl+Z`
    View Toolbar                          :kbd:`Ctrl+Shift+B`
    Zoom In                               :kbd:`=`                  :kbd:`Ctrl+=`
@@ -262,10 +262,10 @@ are renamed and/or rearranged.
        - :guilabel:`Animated Title` Add an animated title to the project. See :ref:`animated_titles_ref`.
    * - View
      -
-       - :guilabel:`Toolbar` Show or hide the main window toolbar.
-       - :guilabel:`Fullscreen` Toggle fullscreen mode.
-       - :guilabel:`Views` Switch or reset the main window layout (*Simple, Color, Advanced, Freeze, Show All*).
-       - :guilabel:`Docks` Show or hide various dockable panels (*Audio Levels, Captions, Color Wheels, Effects, Emojis, Histogram, Luma Waveform, Project Files, Properties, Transitions, Video Preview*).
+       - :guilabel:`Simple View`, :guilabel:`Color View`, and :guilabel:`Advanced View` switch or reset the main window layout.
+       - :guilabel:`Docks` Show or hide various dockable panels.
+       - :guilabel:`Scopes` Show or hide scope docks, or open all scopes at once.
+       - :guilabel:`Window` Show or hide the main window toolbar, or toggle fullscreen mode.
    * - Help
      -
        - :guilabel:`Contents` Open the user guide online.
@@ -288,7 +288,7 @@ Simple View
 This is the **default** view, and is designed to be easy-to-use, especially for first-time users. It contains
 :guilabel:`Project Files` on the top left, :guilabel:`Preview Window` on the top right, and :guilabel:`Timeline` on
 the bottom. If you accidentally close or move a dock, you can quickly reset all the docks back to their default
-location using the :guilabel:`View->Views->Simple View` menu at the top of the screen.
+location using the :guilabel:`View->Simple View` menu at the top of the screen.
 
 Advanced View
 ^^^^^^^^^^^^^
@@ -306,7 +306,8 @@ Docks
 ^^^^^
 Each widget on the OpenShot main window is contained in a **dock**. These docks can be dragged and snapped around the
 main window, and even grouped together (into tabs). OpenShot will always save your main window dock layout when you
-exit the program. Re-launching OpenShot will restore your custom dock layout automatically.
+exit the program. Re-launching OpenShot will restore your custom dock layout automatically. Scope docks are grouped
+under :guilabel:`View->Scopes`.
 
 .. list-table::
    :widths: 20 80
@@ -338,5 +339,5 @@ exit the program. Re-launching OpenShot will restore your custom dock layout aut
      - Preview the current state of your video project. Allows you to play back and review your edits in real-time. See :ref:`playback_ref`.
 
 If you have accidentally closed or moved a dock and can no longer find it, there are a couple easy solutions.
-First, you can use the :guilabel:`View->Views->Simple View` menu option at the top of the screen, to restore the view back to its
-default. Or you can use the :guilabel:`View->Views->Docks->...` menu to show or hide specific dock widgets on the main window.
+First, you can use the :guilabel:`View->Simple View` menu option at the top of the screen, to restore the view back to its
+default. Or you can use the :guilabel:`View->Docks->...` menu to show or hide specific dock widgets on the main window.

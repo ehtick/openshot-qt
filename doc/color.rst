@@ -64,7 +64,7 @@ Your monitor is not a reliable measuring tool — room lighting, screen brightne
 displays all affect what you see. **Video scopes** display the actual pixel values in your image as
 precise graphs. They never lie, even if your monitor does.
 
-OpenShot includes three scopes, all accessible from :guilabel:`View → Docks` or opened automatically
+OpenShot includes three scopes, all accessible from :guilabel:`View → Scopes` or opened automatically
 by the clip menu options described in :ref:`getting_started_ref`:
 
 - **Luma Waveform** — shows brightness across the frame, column by column. Instantly reveals
@@ -107,14 +107,14 @@ OpenShot offers several ways to open its color tools, depending on what you need
 
 **Right-click a clip → Look → Color → [preset]** *(Auto Contrast, Lift Shadows, Warm Up, Boost Color…)*
    Adds the Color Grade effect with a useful preset already applied. The Color Wheels and scopes
-   are not opened automatically — open them any time from :guilabel:`View → Docks`.
+   are not opened automatically — open them any time from :guilabel:`View → Scopes`.
 
 **Right-click a clip → Look → Analyze Colors**
    Opens all three scopes (Luma Waveform, Histogram, and Vectorscope, tabbed together on the right)
    without adding any Color Grade effect. Use this to evaluate footage before deciding whether it
    needs grading, or simply to monitor levels during playback.
 
-**View → Views → Color View** *(optional immersive mode)*
+**View → Color View** *(optional immersive mode)*
    Switches the entire interface into a dedicated color grading layout: the video preview is
    maximized in the center, non-color docks are hidden, the Color Wheels dock appears on the right,
    and the scopes appear below. Switch back to your normal layout from the same menu when done.
