@@ -227,6 +227,21 @@ class MainWindowTests(unittest.TestCase):
 
         self.assertEqual(calls, ["interaction", ("style", {"delay": 0})])
 
+    def test_active_custom_view_setter_does_not_shadow_reader(self):
+        fake_window = types.SimpleNamespace()
+        fake_window._active_custom_view_id = types.MethodType(
+            self.main_window_module.MainWindow._active_custom_view_id,
+            fake_window)
+        fake_window._set_active_custom_view_id = types.MethodType(
+            self.main_window_module.MainWindow._set_active_custom_view_id,
+            fake_window)
+
+        fake_window._set_active_custom_view_id("view-1")
+
+        self.assertTrue(callable(fake_window._active_custom_view_id))
+        self.assertEqual(fake_window._active_custom_view_id(), "view-1")
+        self.assertEqual(self.app.settings.values["active_custom_view"], "view-1")
+
     def test_scheduled_dock_style_update_waits_for_mouse_release(self):
         starts = []
         styles = []

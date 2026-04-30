@@ -260,6 +260,7 @@ are renamed and/or rearranged.
    * - View
      -
        - :guilabel:`Simple View`, :guilabel:`Color View`, and :guilabel:`Advanced View` switch or reset the main window layout.
+       - :guilabel:`My Views` Save, load, update, and delete your own named layouts. See :ref:`my_views_ref`.
        - :guilabel:`Docks` Show or hide various dockable panels.
        - :guilabel:`Scopes` Show or hide scope docks, or open all scopes at once.
        - :guilabel:`Window` Show or hide the main window toolbar, or toggle fullscreen mode.
@@ -273,12 +274,14 @@ are renamed and/or rearranged.
        - :guilabel:`Donate` Make a donation to support the project.
        - :guilabel:`About` View information about the software (version, contributors, translators, changelog, and supporters).
 
+.. _views_ref:
+
 Views
 -----
 
 The OpenShot main window is composed of multiple **docks**. These **docks** are arranged and snapped together
 into a grouping that we call a **View**. OpenShot includes :guilabel:`Simple View`, :guilabel:`Advanced View`,
-and :guilabel:`Color View`.
+:guilabel:`Color View`, and :guilabel:`My Views` (user-defined layouts).
 
 Simple View
 ^^^^^^^^^^^
@@ -298,6 +301,41 @@ Color View
 This view is focused on color correction and scopes. It enlarges the video preview, hides file-management docks,
 keeps the timeline and properties visible, places the :guilabel:`Color Wheels` dock on the right, and tabifies the
 :guilabel:`Luma Waveform` and :guilabel:`Histogram` docks together below it.
+
+.. _my_views_ref:
+
+My Views
+^^^^^^^^
+**My Views** lets you save any dock arrangement as a named layout and recall it instantly. This is ideal for
+workflows that require switching between different editing modes — for example, a detailed audio mix layout and
+a focused color grading layout — without manually repositioning docks each time.
+
+Each saved view captures the position, size, and visibility of every dock, as well as the timeline height.
+Saved views are stored in your project settings and persist across sessions.
+
+**View → My Views** menu options:
+
+.. list-table::
+   :widths: 30 70
+   :header-rows: 1
+
+   * - Menu Item
+     - Description
+   * - List of user-defined views
+     - Click to restore that layout. The currently active view shows a checkmark.
+   * - Update "*[name]*"
+     - Save your current dock arrangement over the active view, replacing it.
+   * - Delete "*[name]*"
+     - Remove the active view (asks for confirmation first).
+   * - Save Current View As...
+     - Name and save your current dock arrangement as a new view.
+
+**Typical workflow:**
+
+1. Arrange your docks exactly how you like them.
+2. Open :guilabel:`View → My Views → Save Current View As...` and enter a name (e.g. *"Audio Mix"*).
+3. Later, open :guilabel:`View → My Views` and click the view name to restore that layout instantly.
+4. If you adjust the layout and want to keep the changes, choose :guilabel:`Update "Audio Mix"` to overwrite it.
 
 Docks
 ^^^^^
