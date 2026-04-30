@@ -37,13 +37,14 @@ from contextlib import ExitStack
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
+import openshot
 
 PATH = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 if PATH not in sys.path:
     sys.path.append(PATH)
 
 from qt_api import QCoreApplication, Qt
-from qt_api import QApplication
+from qt_api import QApplication, QDockWidget, QMainWindow
 
 from classes.project_data import ProjectDataStore
 from classes.updates import UpdateManager
@@ -121,7 +122,9 @@ class MainWindowTests(unittest.TestCase):
         sys.modules["classes.metrics"] = metrics
         sys.modules.pop("windows.views.timeline", None)
         sys.modules.pop("windows.main_window", None)
+        sys.modules.pop("windows.views.properties_tableview", None)
         cls.main_window_module = importlib.import_module("windows.main_window")
+        cls.properties_tableview_module = importlib.import_module("windows.views.properties_tableview")
 
     @classmethod
     def tearDownClass(cls):
@@ -753,6 +756,52 @@ class MainWindowTests(unittest.TestCase):
         self.assertEqual(calls, ["effect", ("clip", False), ("transition", False)])
         self.assertEqual(refreshed.calls, [()])
         self.assertIsNone(self.app.updates.transaction_id)
+
+    def test_add_and_show_docks_apply_current_lock_state(self):
+        fake_window = QMainWindow()
+        normal_dock = QDockWidget("Normal", fake_window)
+        normal_dock.setObjectName("dockNormal")
+        scope_dock = QDockWidget("Scope", fake_window)
+        scope_dock.setObjectName("dockLumaWaveform")
+        fake_window.dockAudio = QDockWidget("Audio", fake_window)
+        fake_window.dockHistogram = QDockWidget("Histogram", fake_window)
+        fake_window.dockLumaWaveform = scope_dock
+        fake_window.dockTimeline = QDockWidget("Timeline", fake_window)
+        fake_window.dockVectorscope = QDockWidget("Vectorscope", fake_window)
+        fake_window.docks_frozen = True
+        fake_window.scopes_frozen = False
+        fake_window._scope_docks = lambda: self.main_window_module.MainWindow._scope_docks(fake_window)
+        fake_window.freezeDock = lambda dock, frozen=True: self.main_window_module.MainWindow.freezeDock(
+            fake_window, dock, frozen=frozen)
+        fake_window.applyDockLockState = lambda dock: self.main_window_module.MainWindow.applyDockLockState(
+            fake_window, dock)
+
+        self.main_window_module.MainWindow.addDocks(fake_window, [normal_dock], Qt.RightDockWidgetArea)
+        self.assertEqual(normal_dock.features(), QDockWidget.NoDockWidgetFeatures)
+
+        fake_window.removeDockWidget(normal_dock)
+        fake_window.docks_frozen = False
+        self.main_window_module.MainWindow.addDocks(fake_window, [normal_dock], Qt.RightDockWidgetArea)
+        self.assertTrue(normal_dock.features() & QDockWidget.DockWidgetClosable)
+        self.assertTrue(normal_dock.features() & QDockWidget.DockWidgetFloatable)
+
+        fake_window.scopes_frozen = True
+        self.main_window_module.MainWindow.addDocks(fake_window, [scope_dock], Qt.RightDockWidgetArea)
+        self.assertEqual(scope_dock.features(), QDockWidget.NoDockWidgetFeatures)
+
+    def test_live_property_resume_keeps_cache_disabled_until_seek_or_play(self):
+        settings = openshot.Settings.Instance()
+        previous = settings.ENABLE_PLAYBACK_CACHING
+        try:
+            settings.ENABLE_PLAYBACK_CACHING = False
+            fake_view = types.SimpleNamespace(live_property_cache_paused=True)
+
+            self.properties_tableview_module.PropertiesTableView.resume_live_property_caching(fake_view)
+
+            self.assertFalse(fake_view.live_property_cache_paused)
+            self.assertFalse(settings.ENABLE_PLAYBACK_CACHING)
+        finally:
+            settings.ENABLE_PLAYBACK_CACHING = previous
 
     def test_ripple_delete_gap_shifts_only_later_items_on_same_layer(self):
         saved = []

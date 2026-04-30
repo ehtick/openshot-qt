@@ -167,6 +167,13 @@
     "setting": "docks_frozen"
   },
   {
+    "value": false,
+    "title": "",
+    "type": "hidden",
+    "category": "Qt",
+    "setting": "scopes_frozen"
+  },
+  {
     "value": 0,
     "title": "",
     "type": "hidden",
