@@ -147,6 +147,7 @@ Learning a few of these shortcuts can save you a bunch of time!
    Animated Title                        :kbd:`Ctrl+Shift+T`
    Ask a Question...                     :kbd:`F4`
    Center on Playhead                    :kbd:`Shift+C`            :kbd:`Alt+Up`
+   Color View                            :kbd:`Alt+Shift+2`
    Choose Profile                        :kbd:`Ctrl+Alt+P`
    Clear All Cache                       :kbd:`Ctrl+Shift+ESC`
    Clear History                         :kbd:`Ctrl+Shift+H`
@@ -263,8 +264,8 @@ are renamed and/or rearranged.
      -
        - :guilabel:`Toolbar` Show or hide the main window toolbar.
        - :guilabel:`Fullscreen` Toggle fullscreen mode.
-       - :guilabel:`Views` Switch or reset the main window layout (*Simple, Advanced, Freeze, Show All*).
-       - :guilabel:`Docks` Show or hide various dockable panels (*Captions, Effects, Emojis, Project Files, Properties, Transitions, Video Preview*).
+       - :guilabel:`Views` Switch or reset the main window layout (*Simple, Color, Advanced, Freeze, Show All*).
+       - :guilabel:`Docks` Show or hide various dockable panels (*Audio Levels, Captions, Color Wheels, Effects, Emojis, Histogram, Luma Waveform, Project Files, Properties, Transitions, Video Preview*).
    * - Help
      -
        - :guilabel:`Contents` Open the user guide online.
@@ -279,8 +280,8 @@ Views
 -----
 
 The OpenShot main window is composed of multiple **docks**. These **docks** are arranged and snapped together
-into a grouping that we call a **View**. OpenShot comes with two primary views: :guilabel:`Simple View` and
-:guilabel:`Advanced View`.
+into a grouping that we call a **View**. OpenShot includes :guilabel:`Simple View`, :guilabel:`Advanced View`,
+and :guilabel:`Color View`.
 
 Simple View
 ^^^^^^^^^^^
@@ -294,6 +295,12 @@ Advanced View
 This is an advanced view, which adds more docks to the screen at once, improving access to many features that are
 not visible in Simple View. Once you have mastered the Simple View, we recommend giving this view a try as well.
 NOTE: You can also drag and drop the docks anywhere you would like, for a fully custom view.
+
+Color View
+^^^^^^^^^^
+This view is focused on color correction and scopes. It enlarges the video preview, hides file-management docks,
+keeps the timeline and properties visible, places the :guilabel:`Color Wheels` dock on the right, and tabifies the
+:guilabel:`Luma Waveform` and :guilabel:`Histogram` docks together below it.
 
 Docks
 ^^^^^
@@ -311,8 +318,16 @@ exit the program. Re-launching OpenShot will restore your custom dock layout aut
      - Manage and add captions or subtitles to your video project. Allows you to create, edit, and manage caption data. See :ref:`caption_effect_ref` effect.
    * - Effects
      - Browse and apply video and audio effects to your video clips. Includes filters, color adjustments, and special effects. See :ref:`effects_ref`.
+   * - Color Wheels
+     - Edit Color Grade wheel controls for global, shadows, midtones, and highlights from a dedicated right-side dock.
    * - Emojis
      - Add emoji graphics to your video project. Choose from a variety of emojis to enhance your video content.
+   * - Histogram
+     - Analyze the tonal and channel distribution of the current preview frame.
+   * - Luma Waveform
+     - Analyze brightness distribution across the current preview frame.
+   * - Audio Levels
+     - Monitor audio level scope data for the current preview frame.
    * - Project Files
      - View and manage all the media files imported into your project. Organize, filter, and tag video, audio, and image files. See :ref:`files_ref`.
    * - Properties

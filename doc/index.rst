@@ -42,6 +42,7 @@ Table of Contents:
    clips
    transitions
    effects
+   color
    export
    animation
    titles

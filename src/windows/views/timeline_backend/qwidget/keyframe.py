@@ -39,7 +39,7 @@ from classes.logger import log
 from classes.query import Clip, Transition, Effect
 from classes.query import Marker
 from ..colors import effect_color_qcolor
-from windows.views.menu import StyledContextMenu
+from windows.views.menu import StyledContextMenu, populate_keyframe_context_menu
 
 
 class KeyframeMixin:
@@ -1843,27 +1843,17 @@ class KeyframeMixin:
         linear_icon = QIcon(QPixmap(os.path.join(class_info.IMAGES_PATH, "keyframe-%s.png" % openshot.LINEAR)))
         constant_icon = QIcon(QPixmap(os.path.join(class_info.IMAGES_PATH, "keyframe-%s.png" % openshot.CONSTANT)))
 
-        presets = self._keyframe_bezier_presets()
         menu = StyledContextMenu(parent=self)
-
-        bez_menu = menu.addMenu(bezier_icon, _("Bezier"))
-        for preset in presets:
-            a = bez_menu.addAction(preset[4])
-            a.triggered.connect(functools.partial(
-                self._apply_keyframe_interpolation, 0, preset, marker, panel_targets))
-
-        lin = menu.addAction(linear_icon, _("Linear"))
-        lin.triggered.connect(functools.partial(
-            self._apply_keyframe_interpolation, 1, None, marker, panel_targets))
-
-        con = menu.addAction(constant_icon, _("Constant"))
-        con.triggered.connect(functools.partial(
-            self._apply_keyframe_interpolation, 2, None, marker, panel_targets))
-
-        menu.addSeparator()
-
-        remove = menu.addAction(_("Remove Keyframe"))
-        remove.triggered.connect(functools.partial(self._apply_keyframe_remove, marker, panel_targets))
+        populate_keyframe_context_menu(
+            menu,
+            bezier_callback=lambda preset: self._apply_keyframe_interpolation(0, preset, marker, panel_targets),
+            linear_callback=lambda: self._apply_keyframe_interpolation(1, None, marker, panel_targets),
+            constant_callback=lambda: self._apply_keyframe_interpolation(2, None, marker, panel_targets),
+            remove_callback=lambda: self._apply_keyframe_remove(marker, panel_targets),
+            bezier_icon=bezier_icon,
+            linear_icon=linear_icon,
+            constant_icon=constant_icon,
+        )
 
         global_pos = self.mapToGlobal(pos.toPoint() if hasattr(pos, "toPoint") else pos)
         menu.exec_(global_pos)

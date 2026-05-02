@@ -1011,7 +1011,7 @@ def _patch_enums_for_qt6():
     if QEvent:
         event_type = getattr(QEvent, "Type", None)
         if event_type:
-            for name in ("ShortcutOverride", "Resize", "Paint", "KeyPress", "MouseButtonPress"):
+            for name in ("ShortcutOverride", "Resize", "Paint", "KeyPress", "MouseButtonPress", "Close", "Hide", "Show"):
                 if hasattr(event_type, name) and not hasattr(QEvent, name):
                     try:
                         setattr(QEvent, name, getattr(event_type, name))
@@ -1031,6 +1031,39 @@ def _patch_enums_for_qt6():
                     setattr(QEventLoop, "ExcludeSocketNotifiers", process_flag.ExcludeSocketNotifiers)
                 except Exception:
                     pass
+
+    def _patch_point_event_methods(cls):
+        if cls is None or hasattr(cls, "x") or not hasattr(cls, "position"):
+            return
+
+        def _x(self):
+            return int(self.position().x())
+
+        def _y(self):
+            return int(self.position().y())
+
+        def _pos(self):
+            point = getattr(QtCore, "QPoint", None)
+            if point is not None:
+                return point(int(self.position().x()), int(self.position().y()))
+            return self.position().toPoint()
+
+        try:
+            setattr(cls, "x", _x)
+        except Exception:
+            pass
+        try:
+            setattr(cls, "y", _y)
+        except Exception:
+            pass
+        if not hasattr(cls, "pos"):
+            try:
+                setattr(cls, "pos", _pos)
+            except Exception:
+                pass
+
+    for event_name in ("QMouseEvent", "QHoverEvent", "QEnterEvent", "QTabletEvent"):
+        _patch_point_event_methods(getattr(QtGui, event_name, None))
 
     if QtCore and not hasattr(QtCore, "Qt"):
         return
@@ -1092,6 +1125,15 @@ def _patch_enums_for_qt6():
             if hasattr(dock_enum, name) and not hasattr(QtCore.Qt, name):
                 try:
                     setattr(QtCore.Qt, name, getattr(dock_enum, name))
+                except Exception:
+                    pass
+
+    context_menu_policy = getattr(QtCore.Qt, "ContextMenuPolicy", None)
+    if context_menu_policy:
+        for name in ("NoContextMenu", "DefaultContextMenu", "ActionsContextMenu", "CustomContextMenu", "PreventContextMenu"):
+            if hasattr(context_menu_policy, name) and not hasattr(QtCore.Qt, name):
+                try:
+                    setattr(QtCore.Qt, name, getattr(context_menu_policy, name))
                 except Exception:
                     pass
 
@@ -1249,6 +1291,15 @@ def _patch_enums_for_qt6():
             if hasattr(pen_style, name) and not hasattr(QtCore.Qt, name):
                 try:
                     setattr(QtCore.Qt, name, getattr(pen_style, name))
+                except Exception:
+                    pass
+
+    pen_cap_style = getattr(QtCore.Qt, "PenCapStyle", None)
+    if pen_cap_style:
+        for name in ("FlatCap", "SquareCap", "RoundCap", "MPenCapStyle"):
+            if hasattr(pen_cap_style, name) and not hasattr(QtCore.Qt, name):
+                try:
+                    setattr(QtCore.Qt, name, getattr(pen_cap_style, name))
                 except Exception:
                     pass
 
@@ -1695,6 +1746,52 @@ def _patch_enums_for_qt6():
                         setattr(QListView, name, getattr(resize_mode, name))
                     except Exception:
                         pass
+        selection_behavior = getattr(QListView, "SelectionBehavior", None)
+        if selection_behavior:
+            for name in ("SelectItems", "SelectRows", "SelectColumns"):
+                if hasattr(selection_behavior, name) and not hasattr(QListView, name):
+                    try:
+                        setattr(QListView, name, getattr(selection_behavior, name))
+                    except Exception:
+                        pass
+        selection_mode = getattr(QListView, "SelectionMode", None)
+        if selection_mode:
+            for name in ("NoSelection", "SingleSelection", "MultiSelection", "ExtendedSelection", "ContiguousSelection"):
+                if hasattr(selection_mode, name) and not hasattr(QListView, name):
+                    try:
+                        setattr(QListView, name, getattr(selection_mode, name))
+                    except Exception:
+                        pass
+
+    QFrame = getattr(QtWidgets, "QFrame", None)
+    if QFrame and not hasattr(QFrame, "NoFrame"):
+        frame_shape = getattr(QFrame, "Shape", None)
+        if frame_shape:
+            for name in ("NoFrame", "Box", "Panel", "StyledPanel", "HLine", "VLine", "WinPanel"):
+                if hasattr(frame_shape, name) and not hasattr(QFrame, name):
+                    try:
+                        setattr(QFrame, name, getattr(frame_shape, name))
+                    except Exception:
+                        pass
+        frame_shadow = getattr(QFrame, "Shadow", None)
+        if frame_shadow:
+            for name in ("Plain", "Raised", "Sunken"):
+                if hasattr(frame_shadow, name) and not hasattr(QFrame, name):
+                    try:
+                        setattr(QFrame, name, getattr(frame_shadow, name))
+                    except Exception:
+                        pass
+
+    QTreeView = getattr(QtWidgets, "QTreeView", None)
+    if QTreeView and not hasattr(QTreeView, "SelectRows"):
+        selection_behavior = getattr(QTreeView, "SelectionBehavior", None)
+        if selection_behavior:
+            for name in ("SelectItems", "SelectRows", "SelectColumns"):
+                if hasattr(selection_behavior, name) and not hasattr(QTreeView, name):
+                    try:
+                        setattr(QTreeView, name, getattr(selection_behavior, name))
+                    except Exception:
+                        pass
 
     QHeaderView = getattr(QtWidgets, "QHeaderView", None)
     if QHeaderView and not hasattr(QHeaderView, "Stretch"):
@@ -1962,6 +2059,17 @@ def _patch_enums_for_qt6():
                     except Exception:
                         pass
 
+    QFileDialog = getattr(QtWidgets, "QFileDialog", None)
+    if QFileDialog and not hasattr(QFileDialog, "ShowDirsOnly"):
+        option = getattr(QFileDialog, "Option", None)
+        if option:
+            for name in ("ShowDirsOnly", "DontResolveSymlinks", "DontConfirmOverwrite", "DontUseNativeDialog", "ReadOnly", "HideNameFilterDetails"):
+                if hasattr(option, name) and not hasattr(QFileDialog, name):
+                    try:
+                        setattr(QFileDialog, name, getattr(option, name))
+                    except Exception:
+                        pass
+
     QItemSelectionModel = getattr(QtCore, "QItemSelectionModel", None)
     if QItemSelectionModel and not hasattr(QItemSelectionModel, "Select"):
         selection_flag = getattr(QItemSelectionModel, "SelectionFlag", None)
@@ -2074,6 +2182,51 @@ def _patch_enums_for_qt6():
                 if not hasattr(QFont, name):
                     try:
                         setattr(QFont, name, val)
+                    except Exception:
+                        pass
+
+    QColor = getattr(QtGui, "QColor", None)
+    if QColor and not hasattr(QColor, "HexArgb"):
+        name_format = getattr(QColor, "NameFormat", None)
+        if name_format:
+            for name in ("HexRgb", "HexArgb"):
+                if hasattr(name_format, name) and not hasattr(QColor, name):
+                    try:
+                        setattr(QColor, name, getattr(name_format, name))
+                    except Exception:
+                        pass
+
+    QTextCursor = getattr(QtGui, "QTextCursor", None)
+    if QTextCursor and not hasattr(QTextCursor, "StartOfLine"):
+        move_operation = getattr(QTextCursor, "MoveOperation", None)
+        if move_operation:
+            for name in ("Up", "Down", "StartOfLine", "EndOfLine", "Start", "End"):
+                if hasattr(move_operation, name) and not hasattr(QTextCursor, name):
+                    try:
+                        setattr(QTextCursor, name, getattr(move_operation, name))
+                    except Exception:
+                        pass
+
+    QStyle = getattr(QtWidgets, "QStyle", None)
+    if QStyle:
+        complex_control = getattr(QStyle, "ComplexControl", None)
+        if complex_control:
+            for name, val in vars(complex_control).items():
+                if name.startswith("_"):
+                    continue
+                if not hasattr(QStyle, name):
+                    try:
+                        setattr(QStyle, name, val)
+                    except Exception:
+                        pass
+        sub_control = getattr(QStyle, "SubControl", None)
+        if sub_control:
+            for name, val in vars(sub_control).items():
+                if name.startswith("_"):
+                    continue
+                if not hasattr(QStyle, name):
+                    try:
+                        setattr(QStyle, name, val)
                     except Exception:
                         pass
 

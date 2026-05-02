@@ -96,8 +96,9 @@ except (ImportError, AttributeError):
     pass
 
 try:
-    # Manually set display scale factor rounding.
-    os.environ['QT_SCALE_FACTOR_ROUNDING_POLICY'] = "Round"
+    # PassThrough lets Qt use the exact QT_SCALE_FACTOR value (e.g. 1.5) without rounding
+    # to the nearest integer (e.g. 2.0).
+    os.environ['QT_SCALE_FACTOR_ROUNDING_POLICY'] = "PassThrough"
 
     # Enable High-DPI resolutions
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)

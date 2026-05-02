@@ -505,11 +505,7 @@ class TimelineWidgetBase(QWidget):
         keydrag.exited.connect(self._finishKeyframeDrag)
 
         resize.entered.connect(self._disable_playback_caching)
-        resize.exited.connect(self._enable_playback_caching)
-        playhead.entered.connect(self._disable_playback_caching)
-        playhead.exited.connect(self._enable_playback_caching)
         keydrag.entered.connect(self._disable_playback_caching)
-        keydrag.exited.connect(self._enable_playback_caching)
 
         sender, pressed_signal = self._event_signal("pressed")
 
@@ -563,9 +559,6 @@ class TimelineWidgetBase(QWidget):
 
     def _disable_playback_caching(self):
         openshot.Settings.Instance().ENABLE_PLAYBACK_CACHING = False
-
-    def _enable_playback_caching(self):
-        openshot.Settings.Instance().ENABLE_PLAYBACK_CACHING = True
 
     def _event_signal(self, name):
         return self.events, self._event_signal_bytes(name)
@@ -2575,6 +2568,12 @@ class TimelineWidgetBase(QWidget):
         return True
 
     def _begin_pending_clip_menu_click(self, pos):
+        # Effect badges are embedded inside the title container rect, so a click
+        # on a badge would otherwise register as a pending clip-menu click.
+        # Bail early so the badge handler takes priority (same as _assign_press_target).
+        if self._effect_icon_at(pos):
+            self._clear_pending_clip_menu_click()
+            return False
         target = self._clip_menu_target_at(pos)
         if not target:
             self._clear_pending_clip_menu_click()
@@ -3078,6 +3077,10 @@ class TimelineWidgetBase(QWidget):
         )
 
     def _trigger_clip_title_menu(self, pos):
+        # Effect badges live inside the title container rect; they handle their
+        # own click actions so the clip menu must not fire for those positions.
+        if self._effect_icon_at(pos):
+            return False
         for entry in reversed(self._clip_text_rects):
             if not isinstance(entry, dict) or not entry.get("open_menu"):
                 continue

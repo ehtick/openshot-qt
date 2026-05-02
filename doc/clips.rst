@@ -148,17 +148,20 @@ the following menu options:
    ==================  ============
    Preset Name         Description
    ==================  ============
+   Copy / Cut / Paste  Copy selected clip data, cut selected clips, or paste copied clip data. Copy supports full clips, effects, and keyframe groups.
+   Align               Align the left or right edge of multiple selected clips and transitions.
    Fade                Fade the image in or out (often easier than using a transition)
    Animate             Zoom and slide a clip
    Rotate              Rotate or flip a clip
+   Crop                Crop the clip with or without resizing the visible result back to the project frame.
+   Color               Apply quick color presets, reset color changes, or open the video scopes.
    Layout              Make a video smaller or larger, and snap to any corner
    Time                Reverse, repeat, and speed up or slow down video
-   Volume              Fade in or out the volume, reduce or increase the volume of a clip, or mute
+   Volume              Fade in or out the volume, reduce or increase the volume of a clip, mute it, or open the Audio Levels dock
    Separate Audio      Separate the audio from a clip. This preset can either create a single detached audio clip (positioned on a layer below the original clip), or multiple detached audio clips (one per audio track, positioned on multiple layers below the original clip)
-   Slice               Cut the clip at the play-head position
-   Display             Show waveform or thumbnail for a clip
+   Slice               Cut the clip at the play-head position, with options to keep either side, both sides, or ripple-delete one side.
+   Display             Switch selected clips between audio waveform and thumbnail display styles.
    Properties          Show the properties panel for a clip
-   Copy / Paste        Copy and paste key frames or duplicate an entire clip (with all key frames)
    Remove Clip         Remove a clip from the timeline
    ==================  ============
 
@@ -259,6 +262,12 @@ Another way to change a clip's speed is with the :guilabel:`Timing` tool on the 
 icon and drag a clip's edges. Lengthening the clip slows playback, while shotening it speeds the clip up.
 All keyframes on the clip and its effects are scaled so their relative positions remain intact.
 
+Color
+"""""
+The :guilabel:`Color` preset menu includes quick grading presets, :guilabel:`Reset Color`, and
+:guilabel:`Analyze Colors`. Choosing :guilabel:`Analyze Colors` opens the :guilabel:`Luma Waveform`
+and :guilabel:`Histogram` docks on the right side of the window, tabified together when needed.
+
 If you select multiple clips and/or transitions that share the same left edge or
 right edge, you can retime that shared edge together in one drag.
 
@@ -267,6 +276,10 @@ Volume
 The :guilabel:`Volume` preset controls audio properties, facilitating smooth volume adjustments. It
 manages audio volume, including fading in/out, reducing/increasing volume, or muting.
 See :ref:`clip_volume_ref` key-frame.
+
+The same menu also includes :guilabel:`Audio Levels`, which opens the :guilabel:`Audio Levels` dock on the right
+side of the window. If the scope docks are already open, OpenShot tabifies :guilabel:`Audio Levels` with the
+other scopes.
 
 - **Usage Example:** Applying a gradual volume fade-out to transition between scenes.
 - **Tip:** Utilize volume presets for quickly lowering or raising volume levels.

@@ -429,7 +429,88 @@ QLineEdit#filesFilter, QLineEdit#effectsFilter, QLineEdit#transitionsFilter, QLi
 QLineEdit,
 QSpinBox,
 QDoubleSpinBox {
+    background-color: #121212;
+    border: 1.2px solid transparent;
+    border-radius: 4px;
+    padding-top: 1px;
+    padding-bottom: 1px;
     padding-left: 6px;
+    min-height: 18px;
+}
+
+QSpinBox,
+QDoubleSpinBox {
+    padding-right: 22px;
+}
+
+QDoubleSpinBox#colorGradeSpinBox {
+    padding-right: 14px;
+}
+
+QSpinBox::up-button,
+QDoubleSpinBox::up-button,
+QSpinBox::down-button,
+QDoubleSpinBox::down-button {
+    subcontrol-origin: border;
+    width: 16px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    margin-right: 2px;
+}
+
+QSpinBox::up-button,
+QDoubleSpinBox::up-button {
+    subcontrol-position: top right;
+    margin-top: 1px;
+    margin-bottom: 0px;
+    min-height: 7px;
+}
+
+QSpinBox::down-button,
+QDoubleSpinBox::down-button {
+    subcontrol-position: bottom right;
+    margin-top: 0px;
+    margin-bottom: 1px;
+    min-height: 7px;
+}
+
+QSpinBox::up-button:hover,
+QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover,
+QDoubleSpinBox::down-button:hover {
+    background-color: rgba(145, 195, 255, 0.08);
+    border-color: rgba(145, 195, 255, 0.25);
+}
+
+QSpinBox::up-button:pressed,
+QDoubleSpinBox::up-button:pressed,
+QSpinBox::down-button:pressed,
+QDoubleSpinBox::down-button:pressed {
+    background-color: rgba(145, 195, 255, 0.14);
+    border-color: rgba(145, 195, 255, 0.4);
+}
+
+QSpinBox::up-arrow,
+QDoubleSpinBox::up-arrow {
+    image: url({PATH}themes/cosmic/images/spin-up-arrow.svg);
+    width: 12px;
+    height: 12px;
+}
+
+QSpinBox::down-arrow,
+QDoubleSpinBox::down-arrow {
+    image: url({PATH}themes/cosmic/images/spin-down-arrow.svg);
+    width: 12px;
+    height: 12px;
+}
+
+QLineEdit:focus,
+QSpinBox:focus,
+QDoubleSpinBox:focus {
+    border-width: 1.2px;
+    border-style: solid;
+    border-color: #53a0ed;
 }
 
 QLineEdit#filesFilter:focus, QLineEdit#effectsFilter:focus, QLineEdit#transitionsFilter:focus, QLineEdit#emojisFilter:focus, QLineEdit#txtPropertyFilter:focus {
@@ -691,8 +772,10 @@ QMessageBox QPushButton[text="&{_('Cancel')}"] {{
         font.setPointSizeF(8)
         self.app.setFont(font)
 
-        # Move tabs to top
-        self.app.window.setTabPosition(Qt.TopDockWidgetArea, QTabWidget.North)
+        # Move tabs to top (all dock areas, since restoreState() does not persist tab positions)
+        for area in (Qt.TopDockWidgetArea, Qt.BottomDockWidgetArea,
+                     Qt.LeftDockWidgetArea, Qt.RightDockWidgetArea):
+            self.app.window.setTabPosition(area, QTabWidget.North)
 
         # Set dock widget content margins to 0
         self.set_dock_margins([16, 0, 16, 0])
@@ -719,6 +802,10 @@ QMessageBox QPushButton[text="&{_('Cancel')}"] {{
             {"action": self.app.window.actionUpdate, "icon": "themes/cosmic/images/warning.svg", "visible": False, "style": Qt.ToolButtonTextBesideIcon, "stylesheet": "QToolButton {  background-color: #141923; color: #FABE0A; }"}
         ]
         self.set_toolbar_buttons(self.app.window.toolBar, icon_size=20, settings=toolbar_buttons)
+
+        self.app.window.actionColor_Grade_View.setIcon(
+            QIcon(os.path.join(PATH, "themes/cosmic/images/view-color.svg"))
+        )
 
         # Timeline toolbar buttons
         timeline_buttons = [
