@@ -151,7 +151,7 @@ the user has the following menu options:
    Copy / Cut / Paste  Copy selected clip data, cut selected clips, or paste copied clip data. Copy supports full clips, effects, and keyframe groups.
    Align               Align the left or right edge of multiple selected clips and transitions (only shown when multiple clips are selected).
    Fade                Fade the clip in or out — automatically fades video (alpha) and/or audio (volume) based on what the clip contains.
-   Motion              Add animated motion to a clip: slide in/out, bounce, blur, zoom, emphasis effects at the playhead, camera movements, and scrolling credits. Only shown for visual clips.
+   Motion              Add animated motion to a clip: slide in/out, bounce, blur, wipe/focus-wipe, zoom, emphasis effects at the playhead, camera movements, and scrolling credits. Only shown for visual clips.
    Transform           Apply geometric presets to a clip: rotate/flip, crop, or snap to a corner layout. Also provides a **No Transform** reset. Only shown for visual clips.
    Look                Apply visual style presets: color grades, film grain, analog tape, sharpen, blur, shadow, and glow effects. Includes **Adjust Colors** (Color Wheels editor) and **Analyze Colors** (video scopes). Only shown for visual clips.
    Speed               Reverse, repeat, speed up, or slow down video. Includes Freeze and Freeze & Zoom options.
@@ -189,12 +189,13 @@ several submenus. See :ref:`clip_location_x_ref` and :ref:`clip_scale_x_ref` key
   - **Back In** (From Bottom / Left / Right / Top) — clip overshoots and springs back into position.
   - **Blur In** — clip fades in from a motion blur.
   - **Bounce In** (Center / From Bottom / Left / Right / Top) — clip bounces as it enters.
+  - **Focus Wipe In** (Circle Expand / Circle Shrink / From Bottom / Left / Right / Top) — clip is revealed by a wipe while sharpening from blur into focus.
   - **Pop In** — clip scales up quickly from nothing.
   - **Slide In** (From Bottom / Left / Right / Top) — clip slides onto the screen.
   - **Spiral In** — clip rotates in while scaling up.
   - **Wipe In** (Circle Expand / Circle Shrink / From Bottom / Left / Right / Top) — clip is revealed by a wipe.
 
-- :guilabel:`Out` — exit animations applied at the end of the clip (mirrors the In options: Back Out, Blur Out, Bounce Out, Pop Out, Slide Out, Spiral Out, Wipe Out).
+- :guilabel:`Out` — exit animations applied at the end of the clip (mirrors the In options: Back Out, Blur Out, Bounce Out, Focus Wipe Out, Pop Out, Slide Out, Spiral Out, Wipe Out).
 
 - :guilabel:`Emphasis` — short attention-grabbing animations **inserted at the current playhead position** (not applied across the whole clip). Useful for mid-clip highlights: **Bounce**, **Flash**, **Heartbeat**, **Jello**, **Pulse**, **Rubber Band**, **Shake X**, **Shake Y**, **Swing**, **Tada**, **Wobble**.
 
