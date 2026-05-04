@@ -54,6 +54,18 @@ These terms are used often in this guide:
 
 For a full glossary, see :ref:`glossary_ref`.
 
+Current Timecode
+----------------
+
+The current timecode appears at the left side of the timeline ruler and shows the
+playhead's exact position. Click the timecode, enter a new value, and press
+:kbd:`Enter` to move the playhead to that frame.
+
+Clear the field or enter ``0`` to jump to the start of the timeline.
+Press :kbd:`Up` or :kbd:`Down` to step the selected timecode segment;
+hold :kbd:`Shift` to step by 10. When the frame segment is selected,
+hold :kbd:`Ctrl` to step by one second. Press :kbd:`Esc` to cancel.
+
 Common Timeline Tasks
 ---------------------
 

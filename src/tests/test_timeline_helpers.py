@@ -93,11 +93,13 @@ class TimelineHelperTests(unittest.TestCase):
         cls.geometry_clip_module = importlib.import_module("windows.views.timeline_backend.geometry.clip")
         cls.geometry_transition_module = importlib.import_module("windows.views.timeline_backend.geometry.transition")
         cls.clip_paint_module = importlib.import_module("windows.views.timeline_backend.paint.clip")
+        cls.ruler_paint_module = importlib.import_module("windows.views.timeline_backend.paint.ruler")
         cls.transition_paint_module = importlib.import_module("windows.views.timeline_backend.paint.transition")
         cls.qwidget_clip_module = importlib.import_module("windows.views.timeline_backend.qwidget.clip")
         cls.qwidget_transition_module = importlib.import_module("windows.views.timeline_backend.qwidget.transition")
         cls.qwidget_keyframe_module = importlib.import_module("windows.views.timeline_backend.qwidget.keyframe")
         cls.qwidget_keyframe_panel_module = importlib.import_module("windows.views.timeline_backend.qwidget.keyframe_panel")
+        cls.qwidget_timecode_module = importlib.import_module("windows.views.timeline_backend.qwidget.timecode")
         cls.thumbnails_module = importlib.import_module("windows.views.timeline_backend.qwidget.thumbnails")
         cls.waveform_module = importlib.import_module("classes.waveform")
         cls.humanity_theme_module = importlib.import_module("themes.humanity.styles")
@@ -126,6 +128,15 @@ class TimelineHelperTests(unittest.TestCase):
     def tearDownClass(cls):
         if getattr(cls, "_owns_app", False) and cls.app:
             cls.app.quit()
+
+    def test_timecode_editor_parses_blank_and_zero_as_timeline_start(self):
+        edit = self.qwidget_timecode_module.TimecodeLineEdit()
+        edit.set_context(30, 1, 31)
+
+        self.assertEqual(edit.parse_text(""), 1)
+        self.assertEqual(edit.parse_text("0"), 1)
+        self.assertEqual(edit.parse_text("00:00:00,00"), 1)
+        self.assertIsNone(edit.parse_text("bad"))
 
     def make_time_helper(self):
         timeline_module = self.timeline_module
@@ -182,8 +193,8 @@ class TimelineHelperTests(unittest.TestCase):
             def update_clip_data(self, clip_data, **kwargs):
                 self.updated.append((copy.deepcopy(clip_data), dict(kwargs)))
 
-            def _get_transition_reader_json(self, _path):
-                return {"path": "/tmp/wipe.svg", "has_single_image": True}
+            def _get_transition_reader_json(self, path):
+                return {"path": path, "has_single_image": True}
 
         return Helper()
 
@@ -594,6 +605,7 @@ class TimelineHelperTests(unittest.TestCase):
                 self._ctrl_zoom_step_pixels = 40.0
                 self._ctrl_zooming = False
                 self._zoom_playhead_anchor = None
+                self._zoom_anchor_locked = False
                 self._pending_hscroll_delta = 0.0
                 self._pending_vscroll_delta = 0.0
                 self._pending_zoom_emit = None
@@ -606,6 +618,7 @@ class TimelineHelperTests(unittest.TestCase):
                 self.capture_calls = 0
                 self.tooltip_values = []
                 self.mouse_dragging = False
+                self._middle_panning = False
                 self.viewport_reset_calls = 0
                 self.update_calls = 0
                 self.scrollbar_position = [0.20, 0.60, 400.0, 100.0]
@@ -626,7 +639,7 @@ class TimelineHelperTests(unittest.TestCase):
 
             def _capture_playhead_zoom_anchor(self):
                 self.capture_calls += 1
-                self._zoom_playhead_anchor = ("captured", 0.25)
+                self._zoom_playhead_anchor = ("captured", 75.0)
 
             def _apply_zoom_steps(self, steps, emit):
                 self.zoom_steps.append((steps, emit))
@@ -1566,7 +1579,7 @@ class TimelineHelperTests(unittest.TestCase):
                 patch.object(self.timeline_module.Clip, "get", return_value=clip):
             self.timeline_module.TimelineView.Animate_Triggered(
                 helper,
-                self.timeline_module.MenuAnimate.BLUR_WIPE_IN_LEFT,
+                self.timeline_module.MenuAnimate.FOCUS_WIPE_IN_LEFT,
                 ["C1"],
                 transaction_id="tx-blur-wipe-test",
             )
@@ -1589,7 +1602,7 @@ class TimelineHelperTests(unittest.TestCase):
                 patch.object(self.timeline_module.Clip, "get", return_value=clip):
             self.timeline_module.TimelineView.Animate_Triggered(
                 helper,
-                self.timeline_module.MenuAnimate.BLUR_WIPE_OUT_LEFT,
+                self.timeline_module.MenuAnimate.FOCUS_WIPE_OUT_LEFT,
                 ["C1"],
                 transaction_id="tx-blur-wipe-test",
             )
@@ -1603,6 +1616,139 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertEqual(mask_fx["brightness"]["Points"][0]["co"]["Y"], -1.0)
         self.assertEqual(mask_fx["brightness"]["Points"][-1]["co"]["Y"], 1.0)
         self.assertEqual(mask_fx["contrast"]["Points"][0]["co"]["Y"], 10.0)
+
+    def test_motion_focus_wipe_reuses_existing_blur_and_mask_effects(self):
+        helper = self.make_motion_helper()
+        clip = self.make_motion_clip()
+        app = self.make_motion_app()
+
+        with patch.object(self.timeline_module, "get_app", return_value=app), \
+                patch.object(self.timeline_module.Clip, "get", return_value=clip):
+            self.timeline_module.TimelineView.Animate_Triggered(
+                helper,
+                self.timeline_module.MenuAnimate.FOCUS_WIPE_IN_LEFT,
+                ["C1"],
+                transaction_id="tx-focus-wipe-test",
+            )
+            first_effect_ids = [effect["id"] for effect in clip.data["effects"]]
+
+            self.timeline_module.TimelineView.Animate_Triggered(
+                helper,
+                self.timeline_module.MenuAnimate.FOCUS_WIPE_IN_TOP,
+                ["C1"],
+                transaction_id="tx-focus-wipe-test",
+            )
+
+        self.assertEqual(len(clip.data["effects"]), 2)
+        self.assertEqual([effect["id"] for effect in clip.data["effects"]], first_effect_ids)
+        blur_fx, mask_fx = clip.data["effects"]
+        self.assertEqual(blur_fx["class_name"], "Blur")
+        self.assertEqual(mask_fx["class_name"], "Mask")
+        self.assertEqual(mask_fx["ui-menu"], self.timeline_module.MOTION_EFFECT_UI_MENU)
+        self.assertEqual(
+            os.path.basename(mask_fx["mask_reader"]["path"]),
+            "wipe_top_to_bottom.svg",
+        )
+
+    def test_motion_focus_wipe_in_then_out_keeps_one_blur_and_one_mask(self):
+        helper = self.make_motion_helper()
+        clip = self.make_motion_clip()
+
+        with patch.object(self.timeline_module, "get_app", return_value=self.make_motion_app()), \
+                patch.object(self.timeline_module.Clip, "get", return_value=clip):
+            self.timeline_module.TimelineView.Animate_Triggered(
+                helper,
+                self.timeline_module.MenuAnimate.FOCUS_WIPE_IN_LEFT,
+                ["C1"],
+                transaction_id="tx-focus-wipe-test",
+            )
+            self.timeline_module.TimelineView.Animate_Triggered(
+                helper,
+                self.timeline_module.MenuAnimate.FOCUS_WIPE_OUT_LEFT,
+                ["C1"],
+                transaction_id="tx-focus-wipe-test",
+            )
+
+        self.assertEqual(len(clip.data["effects"]), 2)
+        blur_fx, mask_fx = clip.data["effects"]
+        self.assertEqual(blur_fx["class_name"], "Blur")
+        self.assertEqual(mask_fx["class_name"], "Mask")
+        self.assertEqual(
+            [point["co"]["Y"] for point in blur_fx["horizontal_radius"]["Points"]],
+            [50.0, 0.0, 0.0, 50.0],
+        )
+        self.assertEqual(
+            [point["co"]["Y"] for point in mask_fx["brightness"]["Points"]],
+            [1.0, -1.0, -1.0, 1.0],
+        )
+
+    def test_motion_focus_wipe_does_not_repurpose_manual_blur_or_mask_effects(self):
+        helper = self.make_motion_helper()
+        clip = self.make_motion_clip()
+        clip.data["effects"] = [
+            {
+                "id": "USER_BLUR",
+                "class_name": "Blur",
+                "horizontal_radius": {"Points": [{"co": {"X": 1, "Y": 12.0}}]},
+                "vertical_radius": {"Points": [{"co": {"X": 1, "Y": 12.0}}]},
+            },
+            {
+                "id": "USER_MASK",
+                "class_name": "Mask",
+                "brightness": {"Points": [{"co": {"X": 1, "Y": 0.25}}]},
+                "contrast": {"Points": [{"co": {"X": 1, "Y": 4.0}}]},
+            },
+        ]
+
+        with patch.object(self.timeline_module, "get_app", return_value=self.make_motion_app()), \
+                patch.object(self.timeline_module.Clip, "get", return_value=clip):
+            self.timeline_module.TimelineView.Animate_Triggered(
+                helper,
+                self.timeline_module.MenuAnimate.FOCUS_WIPE_IN_LEFT,
+                ["C1"],
+                transaction_id="tx-focus-wipe-test",
+            )
+
+        self.assertEqual(len(clip.data["effects"]), 4)
+        self.assertEqual(clip.data["effects"][0]["id"], "USER_BLUR")
+        self.assertEqual(clip.data["effects"][1]["id"], "USER_MASK")
+        self.assertNotIn("ui-menu", clip.data["effects"][0])
+        self.assertNotIn("ui-menu", clip.data["effects"][1])
+        self.assertEqual(clip.data["effects"][0]["horizontal_radius"]["Points"][0]["co"]["Y"], 12.0)
+        self.assertEqual(clip.data["effects"][1]["brightness"]["Points"][0]["co"]["Y"], 0.25)
+
+    def test_motion_wipe_out_circle_presets_use_visible_motion_direction(self):
+        cases = (
+            (self.timeline_module.MenuAnimate.WIPE_OUT_CIRCLE_EXPAND, "circle_out_to_in.svg"),
+            (self.timeline_module.MenuAnimate.WIPE_OUT_CIRCLE_SHRINK, "circle_in_to_out.svg"),
+            (self.timeline_module.MenuAnimate.FOCUS_WIPE_OUT_CIRCLE_EXPAND, "circle_out_to_in.svg"),
+            (self.timeline_module.MenuAnimate.FOCUS_WIPE_OUT_CIRCLE_SHRINK, "circle_in_to_out.svg"),
+        )
+
+        for action, svg_filename in cases:
+            with self.subTest(action=action):
+                helper = self.make_motion_helper()
+                clip = self.make_motion_clip()
+
+                with patch.object(self.timeline_module, "get_app", return_value=self.make_motion_app()), \
+                        patch.object(self.timeline_module.Clip, "get", return_value=clip):
+                    self.timeline_module.TimelineView.Animate_Triggered(
+                        helper,
+                        action,
+                        ["C1"],
+                        transaction_id="tx-circle-wipe-test",
+                    )
+
+                mask_fx = [
+                    effect for effect in clip.data["effects"]
+                    if effect.get("class_name") == "Mask"
+                ][0]
+                self.assertEqual(
+                    os.path.basename(mask_fx["mask_reader"]["path"]),
+                    svg_filename,
+                )
+                self.assertEqual(mask_fx["brightness"]["Points"][0]["co"]["Y"], -1.0)
+                self.assertEqual(mask_fx["brightness"]["Points"][-1]["co"]["Y"], 1.0)
 
     def test_motion_bounce_emphasis_uses_frame_relative_offsets(self):
         helper = self.make_motion_helper()
@@ -2498,6 +2644,8 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertTrue(helper._ctrl_zooming)
         self.assertTrue(helper.mouse_dragging)
         self.assertEqual(helper._ctrl_zoom_anchor_y, 120.0)
+        self.assertEqual(helper._zoom_playhead_anchor, ("captured", 75.0))
+        self.assertTrue(helper._zoom_anchor_locked)
         self.assertEqual(helper.zoom_steps, [])
 
     def test_qwidget_ctrl_mouse_zoom_moves_up_to_zoom_in(self):
@@ -2511,7 +2659,7 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertTrue(handled)
         self.assertTrue(event.accepted)
         self.assertEqual(helper._ctrl_zoom_anchor_y, 100.0)
-        self.assertEqual(helper.capture_calls, 1)
+        self.assertEqual(helper.capture_calls, 0)
         self.assertEqual(len(helper.zoom_steps), 1)
         self.assertAlmostEqual(helper.zoom_steps[0][0], 0.5)
         self.assertFalse(helper.zoom_steps[0][1])
@@ -2543,9 +2691,35 @@ class TimelineHelperTests(unittest.TestCase):
 
         self.assertFalse(helper._ctrl_zooming)
         self.assertIsNone(helper._ctrl_zoom_anchor_y)
+        self.assertIsNone(helper._zoom_playhead_anchor)
+        self.assertFalse(helper._zoom_anchor_locked)
         self.assertFalse(helper.mouse_dragging)
         self.assertEqual(helper.viewport_reset_calls, 1)
         self.assertEqual(helper.update_calls, 1)
+
+    def test_qwidget_ctrl_mouse_zoom_release_finishes_gesture(self):
+        helper, _event_cls, _wheel_event_cls = self.make_qwidget_ctrl_zoom_helper()
+        helper._ctrl_zooming = True
+        helper._ctrl_zoom_anchor_y = 120.0
+        helper._zoom_playhead_anchor = ("captured", 75.0)
+        helper._zoom_anchor_locked = True
+        helper.mouse_dragging = True
+        release = types.SimpleNamespace(
+            button=lambda: Qt.MiddleButton,
+            pos=lambda: QPointF(20.0, 100.0),
+            accept=lambda: setattr(release, "accepted", True),
+        )
+        release.accepted = False
+
+        self.qwidget_base_module.TimelineWidgetBase.mouseReleaseEvent(helper, release)
+
+        self.assertTrue(release.accepted)
+        self.assertFalse(helper._ctrl_zooming)
+        self.assertIsNone(helper._ctrl_zoom_anchor_y)
+        self.assertIsNone(helper._zoom_playhead_anchor)
+        self.assertFalse(helper._zoom_anchor_locked)
+        self.assertFalse(helper.mouse_dragging)
+        self.assertEqual(helper.viewport_reset_calls, 1)
 
     def test_qwidget_ctrl_wheel_zoom_preserves_viewport_anchor(self):
         helper, _event_cls, wheel_event_cls = self.make_qwidget_ctrl_zoom_helper()
@@ -2556,6 +2730,8 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertTrue(event.accepted)
         self.assertFalse(event.ignored)
         self.assertEqual(helper.capture_calls, 1)
+        self.assertEqual(helper._zoom_playhead_anchor, ("captured", 75.0))
+        self.assertTrue(helper._zoom_anchor_locked)
         self.assertEqual(helper.zoom_steps, [(1.0, False)])
         self.assertFalse(helper.is_auto_center)
         self.assertEqual(helper._pending_zoom_emit, 12.0)
@@ -2596,7 +2772,8 @@ class TimelineHelperTests(unittest.TestCase):
     def test_qwidget_set_zoom_factor_keeps_playhead_at_existing_viewport_ratio(self):
         helper = types.SimpleNamespace()
         helper.zoom_factor = 10.0
-        helper._zoom_playhead_anchor = (4.0, 0.75)
+        helper._zoom_playhead_anchor = (4.0, 75.0)
+        helper._zoom_anchor_locked = False
         helper._external_zoom_span = None
         helper._suspend_changed_update = 0
         helper.scrollbar_position = [0.20, 0.60, 400.0, 100.0]
@@ -2621,6 +2798,56 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertAlmostEqual(helper.scrollbar_position[1], 0.525)
         self.assertAlmostEqual(helper.h_scroll_offset, 5.0)
         self.assertIsNone(helper._zoom_playhead_anchor)
+
+    def test_qwidget_set_zoom_factor_keeps_locked_playhead_anchor_for_gesture(self):
+        helper = types.SimpleNamespace()
+        helper.zoom_factor = 10.0
+        helper._zoom_playhead_anchor = (4.0, 75.0)
+        helper._zoom_anchor_locked = True
+        helper._ctrl_zooming = False
+        helper._external_zoom_span = None
+        helper._suspend_changed_update = 0
+        helper.scrollbar_position = [0.20, 0.60, 400.0, 100.0]
+        helper.pixels_per_second = 20.0
+        helper.is_auto_center = True
+        helper.fps_float = 24.0
+        helper.current_frame = 97
+        helper.win = types.SimpleNamespace(sliderZoomWidget=None)
+        helper.changed = lambda _value: None
+        helper.update = lambda: None
+        helper._emit_zoom_signals = lambda _positions: None
+        helper._schedule_viewport_thumbnail_reset = lambda: None
+        helper._clamp_zoom_factor = lambda value: self.qwidget_base_module.TimelineWidgetBase._clamp_zoom_factor(helper, value)
+        helper._current_project_duration = lambda: 10.0
+        helper._center_on_seconds = lambda *args, **kwargs: None
+
+        app = types.SimpleNamespace(project=types.SimpleNamespace(get=lambda key: 100.0 if key == "tick_pixels" else None))
+        with patch.object(self.qwidget_base_module, "get_app", return_value=app):
+            self.qwidget_base_module.TimelineWidgetBase.setZoomFactor(helper, 5.0, emit=False)
+
+        self.assertAlmostEqual(helper.scrollbar_position[0], 0.025)
+        self.assertAlmostEqual(helper.scrollbar_position[1], 0.525)
+        self.assertAlmostEqual(helper.h_scroll_offset, 5.0)
+        self.assertEqual(helper._zoom_playhead_anchor, (4.0, 75.0))
+        self.assertFalse(helper.is_auto_center)
+
+    def test_ruler_tick_intervals_include_intermediate_common_steps(self):
+        painter = object.__new__(self.ruler_paint_module.RulerPainter)
+
+        self.assertEqual(
+            painter._nice_frame_intervals(30.0)[:8],
+            [1, 2, 3, 5, 6, 10, 15, 30],
+        )
+        self.assertIn(30, painter._nice_frame_intervals(30.0))
+        self.assertIn(12, painter._nice_frame_intervals(24.0))
+
+    def test_ruler_tick_picker_avoids_large_density_drop_near_threshold(self):
+        painter = object.__new__(self.ruler_paint_module.RulerPainter)
+
+        self.assertEqual(painter._frames_per_tick(210.0, 30.0), 10)
+        self.assertEqual(painter._frames_per_tick(190.0, 30.0), 10)
+        self.assertEqual(painter._frames_per_tick(110.0, 30.0), 15)
+        self.assertEqual(painter._frames_per_tick(70.0, 30.0), 30)
 
     def test_qwidget_new_item_snap_uses_timeline_space_when_scrolled(self):
         recorded = {}

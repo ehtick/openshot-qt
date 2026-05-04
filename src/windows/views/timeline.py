@@ -68,6 +68,7 @@ from classes.film_grain_presets import (
 )
 
 LOOK_EFFECT_UI_MENU = "look"
+MOTION_EFFECT_UI_MENU = "motion"
 
 LOOK_RESET_EFFECT_CLASSES = {
     COLOR_GRADE_CLASS_NAME,
@@ -1604,6 +1605,14 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             (_("From Right"),  MenuAnimate.BOUNCE_IN_RIGHT),
             (_("From Top"),    MenuAnimate.BOUNCE_IN_DOWN),
         ]))
+        In_Menu.addMenu(_motion_sub(_("Focus Wipe In"), [
+            (_("Circle Expand"),  MenuAnimate.FOCUS_WIPE_IN_CIRCLE_EXPAND),
+            (_("Circle Shrink"),  MenuAnimate.FOCUS_WIPE_IN_CIRCLE_SHRINK),
+            (_("From Bottom"),    MenuAnimate.FOCUS_WIPE_IN_BOTTOM),
+            (_("From Left"),      MenuAnimate.FOCUS_WIPE_IN_LEFT),
+            (_("From Right"),     MenuAnimate.FOCUS_WIPE_IN_RIGHT),
+            (_("From Top"),       MenuAnimate.FOCUS_WIPE_IN_TOP),
+        ]))
         _motion_act(In_Menu, _("Pop In"),    MenuAnimate.POP_IN)
         In_Menu.addMenu(_motion_sub(_("Slide In"), [
             (_("From Bottom"), MenuAnimate.SLIDE_IN_BOTTOM),
@@ -1619,14 +1628,6 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             (_("From Left"),      MenuAnimate.WIPE_IN_LEFT),
             (_("From Right"),     MenuAnimate.WIPE_IN_RIGHT),
             (_("From Top"),       MenuAnimate.WIPE_IN_TOP),
-        ]))
-        In_Menu.addMenu(_motion_sub(_("Blur Wipe In"), [
-            (_("Circle Expand"),  MenuAnimate.BLUR_WIPE_IN_CIRCLE_EXPAND),
-            (_("Circle Shrink"),  MenuAnimate.BLUR_WIPE_IN_CIRCLE_SHRINK),
-            (_("From Bottom"),    MenuAnimate.BLUR_WIPE_IN_BOTTOM),
-            (_("From Left"),      MenuAnimate.BLUR_WIPE_IN_LEFT),
-            (_("From Right"),     MenuAnimate.BLUR_WIPE_IN_RIGHT),
-            (_("From Top"),       MenuAnimate.BLUR_WIPE_IN_TOP),
         ]))
         Animate_Menu.addMenu(In_Menu)
 
@@ -1646,6 +1647,14 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             (_("To Right"),  MenuAnimate.BOUNCE_OUT_RIGHT),
             (_("To Top"),    MenuAnimate.BOUNCE_OUT_UP),
         ]))
+        Out_Menu.addMenu(_motion_sub(_("Focus Wipe Out"), [
+            (_("Circle Expand"),  MenuAnimate.FOCUS_WIPE_OUT_CIRCLE_EXPAND),
+            (_("Circle Shrink"),  MenuAnimate.FOCUS_WIPE_OUT_CIRCLE_SHRINK),
+            (_("To Bottom"),      MenuAnimate.FOCUS_WIPE_OUT_BOTTOM),
+            (_("To Left"),        MenuAnimate.FOCUS_WIPE_OUT_LEFT),
+            (_("To Right"),       MenuAnimate.FOCUS_WIPE_OUT_RIGHT),
+            (_("To Top"),         MenuAnimate.FOCUS_WIPE_OUT_TOP),
+        ]))
         _motion_act(Out_Menu, _("Pop Out"),   MenuAnimate.POP_OUT)
         Out_Menu.addMenu(_motion_sub(_("Slide Out"), [
             (_("To Bottom"), MenuAnimate.SLIDE_OUT_BOTTOM),
@@ -1661,14 +1670,6 @@ class TimelineView(updates.UpdateInterface, ViewClass):
             (_("To Left"),        MenuAnimate.WIPE_OUT_LEFT),
             (_("To Right"),       MenuAnimate.WIPE_OUT_RIGHT),
             (_("To Top"),         MenuAnimate.WIPE_OUT_TOP),
-        ]))
-        Out_Menu.addMenu(_motion_sub(_("Blur Wipe Out"), [
-            (_("Circle Expand"),  MenuAnimate.BLUR_WIPE_OUT_CIRCLE_EXPAND),
-            (_("Circle Shrink"),  MenuAnimate.BLUR_WIPE_OUT_CIRCLE_SHRINK),
-            (_("To Bottom"),      MenuAnimate.BLUR_WIPE_OUT_BOTTOM),
-            (_("To Left"),        MenuAnimate.BLUR_WIPE_OUT_LEFT),
-            (_("To Right"),       MenuAnimate.BLUR_WIPE_OUT_RIGHT),
-            (_("To Top"),         MenuAnimate.BLUR_WIPE_OUT_TOP),
         ]))
         Animate_Menu.addMenu(Out_Menu)
 
@@ -3013,35 +3014,116 @@ class TimelineView(updates.UpdateInterface, ViewClass):
                         )
                     ]
 
+                _WIPE_SVG_FILENAMES = {
+                    "circle_in_to_out.svg",
+                    "circle_out_to_in.svg",
+                    "fade.svg",
+                    "wipe_left_to_right.svg",
+                    "wipe_right_to_left.svg",
+                    "wipe_top_to_bottom.svg",
+                    "wipe_bottom_to_top.svg",
+                }
+
+                def _find_or_create_motion_effect(class_name):
+                    """Return a reusable motion effect and collapse duplicate preset effects."""
+                    effects = clip.data.get("effects")
+                    if not isinstance(effects, list):
+                        effects = []
+                        clip.data["effects"] = effects
+
+                    def _points(prop):
+                        data = prop if isinstance(prop, dict) else {}
+                        return data.get("Points") if isinstance(data.get("Points"), list) else []
+
+                    def _point_values(prop):
+                        return [point.get("co", {}).get("Y") for point in _points(prop)]
+
+                    def _is_legacy_motion_effect(eff):
+                        if eff.get("ui-menu") not in (None, ""):
+                            return False
+                        if class_name == "Blur":
+                            horizontal = _point_values(eff.get("horizontal_radius"))
+                            vertical = _point_values(eff.get("vertical_radius"))
+                            return (
+                                horizontal == vertical
+                                and horizontal in ([50.0, 0.0], [0.0, 50.0])
+                            )
+                        if class_name == "Mask":
+                            reader = eff.get("mask_reader") or eff.get("reader") or {}
+                            path = reader.get("path", "") if isinstance(reader, dict) else ""
+                            brightness = _point_values(eff.get("brightness"))
+                            return (
+                                os.path.basename(path) in _WIPE_SVG_FILENAMES
+                                and brightness in ([1.0, -1.0], [-1.0, 1.0])
+                            )
+                        return False
+
+                    matching_indexes = [
+                        idx for idx, eff in enumerate(effects)
+                        if isinstance(eff, dict)
+                        and eff.get("class_name") == class_name
+                        and (
+                            eff.get("ui-menu") == MOTION_EFFECT_UI_MENU
+                            or _is_legacy_motion_effect(eff)
+                        )
+                    ]
+                    if matching_indexes:
+                        keep_index = matching_indexes[0]
+                        fx = effects[keep_index]
+                        fx["ui-menu"] = MOTION_EFFECT_UI_MENU
+                        for idx in reversed(matching_indexes[1:]):
+                            del effects[idx]
+                        return fx, False
+
+                    effect = openshot.EffectInfo().CreateEffect(class_name)
+                    fx = json.loads(effect.Json())
+                    fx["id"] = get_app().project.generate_id()
+                    fx["ui-menu"] = MOTION_EFFECT_UI_MENU
+                    effects.append(fx)
+                    return fx, True
+
+                def _set_motion_effect_points(fx, prop, *pts, replace_all=False):
+                    if not isinstance(fx.get(prop), dict) or not isinstance(fx[prop].get("Points"), list):
+                        fx[prop] = {"Points": []}
+                    if replace_all:
+                        fx[prop]["Points"] = []
+                    else:
+                        self._remove_keypoints_in_range(fx[prop], pts[0]["co"]["X"], pts[-1]["co"]["X"])
+                    for pt in pts:
+                        self.AddPoint(fx[prop], pt)
+
                 def _make_wipe_fx(svg_filename, t_start, t_end, brightness_start, brightness_end,
                                   contrast=20.0):
-                    """Attach a Mask effect (wipe) to clip.data using the given SVG transition."""
+                    """Reuse or attach a Mask effect (wipe) using the given SVG transition."""
                     svg_path = os.path.join(info.PATH, "transitions", "common", svg_filename)
                     reader_json = self._get_transition_reader_json(svg_path)
                     if not reader_json:
                         return
-                    effect = openshot.EffectInfo().CreateEffect("Mask")
-                    fx = json.loads(effect.Json())
-                    fx["id"] = get_app().project.generate_id()
+                    fx, created = _find_or_create_motion_effect("Mask")
                     fx["mask_reader"] = deepcopy(reader_json)
                     fx["reader"]      = deepcopy(reader_json)
-                    fx["brightness"]  = {"Points": [
-                        kf(t_start, brightness_start, openshot.LINEAR),
-                        kf(t_end,   brightness_end,   openshot.LINEAR),
-                    ]}
-                    fx["contrast"] = {"Points": [kf(t_start, contrast)]}
-                    clip.data["effects"].append(fx)
+                    x1, y1, x2, y2 = _KEYFRAME_EASING['ease_in_out']
+                    p0 = kf(t_start, brightness_start)
+                    p0['handle_right'] = {'X': x1, 'Y': y1}
+                    p1 = kf(t_end, brightness_end)
+                    p1['handle_left'] = {'X': x2, 'Y': y2}
+                    _set_motion_effect_points(fx, "brightness", p0, p1, replace_all=created)
+                    _set_motion_effect_points(fx, "contrast", kf(t_start, contrast), replace_all=created)
 
                 def _make_blur_fx(t_start, r_start, t_end, r_end):
-                    """Attach a Blur effect (horizontal + vertical radius) to clip.data."""
-                    effect = openshot.EffectInfo().CreateEffect("Blur")
-                    fx = json.loads(effect.Json())
-                    fx["id"] = get_app().project.generate_id()
-                    fx["horizontal_radius"] = {"Points": [kf(t_start, r_start, openshot.LINEAR),
-                                                          kf(t_end,   r_end,   openshot.LINEAR)]}
-                    fx["vertical_radius"]   = {"Points": [kf(t_start, r_start, openshot.LINEAR),
-                                                          kf(t_end,   r_end,   openshot.LINEAR)]}
-                    clip.data["effects"].append(fx)
+                    """Reuse or attach a Blur effect (horizontal + vertical radius)."""
+                    fx, created = _find_or_create_motion_effect("Blur")
+                    x1, y1, x2, y2 = _KEYFRAME_EASING['ease_in_out']
+
+                    def _eased_pts():
+                        q0 = kf(t_start, r_start)
+                        q0['handle_right'] = {'X': x1, 'Y': y1}
+                        q1 = kf(t_end, r_end)
+                        q1['handle_left'] = {'X': x2, 'Y': y2}
+                        return [q0, q1]
+
+                    _set_motion_effect_points(fx, "horizontal_radius", *_eased_pts(), replace_all=created)
+                    _set_motion_effect_points(fx, "vertical_radius", *_eased_pts(), replace_all=created)
 
                 def _apply_preset(preset_name, t_start, t_end, resting_frame):
                     """Apply an animation preset scaled to [t_start, t_end] frames.
@@ -3109,25 +3191,25 @@ class TimelineView(updates.UpdateInterface, ViewClass):
                     MenuAnimate.WIPE_IN_RIGHT:          "wipe_right_to_left.svg",
                     MenuAnimate.WIPE_IN_TOP:            "wipe_top_to_bottom.svg",
                     MenuAnimate.WIPE_IN_BOTTOM:         "wipe_bottom_to_top.svg",
-                    MenuAnimate.WIPE_OUT_CIRCLE_EXPAND: "circle_in_to_out.svg",
-                    MenuAnimate.WIPE_OUT_CIRCLE_SHRINK: "circle_out_to_in.svg",
+                    MenuAnimate.WIPE_OUT_CIRCLE_EXPAND: "circle_out_to_in.svg",
+                    MenuAnimate.WIPE_OUT_CIRCLE_SHRINK: "circle_in_to_out.svg",
                     MenuAnimate.WIPE_OUT_FADE:          "fade.svg",
                     MenuAnimate.WIPE_OUT_LEFT:          "wipe_left_to_right.svg",
                     MenuAnimate.WIPE_OUT_RIGHT:         "wipe_right_to_left.svg",
                     MenuAnimate.WIPE_OUT_TOP:           "wipe_top_to_bottom.svg",
                     MenuAnimate.WIPE_OUT_BOTTOM:        "wipe_bottom_to_top.svg",
-                    MenuAnimate.BLUR_WIPE_IN_CIRCLE_EXPAND:  "circle_in_to_out.svg",
-                    MenuAnimate.BLUR_WIPE_IN_CIRCLE_SHRINK:  "circle_out_to_in.svg",
-                    MenuAnimate.BLUR_WIPE_IN_LEFT:           "wipe_left_to_right.svg",
-                    MenuAnimate.BLUR_WIPE_IN_RIGHT:          "wipe_right_to_left.svg",
-                    MenuAnimate.BLUR_WIPE_IN_TOP:            "wipe_top_to_bottom.svg",
-                    MenuAnimate.BLUR_WIPE_IN_BOTTOM:         "wipe_bottom_to_top.svg",
-                    MenuAnimate.BLUR_WIPE_OUT_CIRCLE_EXPAND: "circle_in_to_out.svg",
-                    MenuAnimate.BLUR_WIPE_OUT_CIRCLE_SHRINK: "circle_out_to_in.svg",
-                    MenuAnimate.BLUR_WIPE_OUT_LEFT:          "wipe_left_to_right.svg",
-                    MenuAnimate.BLUR_WIPE_OUT_RIGHT:         "wipe_right_to_left.svg",
-                    MenuAnimate.BLUR_WIPE_OUT_TOP:           "wipe_top_to_bottom.svg",
-                    MenuAnimate.BLUR_WIPE_OUT_BOTTOM:        "wipe_bottom_to_top.svg",
+                    MenuAnimate.FOCUS_WIPE_IN_CIRCLE_EXPAND:  "circle_in_to_out.svg",
+                    MenuAnimate.FOCUS_WIPE_IN_CIRCLE_SHRINK:  "circle_out_to_in.svg",
+                    MenuAnimate.FOCUS_WIPE_IN_LEFT:           "wipe_left_to_right.svg",
+                    MenuAnimate.FOCUS_WIPE_IN_RIGHT:          "wipe_right_to_left.svg",
+                    MenuAnimate.FOCUS_WIPE_IN_TOP:            "wipe_top_to_bottom.svg",
+                    MenuAnimate.FOCUS_WIPE_IN_BOTTOM:         "wipe_bottom_to_top.svg",
+                    MenuAnimate.FOCUS_WIPE_OUT_CIRCLE_EXPAND: "circle_out_to_in.svg",
+                    MenuAnimate.FOCUS_WIPE_OUT_CIRCLE_SHRINK: "circle_in_to_out.svg",
+                    MenuAnimate.FOCUS_WIPE_OUT_LEFT:          "wipe_left_to_right.svg",
+                    MenuAnimate.FOCUS_WIPE_OUT_RIGHT:         "wipe_right_to_left.svg",
+                    MenuAnimate.FOCUS_WIPE_OUT_TOP:           "wipe_top_to_bottom.svg",
+                    MenuAnimate.FOCUS_WIPE_OUT_BOTTOM:        "wipe_bottom_to_top.svg",
                 }
 
                 def _camera_context():
@@ -3223,19 +3305,19 @@ class TimelineView(updates.UpdateInterface, ViewClass):
                                     MenuAnimate.WIPE_OUT_TOP,  MenuAnimate.WIPE_OUT_BOTTOM):
                         _make_wipe_fx(_WIPE_SVG[action], out_start, e, -1.0, 1.0)
 
-                    # ── BLUR WIPE IN — blur 50→0, then wipe reveals ───────────
-                    elif action in (MenuAnimate.BLUR_WIPE_IN_CIRCLE_EXPAND,
-                                    MenuAnimate.BLUR_WIPE_IN_CIRCLE_SHRINK,
-                                    MenuAnimate.BLUR_WIPE_IN_LEFT, MenuAnimate.BLUR_WIPE_IN_RIGHT,
-                                    MenuAnimate.BLUR_WIPE_IN_TOP,  MenuAnimate.BLUR_WIPE_IN_BOTTOM):
+                    # ── FOCUS WIPE IN — blur 50→0, then wipe reveals ──────────
+                    elif action in (MenuAnimate.FOCUS_WIPE_IN_CIRCLE_EXPAND,
+                                    MenuAnimate.FOCUS_WIPE_IN_CIRCLE_SHRINK,
+                                    MenuAnimate.FOCUS_WIPE_IN_LEFT, MenuAnimate.FOCUS_WIPE_IN_RIGHT,
+                                    MenuAnimate.FOCUS_WIPE_IN_TOP,  MenuAnimate.FOCUS_WIPE_IN_BOTTOM):
                         _make_blur_fx(s, 50.0, in_end, 0.0)
                         _make_wipe_fx(_WIPE_SVG[action], s, in_end, 1.0, -1.0, contrast=10.0)
 
-                    # ── BLUR WIPE OUT — wipe hides, blur 0→50 ─────────────────
-                    elif action in (MenuAnimate.BLUR_WIPE_OUT_CIRCLE_EXPAND,
-                                    MenuAnimate.BLUR_WIPE_OUT_CIRCLE_SHRINK,
-                                    MenuAnimate.BLUR_WIPE_OUT_LEFT, MenuAnimate.BLUR_WIPE_OUT_RIGHT,
-                                    MenuAnimate.BLUR_WIPE_OUT_TOP,  MenuAnimate.BLUR_WIPE_OUT_BOTTOM):
+                    # ── FOCUS WIPE OUT — wipe hides, blur 0→50 ───────────────
+                    elif action in (MenuAnimate.FOCUS_WIPE_OUT_CIRCLE_EXPAND,
+                                    MenuAnimate.FOCUS_WIPE_OUT_CIRCLE_SHRINK,
+                                    MenuAnimate.FOCUS_WIPE_OUT_LEFT, MenuAnimate.FOCUS_WIPE_OUT_RIGHT,
+                                    MenuAnimate.FOCUS_WIPE_OUT_TOP,  MenuAnimate.FOCUS_WIPE_OUT_BOTTOM):
                         _make_blur_fx(out_start, 0.0, e, 50.0)
                         _make_wipe_fx(_WIPE_SVG[action], out_start, e, -1.0, 1.0, contrast=10.0)
 
