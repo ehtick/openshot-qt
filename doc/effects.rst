@@ -84,7 +84,7 @@ identify a clip's start is by utilizing the 'next/previous marker' feature on th
 
 List of Effects
 ---------------
-OpenShot Video Editor has a total of 40 built-in video and audio effects: 31 video effects and 9 audio effects.
+OpenShot Video Editor has a total of 41 built-in video and audio effects: 32 video effects and 9 audio effects.
 These effects can be added to a clip by dragging the effect onto a clip. The following table contains
 the name and short description of each effect.
 
@@ -147,6 +147,10 @@ the name and short description of each effect.
 .. |deinterlace_icon| image:: ../src/effects/icons/deinterlace@2x.png
    :width: 50px
    :alt: Deinterlace Icon
+
+.. |denoiseimage_icon| image:: ../src/effects/icons/denoiseimage@2x.png
+   :width: 50px
+   :alt: Denoise Image Icon
 
 .. |displace_icon| image:: ../src/effects/icons/displace@2x.png
    :width: 50px
@@ -269,6 +273,7 @@ the name and short description of each effect.
    |colorshift_icon|           Color Shift                   Shift image colors in various directions.
    |crop_icon|                 Crop                          Crop out parts of your video.
    |deinterlace_icon|          Deinterlace                   Remove interlacing from video.
+   |denoiseimage_icon|         Denoise Image                 Reduce visible grain and color speckles in video frames.
    |displace_icon|             Displacement Map              Use a grayscale image or video to warp the frame.
    |filmgrain_icon|            Film Grain                    Add natural film-inspired texture and motion.
    |glow_icon|                 Glow                          Add a soft outer or inner glow to visible pixels.
@@ -1040,6 +1045,70 @@ older video cameras or broadcast sources) into a progressive format suitable for
    ==========================  ============
    isOdd                       ``(bool, choices: ['Yes', 'No'])`` Use odd or even lines
    ==========================  ============
+
+Denoise Image
+"""""""""""""
+The **Denoise Image** effect reduces visible video noise, grain, and color speckles. It is useful for low-light
+camera footage, noisy webcam clips, high-ISO photos, old video, compressed footage, and rendered images that have
+unwanted speckling.
+
+For a quick start, drag **Denoise Image** onto a clip and preview the result. The default settings are designed to
+clean up common noise while keeping faces, text, edges, and fine details recognizable. If the image still looks too
+noisy, raise :guilabel:`Strength`. If the image starts to look too smooth, raise :guilabel:`Detail`.
+
+Simple controls
+^^^^^^^^^^^^^^^
+
+- :guilabel:`Strength` controls how much denoising is applied.
+- :guilabel:`Detail` protects edges and texture. Higher values keep more detail; lower values remove more speckles.
+- :guilabel:`Color Noise` targets red, green, and blue color speckles, which are common in dark video.
+
+Most users can start with those three controls. The next controls are helpful when you want cleaner video without
+creating ghosting or smearing:
+
+- :guilabel:`Temporal` blends a small amount of information from the previous frame during normal playback. This can
+  reduce dancing noise from frame to frame.
+- :guilabel:`Motion Safety` protects moving objects. Higher values are more cautious and reduce the chance of ghosting.
+- :guilabel:`Response Curve` changes denoise strength by brightness. By default, shadows are cleaned more strongly,
+  midtones are balanced, and highlights are affected more lightly.
+
+How it works
+^^^^^^^^^^^^
+
+Denoise Image combines **spatial denoising** and conservative **temporal denoising**. Spatial denoising looks at the
+current frame and smooths small noisy variations while trying to preserve important edges. Temporal denoising compares
+neighboring frames and only blends when the image appears stable enough. When OpenShot detects a seek, scrub, frame
+jump, or still image, temporal history is reset automatically, so the effect falls back to the current frame only.
+
+The effect also treats brightness and color differently. Dark areas usually contain more camera sensor noise, so the
+default response curve applies stronger cleanup in shadows. Bright areas usually need less denoising. Color speckles
+are reduced more aggressively than luma detail, which helps remove low-light chroma noise without turning the whole
+image into a blur.
+
+Usage tips
+^^^^^^^^^^
+
+- For mild camera noise, use the default settings or raise :guilabel:`Strength` slightly.
+- For very noisy dark footage, raise :guilabel:`Strength` and :guilabel:`Color Noise`, then lower :guilabel:`Detail`
+  only as much as needed.
+- For faces, text, hair, leaves, or detailed textures, keep :guilabel:`Detail` higher to avoid a smeared look.
+- For moving subjects, keep :guilabel:`Motion Safety` high and avoid pushing :guilabel:`Temporal` too far.
+- For still images or photos, :guilabel:`Temporal` has no useful history, so focus on :guilabel:`Strength`,
+  :guilabel:`Detail`, :guilabel:`Color Noise`, and :guilabel:`Response Curve`.
+
+.. table::
+   :widths: 26 80
+
+   ==========================  ============================================================================
+   Property Name               Description
+   ==========================  ============================================================================
+   strength                    ``(float, 0 to 1)`` Overall denoise amount. Higher values remove more grain and speckles.
+   detail                      ``(float, 0 to 1)`` Edge and texture protection. Higher values preserve more fine detail; lower values smooth more noise.
+   temporal                    ``(float, 0 to 1)`` Previous-frame blending amount for stable sequential video frames.
+   motion_safety               ``(float, 0 to 1)`` Motion protection. Higher values reduce temporal blending where movement is detected.
+   color_noise                 ``(float, 0 to 1)`` Extra cleanup for red, green, and blue color speckles.
+   response_curve              ``(curve)`` Brightness-based denoise response. Use it to denoise shadows, midtones, and highlights differently.
+   ==========================  ============================================================================
 
 Displacement Map
 """"""""""""""""
