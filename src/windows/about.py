@@ -33,7 +33,8 @@ import platform
 import ctypes
 
 from qt_api import Qt, pyqtSignal
-from qt_api import QDialog
+from qt_api import QIcon, QSize, QTimer
+from qt_api import QDialog, QLabel
 
 from classes import info, ui_util
 from classes.logger import log
@@ -116,6 +117,23 @@ class About(QDialog):
                 background: transparent;
                 margin-bottom: 10px;
             }
+            QToolButton#btnCopyVersionInfo {
+                background: rgba(255, 255, 255, 8);
+                border: 1px solid rgba(255, 255, 255, 24);
+                border-radius: 4px;
+                color: #DCEEFF;
+                font-size: 11px;
+                font-weight: 600;
+                margin-bottom: 8px;
+                padding: 2px 8px;
+            }
+            QToolButton#btnCopyVersionInfo:hover {
+                background: rgba(255, 255, 255, 28);
+                border-color: rgba(255, 255, 255, 54);
+            }
+            QToolButton#btnCopyVersionInfo:pressed {
+                background: rgba(255, 255, 255, 45);
+            }
         """)
 
         # Hide chnagelog button by default
@@ -155,11 +173,36 @@ class About(QDialog):
         self.lblAboutCompany.setText(company_html)
         self.lblAboutCompany.setAlignment(Qt.AlignRight | Qt.AlignBottom)
         self.txtversion.setAlignment(Qt.AlignLeft | Qt.AlignBottom)
+        self.copy_version_tooltip = _("Copy Version Info")
+        self.copy_success_message = _("Version info copied to clipboard")
+        self.btnCopyVersionInfo.setToolTip(self.copy_version_tooltip)
+        self.btnCopyVersionInfo.setText(_("Copy"))
+        self.btnCopyVersionInfo.setIcon(QIcon(":/icons/Humanity/actions/16/edit-copy.svg"))
+        self.btnCopyVersionInfo.setIconSize(QSize(14, 14))
+        self.btnCopyVersionInfo.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.copy_feedback_timer = QTimer(self)
+        self.copy_feedback_timer.setSingleShot(True)
+        self.copy_feedback_timer.timeout.connect(self.hide_copy_confirmation)
+        self.copy_feedback_label = QLabel(self.copy_success_message, self)
+        self.copy_feedback_label.setObjectName("copyFeedbackLabel")
+        self.copy_feedback_label.setAlignment(Qt.AlignCenter)
+        self.copy_feedback_label.setStyleSheet("""
+            QLabel#copyFeedbackLabel {
+                background: rgba(35, 35, 35, 220);
+                border-radius: 15px;
+                color: #FFFFFF;
+                font-size: 11px;
+                font-weight: 600;
+                padding: 7px 18px;
+            }
+        """)
+        self.copy_feedback_label.hide()
 
         # set events handlers
         self.btncredit.clicked.connect(self.load_credit)
         self.btnlicense.clicked.connect(self.load_license)
         self.btnchangelog.clicked.connect(self.load_changelog)
+        self.btnCopyVersionInfo.clicked.connect(self.copy_version_info)
 
         # Track metrics
         track_metric_screen("about-screen")
@@ -189,6 +232,35 @@ class About(QDialog):
         """Copy a compact markdown version info block to the clipboard."""
         clipboard = get_app().clipboard()
         clipboard.setText(self.build_version_info_markdown())
+        self.show_copy_confirmation()
+
+    def show_copy_confirmation(self):
+        """Briefly confirm the copy action through the glyph tooltip."""
+        self.btnCopyVersionInfo.setToolTip(self.copy_success_message)
+        self.copy_feedback_label.setText(self.copy_success_message)
+        self.copy_feedback_label.adjustSize()
+        self.position_copy_confirmation()
+        self.copy_feedback_label.raise_()
+        self.copy_feedback_label.show()
+        self.copy_feedback_timer.start(1500)
+
+    def hide_copy_confirmation(self):
+        """Hide copy confirmation and restore the glyph tooltip."""
+        self.copy_feedback_label.hide()
+        self.btnCopyVersionInfo.setToolTip(self.copy_version_tooltip)
+
+    def position_copy_confirmation(self):
+        """Center the copy confirmation above the bottom buttons."""
+        label_size = self.copy_feedback_label.sizeHint()
+        x = int((self.width() - label_size.width()) / 2)
+        y = max(0, self.height() - label_size.height() - 52)
+        self.copy_feedback_label.move(x, y)
+
+    def resizeEvent(self, event):
+        """Keep transient copy confirmation centered if the dialog resizes."""
+        super().resizeEvent(event)
+        if hasattr(self, "copy_feedback_label") and self.copy_feedback_label.isVisible():
+            self.position_copy_confirmation()
 
     def build_version_info_markdown(self):
         """Return a compact markdown block with version, system, and performance info."""
