@@ -273,6 +273,24 @@ are renamed and/or rearranged.
        - :guilabel:`Donate` Make a donation to support the project.
        - :guilabel:`About` View information about the software (version, contributors, translators, changelog, and supporters).
 
+About OpenShot
+--------------
+Use :guilabel:`Help→About OpenShot` to check your OpenShot version. Click
+:guilabel:`Copy` next to the version number to copy a short version and system
+details report, which is the preferred way to share this information when
+reporting a bug or asking for help.
+
+Example output:
+
+.. code-block:: text
+
+   **OpenShot Version Info**
+   Version: 3.5.1-dev | libopenshot: 0.7.0
+   OS: Ubuntu 24.04
+   CPU: AMD Ryzen 7 8840HS w/ Radeon 780M Graphics (16 threads) | RAM: 15 GB
+   Cache: Memory, 900 MB, 905 frames, ahead 50%, pre-roll 24/48
+   Performance: Threads: OMP 16 | FFmpeg 16, Cards: Decode: None (0) | Encode: 0
+
 .. _views_ref:
 
 Views
