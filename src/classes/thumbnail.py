@@ -210,7 +210,7 @@ def GetThumbPath(file_id, thumbnail_frame, clear_cache=False, attempts=1):
 
 
 def GenerateThumbnail(file_path, thumb_path, thumbnail_frame, width, height, mask, overlay):
-    """Create thumbnail image, and check for rotate metadata (if any)"""
+    """Create thumbnail image."""
     try:
         scale = GetThumbDeviceScale()
     except Exception:
@@ -237,17 +237,6 @@ def GenerateThumbnail(file_path, thumb_path, thumbnail_frame, width, height, mas
                 reader.SetMaxDecodeSize(decode_width, decode_height)
             reader.Open()
 
-            # Get the 'rotate' metadata (if any)
-            rotate = 0.0
-            try:
-                if reader.info.metadata.count("rotate"):
-                    rotate_data = reader.info.metadata["rotate"]
-                    rotate = float(rotate_data)
-            except ValueError as ex:
-                log.warning("Could not parse rotation value {}: {}".format(rotate_data, ex))
-            except Exception:
-                log.warning("Error reading rotation metadata from {}".format(source_path), exc_info=1)
-
             reader.GetFrame(source_frame).Thumbnail(
                 thumb_path,
                 thumb_width,
@@ -258,7 +247,7 @@ def GenerateThumbnail(file_path, thumb_path, thumbnail_frame, width, height, mas
                 False,
                 "png",
                 85,
-                rotate,
+                0.0,
                 openshot.SCALE_CROP,
             )
             return True

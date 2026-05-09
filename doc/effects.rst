@@ -84,7 +84,7 @@ identify a clip's start is by utilizing the 'next/previous marker' feature on th
 
 List of Effects
 ---------------
-OpenShot Video Editor has a total of 40 built-in video and audio effects: 31 video effects and 9 audio effects.
+OpenShot Video Editor has a total of 41 built-in video and audio effects: 32 video effects and 9 audio effects.
 These effects can be added to a clip by dragging the effect onto a clip. The following table contains
 the name and short description of each effect.
 
@@ -147,6 +147,10 @@ the name and short description of each effect.
 .. |deinterlace_icon| image:: ../src/effects/icons/deinterlace@2x.png
    :width: 50px
    :alt: Deinterlace Icon
+
+.. |denoiseimage_icon| image:: ../src/effects/icons/denoiseimage@2x.png
+   :width: 50px
+   :alt: Denoise Image Icon
 
 .. |displace_icon| image:: ../src/effects/icons/displace@2x.png
    :width: 50px
@@ -254,11 +258,11 @@ the name and short description of each effect.
    =========================== ============================= ===============
    Icon                        Effect Name                   Effect Description
    =========================== ============================= ===============
-   |analogtape_icon|           Analog Tape                   Vintage home-video wobble, bleed, and snow.
    |mask_icon|                 Alpha Mask / Wipe Transition  Grayscale mask transition between images.
+   |analogtape_icon|           Analog Tape                   Vintage home-video wobble, bleed, and snow.
    |audiovisualization_icon|   Audio Visualization           Render waveform, spectrum, and other transparent audio visualizations.
-   |beatsync_icon|             Beat Sync                     Generate audio-reactive color flashes for compositing.
    |bars_icon|                 Bars                          Add colored bars around your video.
+   |beatsync_icon|             Beat Sync                     Generate audio-reactive color flashes for compositing.
    |blur_icon|                 Blur                          Adjust image blur.
    |brightness_icon|           Brightness & Contrast         Modify frame’s brightness and contrast.
    |caption_icon|              Caption                       Add text captions to any clip.
@@ -267,32 +271,33 @@ the name and short description of each effect.
    |colormap_icon|             Color Map / Lookup            Adjust colors using 3D LUT lookup tables (.cube format).
    |saturation_icon|           Color Saturation              Adjust color intensity.
    |colorshift_icon|           Color Shift                   Shift image colors in various directions.
+   |compressor_icon|           Compressor                    Reduce loudness or amplify quiet sounds.
    |crop_icon|                 Crop                          Crop out parts of your video.
    |deinterlace_icon|          Deinterlace                   Remove interlacing from video.
+   |delay_icon|                Delay                         Adjust audio-video synchronism.
+   |denoiseimage_icon|         Denoise Image                 Reduce visible grain and color speckles in video frames.
    |displace_icon|             Displacement Map              Use a grayscale image or video to warp the frame.
+   |distortion_icon|           Distortion                    Clip audio signal for distortion.
+   |echo_icon|                 Echo                          Add delayed sound reflection.
+   |expander_icon|             Expander                      Make loud parts relatively louder.
    |filmgrain_icon|            Film Grain                    Add natural film-inspired texture and motion.
    |glow_icon|                 Glow                          Add a soft outer or inner glow to visible pixels.
    |hue_icon|                  Hue                           Adjust hue / color.
    |lensflare_icon|            Lens Flare                    Simulate sunlight hitting a lens with flares.
    |negate_icon|               Negative                      Produce a negative image.
+   |noise_icon|                Noise                         Add random equal-intensity signals.
    |objectdetection_icon|      Object Detector               Detect objects in video.
    |outline_icon|              Outline                       Add outline around any image or text.
+   |parametriceq_icon|         Parametric EQ                 Adjust frequency volume in audio.
    |pixelate_icon|             Pixelate                      Increase or decrease visible pixels.
-   |sharpen_icon|              Sharpen                       Boost edge contrast to make video details look crisper.
+   |robotization_icon|         Robotization                  Transform audio into robotic voice.
    |shadow_icon|               Shadow                        Add a soft drop shadow behind visible pixels.
+   |sharpen_icon|              Sharpen                       Boost edge contrast to make video details look crisper.
    |shift_icon|                Shift                         Shift image in different directions.
    |sphericalprojection_icon|  Spherical Projection          Flatten or project 360° and fisheye footage.
    |stabilizer_icon|           Stabilizer                    Reduce video shake.
    |tracker_icon|              Tracker                       Track bounding box in video.
    |wave_icon|                 Wave                          Distort image into a wave pattern.
-   |compressor_icon|           Compressor                    Reduce loudness or amplify quiet sounds.
-   |delay_icon|                Delay                         Adjust audio-video synchronism.
-   |distortion_icon|           Distortion                    Clip audio signal for distortion.
-   |echo_icon|                 Echo                          Add delayed sound reflection.
-   |expander_icon|             Expander                      Make loud parts relatively louder.
-   |noise_icon|                Noise                         Add random equal-intensity signals.
-   |parametriceq_icon|         Parametric EQ                 Adjust frequency volume in audio.
-   |robotization_icon|         Robotization                  Transform audio into robotic voice.
    |whisperization_icon|       Whisperization                Transform audio into whispers.
    =========================== ============================= ===============
 
@@ -314,14 +319,19 @@ more information on individual effects and their unique properties.
    ======================  ==========  ============
    Effect Property Name    Type        Description
    ======================  ==========  ============
+   Apply Before Clip       Boolean     Apply this effect before the Clip processes keyframes? (default is Yes)
    Duration                Float       The length of the effect (in seconds). Read-only property. Most effects default to the length of a clip. This property is hidden when an effect belongs to a clip.
    End                     Float       The end trimming position of the effect (in seconds). This property is hidden when an effect belongs to a clip.
    ID                      String      A randomly generated GUID (globally unique identifier) assigned to each effect. Read-only property.
+   Mask: Invert            Bool        Invert the mask source so light areas become dark and dark areas become light.
+   Mask: Loop              Bool        Loop an animated mask source when the effect is longer than the source.
+   Mask Mode               Enum        Controls how the mask limits or varies the strength of the effect.
+   Mask: Source            Reader      The image, image sequence, or video used as the effect's grayscale mask source.
+   Mask: Time Mode         Enum        Controls how OpenShot maps effect time to an animated mask source.
    Parent                  String      The parent object to this effect, which makes many of these keyframe values initialize to the parent value.
    Position                Float       The position of the effect on the timeline (in seconds). This property is hidden when an effect belongs to a clip.
    Start                   Float       The start trimming position of the effect (in seconds). This property is hidden when an effect belongs to a clip.
    Track                   Int         The layer which holds the effect (higher tracks are rendered on top of lower tracks). This property is hidden when an effect belongs to a clip.
-   Apply Before Clip       Boolean     Apply this effect before the Clip processes keyframes? (default is Yes)
    ======================  ==========  ============
 
 Duration
@@ -342,6 +352,13 @@ ID
 ""
 The :guilabel:`ID` property holds a randomly generated GUID (Globally Unique Identifier) assigned to each effect,
 ensuring its uniqueness. This is a Read-only property, and assigned by OpenShot when an effect is created.
+
+Mask Properties
+"""""""""""""""
+The :guilabel:`Mask: Source`, :guilabel:`Mask Mode`, :guilabel:`Mask: Time Mode`, :guilabel:`Mask: Loop`, and
+:guilabel:`Mask: Invert` properties limit where an effect is applied. The mask source can be a static image, image
+sequence, or video. Light areas of the mask usually apply more of the effect, while dark areas apply less; use
+:guilabel:`Mask: Invert` when you need the opposite result.
 
 Track
 """""
@@ -1040,6 +1057,70 @@ older video cameras or broadcast sources) into a progressive format suitable for
    ==========================  ============
    isOdd                       ``(bool, choices: ['Yes', 'No'])`` Use odd or even lines
    ==========================  ============
+
+Denoise Image
+"""""""""""""
+The **Denoise Image** effect reduces visible video noise, grain, and color speckles. It is useful for low-light
+camera footage, noisy webcam clips, high-ISO photos, old video, compressed footage, and rendered images that have
+unwanted speckling.
+
+For a quick start, drag **Denoise Image** onto a clip and preview the result. The default settings are designed to
+clean up common noise while keeping faces, text, edges, and fine details recognizable. If the image still looks too
+noisy, raise :guilabel:`Strength`. If the image starts to look too smooth, raise :guilabel:`Detail`.
+
+Simple controls
+^^^^^^^^^^^^^^^
+
+- :guilabel:`Strength` controls how much denoising is applied.
+- :guilabel:`Detail` protects edges and texture. Higher values keep more detail; lower values remove more speckles.
+- :guilabel:`Color Noise` targets red, green, and blue color speckles, which are common in dark video.
+
+Most users can start with those three controls. The next controls are helpful when you want cleaner video without
+creating ghosting or smearing:
+
+- :guilabel:`Temporal` blends a small amount of information from the previous frame during normal playback. This can
+  reduce dancing noise from frame to frame.
+- :guilabel:`Motion Safety` protects moving objects. Higher values are more cautious and reduce the chance of ghosting.
+- :guilabel:`Response Curve` changes denoise strength by brightness. By default, shadows are cleaned more strongly,
+  midtones are balanced, and highlights are affected more lightly.
+
+How it works
+^^^^^^^^^^^^
+
+Denoise Image combines **spatial denoising** and conservative **temporal denoising**. Spatial denoising looks at the
+current frame and smooths small noisy variations while trying to preserve important edges. Temporal denoising compares
+neighboring frames and only blends when the image appears stable enough. When OpenShot detects a seek, scrub, frame
+jump, or still image, temporal history is reset automatically, so the effect falls back to the current frame only.
+
+The effect also treats brightness and color differently. Dark areas usually contain more camera sensor noise, so the
+default response curve applies stronger cleanup in shadows. Bright areas usually need less denoising. Color speckles
+are reduced more aggressively than luma detail, which helps remove low-light chroma noise without turning the whole
+image into a blur.
+
+Usage tips
+^^^^^^^^^^
+
+- For mild camera noise, use the default settings or raise :guilabel:`Strength` slightly.
+- For very noisy dark footage, raise :guilabel:`Strength` and :guilabel:`Color Noise`, then lower :guilabel:`Detail`
+  only as much as needed.
+- For faces, text, hair, leaves, or detailed textures, keep :guilabel:`Detail` higher to avoid a smeared look.
+- For moving subjects, keep :guilabel:`Motion Safety` high and avoid pushing :guilabel:`Temporal` too far.
+- For still images or photos, :guilabel:`Temporal` has no useful history, so focus on :guilabel:`Strength`,
+  :guilabel:`Detail`, :guilabel:`Color Noise`, and :guilabel:`Response Curve`.
+
+.. table::
+   :widths: 26 80
+
+   ==========================  ============================================================================
+   Property Name               Description
+   ==========================  ============================================================================
+   strength                    ``(float, 0 to 1)`` Overall denoise amount. Higher values remove more grain and speckles.
+   detail                      ``(float, 0 to 1)`` Edge and texture protection. Higher values preserve more fine detail; lower values smooth more noise.
+   temporal                    ``(float, 0 to 1)`` Previous-frame blending amount for stable sequential video frames.
+   motion_safety               ``(float, 0 to 1)`` Motion protection. Higher values reduce temporal blending where movement is detected.
+   color_noise                 ``(float, 0 to 1)`` Extra cleanup for red, green, and blue color speckles.
+   response_curve              ``(curve)`` Brightness-based denoise response. Use it to denoise shadows, midtones, and highlights differently.
+   ==========================  ============================================================================
 
 Displacement Map
 """"""""""""""""

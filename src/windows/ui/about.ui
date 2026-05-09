@@ -47,10 +47,10 @@
      </item>
      <item>
       <layout class="QHBoxLayout" name="horizontalLayoutVersionCopyright">
-       <item>
+       <item alignment="Qt::AlignBottom">
         <widget class="QLabel" name="txtversion">
          <property name="sizePolicy">
-          <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+          <sizepolicy hsizetype="Maximum" vsizetype="Expanding">
            <horstretch>0</horstretch>
            <verstretch>0</verstretch>
           </sizepolicy>
@@ -65,6 +65,44 @@
           <set>Qt::AlignBottom|Qt::AlignLeading|Qt::AlignLeft</set>
          </property>
         </widget>
+       </item>
+       <item alignment="Qt::AlignBottom">
+        <widget class="QToolButton" name="btnCopyVersionInfo">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>68</width>
+           <height>24</height>
+          </size>
+         </property>
+         <property name="toolTip">
+          <string>Copy Version Info</string>
+         </property>
+         <property name="text">
+          <string>Copy</string>
+         </property>
+         <property name="autoRaise">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="horizontalSpacerVersionCopy">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>40</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
        </item>
        <item>
         <widget class="QLabel" name="lblAboutCompany">

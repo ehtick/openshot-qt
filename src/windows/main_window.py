@@ -2931,8 +2931,8 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         _ = get_app()._tr
         self.custom_views_menu = QMenu(_("My Views"), self.menuView)
         separator_after_views = self.menuWindow.menuAction()
-        advanced_index = self.menuView.actions().index(self.actionAdvanced_View)
-        for action in self.menuView.actions()[advanced_index + 1:]:
+        color_view_index = self.menuView.actions().index(self.actionColor_Grade_View)
+        for action in self.menuView.actions()[color_view_index + 1:]:
             if action.isSeparator():
                 separator_after_views = action
                 break
@@ -3213,49 +3213,6 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             "AAAA/wAAAAD9AAAAAwAAAAAAAAEnAAAC3/wCAAAAA/wAAAJeAAAApwAAAAAA////+gAAAAACAAAAAfsAAAAYAGQAbwBjAGsASwBlAHkAZgByAGEAbQBlAAAAAAD/////AAAAAAAAAAD7AAAAHABkAG8AYwBrAFAAcgBvAHAAZQByAHQAaQBlAHMAAAAAJwAAAt8AAAChAP////sAAAAYAGQAbwBjAGsAVAB1AHQAbwByAGkAYQBsAgAABUQAAAF6AAABYAAAANwAAAABAAABHAAAAUD8AgAAAAH7AAAAGABkAG8AYwBrAEsAZQB5AGYAcgBhAG0AZQEAAAFYAAAAFQAAAAAAAAAAAAAAAgAABEYAAALC/AEAAAAC/AAAAAAAAARGAAAA+gD////8AgAAAAL8AAAAPQAAAa4AAACvAP////wBAAAAAvwAAAAAAAABwQAAAJcA////+gAAAAACAAAABPsAAAASAGQAbwBjAGsARgBpAGwAZQBzAQAAAAD/////AAAAkgD////7AAAAHgBkAG8AYwBrAFQAcgBhAG4AcwBpAHQAaQBvAG4AcwEAAAAA/////wAAAJIA////+wAAABYAZABvAGMAawBFAGYAZgBlAGMAdABzAQAAAAD/////AAAAkgD////7AAAAFABkAG8AYwBrAEUAbQBvAGoAaQBzAQAAAAD/////AAAAkgD////7AAAAEgBkAG8AYwBrAFYAaQBkAGUAbwEAAAHHAAACfwAAAEcA////+wAAABgAZABvAGMAawBUAGkAbQBlAGwAaQBuAGUBAAAB8QAAAQ4AAACWAP////sAAAAiAGQAbwBjAGsAQwBhAHAAdABpAG8AbgBFAGQAaQB0AG8AcgAAAANtAAAA2QAAAFgA////AAAERgAAAAEAAAABAAAAAgAAAAEAAAAC/AAAAAEAAAACAAAAAQAAAA4AdABvAG8AbABCAGEAcgEAAAAA/////wAAAAAAAAAA"
         ])
         self.restoreState(qt_types.str_to_bytes(simple_state))
-        QCoreApplication.processEvents()
-
-    def actionAdvanced_View_trigger(self):
-        """ Switch to an alternative view """
-        self._set_active_custom_view_id("")
-        self.removeDocks()
-
-        # Add Docks
-        self.addDocks([self.dockFiles, self.dockVideo], Qt.TopDockWidgetArea)
-        self.addDocks([
-            self.dockEffects,
-            self.dockTransitions,
-            self.dockEmojis,
-            ], Qt.RightDockWidgetArea)
-        self.addDocks([self.dockProperties], Qt.LeftDockWidgetArea)
-
-        self.floatDocks(False)
-        self.tabifyDockWidget(self.dockEmojis, self.dockEffects)
-        self.showDocks([
-            self.dockFiles,
-            self.dockTransitions,
-            self.dockVideo,
-            self.dockEffects,
-            self.dockEmojis,
-            self.dockProperties,
-            ])
-
-        # Set initial size of docks
-        advanced_state = "".join([
-            "AAAA/wAAAAD9AAAAAwAAAAAAAADxAAAC3/wCAAAAAvsAAAAcAGQAbwBjAGsAUAByAG8AcABlAHIAdABpAGUAcw"
-            "EAAAAnAAAC3wAAAKEA/////AAAAl4AAACnAAAAAAD////6AAAAAAIAAAAB+wAAABgAZABvAGMAawBLAGUAeQBm"
-            "AHIAYQBtAGUAAAAAAP////8AAAAAAAAAAAAAAAEAAACZAAAC3/wCAAAAAvsAAAAYAGQAbwBjAGsASwBlAHkAZg"
-            "ByAGEAbQBlAQAAAVgAAAAVAAAAAAAAAAD8AAAAJwAAAt8AAAC1AQAAHPoAAAAAAQAAAAL7AAAAFgBkAG8AYwBr"
-            "AEUAZgBmAGUAYwB0AHMBAAADrQAAAJkAAABYAP////sAAAAiAGQAbwBjAGsAQwBhAHAAdABpAG8AbgBFAGQAaQ"
-            "B0AG8AcgEAAAAA/////wAAAFgA////AAAAAgAAArAAAALY/AEAAAAB/AAAAPcAAAKwAAAA+gD////8AgAAAAL8"
-            "AAAAJwAAAcgAAAFHAP////wBAAAAAvwAAAD3AAAArgAAAIIA/////AIAAAAC+wAAABIAZABvAGMAawBGAGkAbA"
-            "BlAHMBAAAAJwAAAOQAAACSAP////wAAAERAAAA3gAAAK8BAAAc+gAAAAABAAAAAvsAAAAeAGQAbwBjAGsAVABy"
-            "AGEAbgBzAGkAdABpAG8AbgBzAQAAAAD/////AAAAbAD////7AAAAFABkAG8AYwBrAEUAbQBvAGoAaQBzAQAAAP"
-            "cAAAEdAAAAggD////7AAAAEgBkAG8AYwBrAFYAaQBkAGUAbwEAAAGrAAAB/AAAAEcA////+wAAABgAZABvAGMA"
-            "awBUAGkAbQBlAGwAaQBuAGUBAAAB9QAAAQoAAACWAP///wAAArAAAAABAAAAAQAAAAIAAAABAAAAAvwAAAABAA"
-            "AAAgAAAAEAAAAOAHQAbwBvAGwAQgBhAHIBAAAAAP////8AAAAAAAAAAA=="
-        ])
-        self.restoreState(qt_types.str_to_bytes(advanced_state))
         QCoreApplication.processEvents()
 
     def actionColor_Grade_View_trigger(self):
@@ -3609,6 +3566,9 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         dock = getattr(self, "dockTimeline", None)
         if dock:
             s.set('timeline_height', dock.height())
+        dock = getattr(self, "dockVideo", None)
+        if dock:
+            s.set('video_dock_width', dock.width())
 
     # Get window settings from setting store
     def load_settings(self):
@@ -3620,14 +3580,8 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
             self.saved_geometry = qt_types.str_to_bytes(s.get('window_geometry_v2'))
         if s.get('window_state_v2'):
             self.saved_state = qt_types.str_to_bytes(s.get('window_state_v2'))
-        timeline_height = s.get('timeline_height')
-        if timeline_height:
-            try:
-                height_value = int(timeline_height)
-            except (TypeError, ValueError):
-                height_value = None
-            if height_value and height_value > 0:
-                self.saved_timeline_height = height_value
+        self.saved_timeline_height = self._positive_int(s.get('timeline_height'))
+        self.saved_video_dock_width = self._positive_int(s.get('video_dock_width'))
 
         # Load Recent Projects
         self.load_recent_menu()
@@ -4069,40 +4023,80 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         if self._restored_saved_window:
             return
         self._restored_saved_window = True
+        self._capture_missing_dock_size_fallbacks()
         if self.saved_geometry:
             self.restoreGeometry(self.saved_geometry)
         if self.saved_state:
-            self._restore_state_and_timeline()
+            self._restore_state_and_dock_sizes()
 
-    def _restore_state_and_timeline(self):
-        """Restore saved dock state and then apply timeline height."""
+    def _capture_missing_dock_size_fallbacks(self):
+        """Use the initial shown layout as a fallback for newly introduced dock sizes."""
+        video_dock = getattr(self, "dockVideo", None)
+        if (video_dock
+                and not getattr(self, "saved_video_dock_width", None)
+                and video_dock.width() > 0):
+            self.saved_video_dock_width = video_dock.width()
+
+    def _restore_state_and_dock_sizes(self):
+        """Restore saved dock state and then apply stable logical dock sizes."""
         if self.saved_state:
             self.restoreState(self.saved_state)
         # Re-apply removed-dock state that Qt's saveState/restoreState doesn't preserve.
         hidden_names = get_app().get_settings().get('hidden_docks') or []
         self._restore_hidden_docks(hidden_names)
-        self._apply_saved_timeline_height()
+        self._apply_saved_dock_sizes()
+
+    @staticmethod
+    def _positive_int(value):
+        """Return value as a positive int, or None."""
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            return None
+        return value if value > 0 else None
+
+    def _force_dock_extent_once(self, dock, size, orientation):
+        """Force one saved logical dock splitter extent, then restore flexibility."""
+        if not dock:
+            return
+        size = self._positive_int(size)
+        if not size:
+            return
+        if orientation == Qt.Horizontal:
+            size = min(size, max(160, int(self.width() * 0.85)))
+            current = dock.width()
+            old_min = dock.minimumWidth()
+            old_max = dock.maximumWidth()
+            set_fixed = dock.setFixedWidth
+            restore = lambda: (dock.setMinimumWidth(old_min), dock.setMaximumWidth(old_max))
+        else:
+            size = min(size, max(100, int(self.height() * 0.85)))
+            current = dock.height()
+            old_min = dock.minimumHeight()
+            old_max = dock.maximumHeight()
+            set_fixed = dock.setFixedHeight
+            restore = lambda: (dock.setMinimumHeight(old_min), dock.setMaximumHeight(old_max))
+        if current != size:
+            set_fixed(size)
+            QTimer.singleShot(0, restore)
+
+    def _apply_saved_dock_sizes(self):
+        """Apply saved logical sizes for docks Qt state commonly drifts."""
+        self._force_dock_extent_once(
+            getattr(self, "dockTimeline", None),
+            self.saved_timeline_height,
+            Qt.Vertical)
+        self._force_dock_extent_once(
+            getattr(self, "dockVideo", None),
+            self.saved_video_dock_width,
+            Qt.Horizontal)
 
     def _apply_saved_timeline_height(self):
         """Apply the saved timeline dock height."""
-        if not self.saved_timeline_height:
-            return
-
-        dock = getattr(self, "dockTimeline", None)
-        if not dock:
-            return
-
-        # If height already matches, skip the resize to avoid an extra layout pass.
-        if dock.height() != self.saved_timeline_height:
-            # Force the height by temporarily constraining min/max
-            old_min = dock.minimumHeight()
-            old_max = dock.maximumHeight()
-            dock.setFixedHeight(self.saved_timeline_height)
-            # Restore flexibility after layout processes
-            def restore_flex():
-                dock.setMinimumHeight(old_min)
-                dock.setMaximumHeight(old_max)
-            QTimer.singleShot(0, restore_flex)
+        self._force_dock_extent_once(
+            getattr(self, "dockTimeline", None),
+            self.saved_timeline_height,
+            Qt.Vertical)
 
     def show_property_timeout(self):
         """Callback for show property timer"""
@@ -5135,6 +5129,7 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         self.saved_state = None
         self.saved_geometry = None
         self.saved_timeline_height = None
+        self.saved_video_dock_width = None
         self._restored_saved_window = False
         self.load_settings()
 
@@ -5300,8 +5295,9 @@ class MainWindow(updates.UpdateWatcher, QMainWindow):
         # Save settings
         s.save()
 
-        # Re-apply timeline height after theme settles (theme changes dock sizes)
-        QTimer.singleShot(0, self._apply_saved_timeline_height)
+        # Re-apply saved logical dock sizes after theme settles (theme changes dock sizes)
+        QTimer.singleShot(0, self._apply_saved_dock_sizes)
+        QTimer.singleShot(250, self._apply_saved_dock_sizes)
 
         # Refresh frame
         QTimer.singleShot(100, lambda: self.refreshFrameSignal.emit())
