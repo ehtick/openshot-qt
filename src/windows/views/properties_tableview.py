@@ -1327,7 +1327,7 @@ class PropertiesTableView(QTableView):
 
     def caption_text_updated(self, new_caption_text, caption_model_row):
         """Caption text has been updated in the caption editor, and needs saving"""
-        if not caption_model_row:
+        if caption_model_row is None:
             # Ignore blank selections
             return
 
@@ -1349,8 +1349,13 @@ class PropertiesTableView(QTableView):
             self.start_transaction(caption_model_value)
             self.update_in_progress = True
             self.clip_properties_model.value_updated(caption_model_value, value=new_caption_text)
-            if not self.mouse_pressed:
-                self.finalize_transaction()
+
+    def caption_text_committed(self, caption_model_row):
+        """Finalize a batch of live Caption editor updates into one undo action."""
+        if caption_model_row is None:
+            return
+        if self.update_in_progress:
+            self.finalize_transaction()
 
     def select_item(self, selection):
         """Update the selected items in the properties window"""
@@ -2051,6 +2056,7 @@ class PropertiesTableView(QTableView):
         self.doubleClicked.connect(self.doubleClickedCB)
         self.loadProperties.connect(self.select_item)
         get_app().window.CaptionTextUpdated.connect(self.caption_text_updated)
+        get_app().window.CaptionTextCommitted.connect(self.caption_text_committed)
 
         self.color_grade_wheels_dock = QDockWidget(get_app()._tr("Color Wheels"), self.win)
         self.color_grade_wheels_dock.setObjectName("dockColorGradeWheels")

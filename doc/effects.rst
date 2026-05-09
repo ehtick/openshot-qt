@@ -82,6 +82,13 @@ To adjust a property:
 - Double-click to enter precise values.
 - Right/double-click for non-numerical options.
 
+Effects with ``Margin: Left``, ``Margin: Top``, ``Margin: Right``, and ``Margin: Bottom`` controls can also be
+adjusted directly in the video preview. Select the effect, then drag the preview rectangle to move the affected
+area, resize its handles, or draw a new rectangle inside the clip.
+
+The same preview rectangle can be used to position Caption text. Select a Caption effect, then move or resize the
+white rectangle in the video preview to adjust the Caption margins.
+
 Effect properties are integral to the :ref:`animation_ref` system. When you modify an effect property, a
 keyframe is generated at the current playhead position. For a property to span the entire clip,
 position the playhead at or before the clip's start before making adjustments. A convenient way to
@@ -662,6 +669,14 @@ effect can even animate the text fading in/out, and supports any font, size, col
 easy-to-use Caption editor, where you can quickly insert captions at the playhead position, or edit all your caption
 text in one place.
 
+The Caption editor's insert button (the plus icon) creates a complete caption cue at the current playhead position,
+using a three-second default duration when possible, and selects the placeholder caption text so you can start typing
+immediately. Caption text updates are previewed while you type.
+
+To set a caption's end time from the playhead, remove the existing end timestamp from the cue line, leaving the start
+timestamp and arrow. Move the playhead to the desired end time, place the text cursor on that incomplete timestamp line,
+and press the plus icon again. OpenShot inserts the current playhead timestamp as the cue's end time.
+
 .. code-block:: console
 
    :caption: Show a caption, starting at 5 seconds and ending at 10 seconds.
@@ -682,6 +697,7 @@ text in one place.
    caption_font                ``(font)`` Font name or family name
    caption_text                ``(caption)`` VTT/Subrip formatted caption text (multi-line)
    color                       ``(color)`` Color of caption text
+   bottom                      ``(float, 0 to 1)`` Size of bottom margin
    fade_in                     ``(float, 0 to 3)`` Fade in per caption (# of seconds)
    fade_out                    ``(float, 0 to 3)`` Fade out per caption (# of seconds)
    font_alpha                  ``(float, 0 to 1)`` Font color alpha
