@@ -247,7 +247,7 @@ Speed
 The :guilabel:`Speed` menu manipulates clip playback speed, allowing for reverse playback, time-lapse,
 slow-motion, freezes, and looping effects. See :ref:`clip_time_ref` key-frame.
 
-- :guilabel:`Reset` — restores the clip to normal 1× speed.
+- :guilabel:`Reset Speed` — restores the clip to normal 1× speed.
 - :guilabel:`Reverse` — plays the clip backwards at normal speed.
 - :guilabel:`Speed Up` → Forward / Backward → 2×, 4×, 8×, 16× — speeds up playback in either direction.
 - :guilabel:`Slow Down` → Forward / Backward → 1/2×, 1/4×, 1/8×, 1/16× — slows down playback in either direction.
@@ -302,7 +302,7 @@ Example: “Forward then Back and stop” = :guilabel:`Ping-Pong → Forward →
 
 **Reset**
 
-- :guilabel:`Speed → Reset` completely removes any Time curve (including Repeat) and restores the clip to its
+- :guilabel:`Speed → Reset Speed` completely removes any Time curve (including Repeat) and restores the clip to its
   original playback, **without deleting your original non-Time keyframes**.
 
 Timing Tool

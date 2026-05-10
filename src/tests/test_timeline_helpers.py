@@ -2104,6 +2104,43 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertEqual(middle_frame, 777)
         self.assertEqual(end_frame, 64)
 
+    def test_freeze_uses_absolute_trim_end_for_right_side_split_clip(self):
+        helper = self.make_time_helper()
+        clip = types.SimpleNamespace(
+            id="C1",
+            data={
+                "id": "C1",
+                "position": 10.0,
+                "start": 10.0,
+                "end": 52.0,
+                "duration": 42.0,
+                "time": {"Points": [{"co": {"X": 1, "Y": 1}, "interpolation": openshot.LINEAR}]},
+                "volume": {"Points": [{"co": {"X": 1, "Y": 1.0}, "interpolation": openshot.LINEAR}]},
+                "ui": {},
+            },
+        )
+        app = types.SimpleNamespace(
+            project=types.SimpleNamespace(get=lambda key: {"num": 30, "den": 1} if key == "fps" else None),
+            updates=types.SimpleNamespace(apply_last_action_to_history=lambda _data: None),
+        )
+
+        with patch.object(self.timeline_module.Clip, "get", return_value=clip), \
+                patch.object(self.timeline_module, "get_app", return_value=app):
+            self.timeline_module.TimelineView.Time_Triggered(
+                helper,
+                self.timeline_module.MenuTime.FREEZE,
+                ["C1"],
+                8,
+                10.0,
+            )
+
+        self.assertEqual(clip.data["end"], 60.0)
+        self.assertEqual(clip.data["duration"], 50.0)
+        self.assertIn(
+            {"co": {"X": 1801.0, "Y": 1561.0}, "interpolation": openshot.LINEAR},
+            clip.data["time"]["Points"],
+        )
+
     def test_volume_triggered_refreshes_waveforms_for_visible_waveform_clips(self):
         helper = self.make_time_helper()
         clip = types.SimpleNamespace(
