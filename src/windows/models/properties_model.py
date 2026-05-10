@@ -183,7 +183,7 @@ class PropertiesModel(updates.UpdateInterface):
             objects = {}
             if object_id:
                 objects = c.data.get('objects', {})
-                clip_data = objects.pop(object_id, {})
+                clip_data = objects.get(object_id, {})
                 if not clip_data:
                     log.debug("No clip data found for this object id")
                     continue
@@ -203,8 +203,7 @@ class PropertiesModel(updates.UpdateInterface):
             if not object_id:
                 clip_data = {property_key: clip_data.get(property_key)}
             else:
-                objects[object_id] = clip_data
-                clip_data = {'objects': objects}
+                clip_data = {'objects': {object_id: {property_key: clip_data.get(property_key)}}}
             c.data = clip_data
             c.save()
             any_updated = True
@@ -509,7 +508,7 @@ class PropertiesModel(updates.UpdateInterface):
             clip_data = c.data
             if object_id:
                 objects = c.data.get('objects', {})
-                clip_data = objects.pop(object_id, {})
+                clip_data = objects.get(object_id, {})
                 if not clip_data:
                     log.debug("No clip data found for this object id")
                     return
@@ -600,9 +599,7 @@ class PropertiesModel(updates.UpdateInterface):
                     else:
                         clip_data = {property_key: clip_data.get(property_key)}
                 else:
-                    # If objects dict detected - don't reduce the # of objects
-                    objects[object_id] = clip_data
-                    clip_data = {'objects': objects}
+                    clip_data = {'objects': {object_id: {property_key: clip_data.get(property_key)}}}
 
                 # Save changes
                 if clip_updated:
@@ -670,12 +667,20 @@ class PropertiesModel(updates.UpdateInterface):
                     clip_data = c.data
                     if object_id:
                         objects = c.data.get('objects', {})
-                        clip_data = objects.pop(object_id, {})
-                        if not clip_data:
-                            log.debug("No clip data found for this object id")
-                            return
+                        clip_data = objects.get(object_id, {})
+                        if not isinstance(clip_data, dict):
+                            clip_data = {}
 
                     # Update clip attribute
+                    if property_key not in clip_data and object_id:
+                        clip_data[property_key] = {
+                            channel: json.loads(json.dumps(property[1].get(channel, {"Points": []})))
+                            for channel in ("red", "blue", "green", "alpha")
+                            if channel in property[1]
+                        }
+                        for channel in ("red", "blue", "green"):
+                            clip_data[property_key].setdefault(channel, {"Points": []})
+
                     if property_key in clip_data:
                         log_id = "{}/{}".format(item_id, object_id) if object_id else item_id
                         log.debug("%s: update color property %s. %s", log_id, property_key, clip_data.get(property_key))
@@ -754,9 +759,7 @@ class PropertiesModel(updates.UpdateInterface):
                     if not object_id:
                         clip_data = {property_key: clip_data.get(property_key)}
                     else:
-                        # If objects dict detected - don't reduce the # of objects
-                        objects[object_id] = clip_data
-                        clip_data = {'objects': objects}
+                        clip_data = {'objects': {object_id: {property_key: clip_data.get(property_key)}}}
 
                     # Save changes
                     if clip_updated:
@@ -945,7 +948,7 @@ class PropertiesModel(updates.UpdateInterface):
                 clip_data = c.data
                 if object_id:
                     objects = c.data.get('objects', {})
-                    clip_data = objects.pop(object_id, {})
+                    clip_data = objects.get(object_id, {})
                     if not clip_data:
                         log.debug("No clip data found for this object id")
                         return
@@ -1195,9 +1198,7 @@ class PropertiesModel(updates.UpdateInterface):
                     else:
                         clip_data = {property_key: clip_data.get(property_key)}
                 else:
-                    # If objects dict detected - don't reduce the # of objects
-                    objects[object_id] = clip_data
-                    clip_data = {'objects': objects}
+                    clip_data = {'objects': {object_id: {property_key: clip_data.get(property_key)}}}
 
                 # Save changes
                 if clip_updated:

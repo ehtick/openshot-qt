@@ -32,7 +32,7 @@ import unittest
 from unittest.mock import patch
 
 import openshot
-from qt_api import QApplication, QRect
+from qt_api import QApplication, QColor, QPoint, QRect, QRectF, QStandardItem, QTransform, Qt, QWidget
 
 
 PATH = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -63,6 +63,7 @@ app, _owns_app = get_or_create_app(DummyApp)
 ensure_app_state(app, DummySettings, extra_attrs={"window": types.SimpleNamespace()})
 
 from windows.video_widget import VideoWidget
+from windows.models.properties_model import ClipStandardItemModel, PropertiesModel
 
 
 def clip_with(scale_mode, gravity=openshot.GRAVITY_CENTER):
@@ -77,6 +78,32 @@ def props(location_x=0.0, location_y=0.0, scale_x=1.0, scale_y=1.0):
         "location_y": {"value": location_y},
         "parentObjectId": {"memo": ""},
     }
+
+
+class FakeSignal:
+    def __init__(self):
+        self.count = 0
+
+    def emit(self, *args):
+        self.count += 1
+
+
+def mouse_event_at(x, y):
+    return types.SimpleNamespace(pos=lambda: QPoint(x, y))
+
+
+class FakePropertiesParent:
+    def __init__(self, model):
+        self.model = model
+
+    def currentIndex(self):
+        return self.model.index(0, 1)
+
+    def clearSelection(self):
+        pass
+
+    def setCurrentIndex(self, index):
+        pass
 
 
 class VideoWidgetTransformTests(unittest.TestCase):
@@ -175,6 +202,310 @@ class VideoWidgetTransformTests(unittest.TestCase):
             info=types.SimpleNamespace(class_name="Blur"))
 
         self.assertTrue(VideoWidget._effect_has_margin_box(self.widget))
+
+    def test_tracked_object_resolver_uses_evaluated_selected_index(self):
+        self.widget.transforming_effect = types.SimpleNamespace(
+            data={
+                "selected_object_index": {
+                    "Points": [{"co": {"X": 1, "Y": 0}}]
+                }
+            }
+        )
+        objects = {
+            "effect-uuid-0": {"visible": {"value": 1}, "name": "zero"},
+            "effect-uuid-2": {"visible": {"value": 1}, "name": "two"},
+        }
+        raw = {"selected_object_index": {"value": 2}}
+
+        object_id, props = VideoWidget._resolve_tracked_object(self.widget, objects, raw)
+
+        self.assertEqual(object_id, "effect-uuid-2")
+        self.assertEqual(props["name"], "two")
+
+    def test_tracked_object_resolver_normalizes_float_selected_index(self):
+        self.widget.transforming_effect = None
+        objects = {
+            "effect-uuid-1": {"visible": {"value": 1}, "name": "one"},
+        }
+        raw = {"selected_object_index": {"value": 1.0}}
+
+        object_id, props = VideoWidget._resolve_tracked_object(self.widget, objects, raw)
+
+        self.assertEqual(object_id, "effect-uuid-1")
+        self.assertEqual(props["name"], "one")
+
+    def test_update_effect_property_writes_only_changed_tracked_object_property(self):
+        class FakeEffect:
+            def __init__(self):
+                self.data = {
+                    "objects": {
+                        "effect-uuid-23": {
+                            "BaseFPS": {"den": 1, "num": 1},
+                            "TimeScale": 1.0,
+                            "box_id": "effect-uuid-23",
+                            "delta_x": {"value": 0.0},
+                            "delta_y": {"value": 0.0},
+                            "visible": {"value": 1},
+                            "x1": {"value": 0.25},
+                        }
+                    }
+                }
+                self.saved = False
+
+            def save(self):
+                self.saved = True
+
+        effect = FakeEffect()
+        self.widget.transaction_id = None
+
+        with patch("windows.video_widget.Effect.get", return_value=effect):
+            VideoWidget.updateEffectProperty(
+                self.widget,
+                "effect-uuid",
+                5,
+                "effect-uuid-23",
+                "delta_x",
+                0.25,
+                refresh=False,
+            )
+
+        self.assertTrue(effect.saved)
+        object_payload = effect.data["objects"]["effect-uuid-23"]
+        self.assertEqual(["delta_x"], list(object_payload.keys()))
+        points = object_payload["delta_x"]["Points"]
+        self.assertEqual(points[0]["co"], {"X": 5, "Y": 0.25})
+
+    def test_update_effect_properties_batches_tracked_object_properties(self):
+        class FakeEffect:
+            def __init__(self):
+                self.data = {
+                    "objects": {
+                        "effect-uuid-23": {
+                            "delta_x": {"Points": []},
+                            "delta_y": {"Points": []},
+                        }
+                    }
+                }
+                self.save_count = 0
+
+            def save(self):
+                self.save_count += 1
+
+        effect = FakeEffect()
+        self.widget.transaction_id = None
+        refresh_signal = FakeSignal()
+        fake_app = types.SimpleNamespace(
+            updates=types.SimpleNamespace(transaction_id=None),
+            window=types.SimpleNamespace(refreshFrameSignal=refresh_signal),
+        )
+
+        with patch("windows.video_widget.Effect.get", return_value=effect), \
+             patch("windows.video_widget.get_app", return_value=fake_app):
+            VideoWidget.updateEffectProperties(
+                self.widget,
+                "effect-uuid",
+                5,
+                "effect-uuid-23",
+                {"delta_x": 0.25, "delta_y": -0.5},
+            )
+
+        self.assertEqual(effect.save_count, 1)
+        object_payload = effect.data["objects"]["effect-uuid-23"]
+        self.assertEqual(["delta_x", "delta_y"], list(object_payload.keys()))
+        self.assertEqual(object_payload["delta_x"]["Points"][0]["co"], {"X": 5, "Y": 0.25})
+        self.assertEqual(object_payload["delta_y"]["Points"][0]["co"], {"X": 5, "Y": -0.5})
+        self.assertEqual(refresh_signal.count, 1)
+
+    def test_update_effect_property_refreshes_preview_for_tracked_object(self):
+        class FakeEffect:
+            def __init__(self):
+                self.data = {"objects": {"effect-uuid-23": {"delta_x": {"Points": []}}}}
+                self.saved = False
+
+            def save(self):
+                self.saved = True
+
+        effect = FakeEffect()
+        refresh_signal = FakeSignal()
+        fake_app = types.SimpleNamespace(
+            updates=types.SimpleNamespace(transaction_id=None),
+            window=types.SimpleNamespace(refreshFrameSignal=refresh_signal),
+        )
+        self.widget.transaction_id = None
+
+        with patch("windows.video_widget.Effect.get", return_value=effect), \
+             patch("windows.video_widget.get_app", return_value=fake_app):
+            VideoWidget.updateEffectProperty(
+                self.widget,
+                "effect-uuid",
+                5,
+                "effect-uuid-23",
+                "delta_x",
+                0.25,
+            )
+
+        self.assertTrue(effect.saved)
+        self.assertEqual(refresh_signal.count, 1)
+
+    def test_tracked_object_color_update_initializes_sparse_object_color(self):
+        class FakeEffect:
+            def __init__(self):
+                self.data = {
+                    "objects": {
+                        "effect-uuid-23": {
+                            "delta_x": {"Points": []},
+                        }
+                    }
+                }
+                self.saved = False
+
+            def save(self):
+                self.saved = True
+
+        effect = FakeEffect()
+        model = ClipStandardItemModel()
+        label_item = QStandardItem("Border")
+        value_item = QStandardItem("")
+        label_item.setData((
+            "stroke",
+            {
+                "type": "color",
+                "closest_point_x": 1,
+                "previous_point_x": 1,
+                "object_id": "effect-uuid-23",
+                "red": {"value": 62, "Points": []},
+                "green": {"value": 143, "Points": []},
+                "blue": {"value": 0, "Points": []},
+            }
+        ))
+        value_item.setData([("effect-uuid", "effect")])
+        model.appendRow([label_item, value_item])
+
+        helper = PropertiesModel.__new__(PropertiesModel)
+        helper.model = model
+        helper.frame_number = 5
+        helper.parent = FakePropertiesParent(model)
+        helper._trim_preview_mode = False
+        helper.ignore_update_signal = False
+        fake_app = types.SimpleNamespace(
+            window=types.SimpleNamespace(refreshFrameSignal=FakeSignal()),
+            _tr=lambda text: text,
+        )
+
+        with patch("windows.models.properties_model.Effect.get", return_value=effect), \
+             patch("windows.models.properties_model.get_app", return_value=fake_app):
+            PropertiesModel.color_update(helper, value_item, QColor(10, 20, 30, 255))
+
+        self.assertTrue(effect.saved)
+        self.assertEqual(["objects"], list(effect.data.keys()))
+        object_payload = effect.data["objects"]["effect-uuid-23"]
+        self.assertEqual(["stroke"], list(object_payload.keys()))
+        self.assertEqual(
+            object_payload["stroke"]["red"]["Points"][0]["co"],
+            {"X": 5, "Y": 10},
+        )
+        self.assertEqual(
+            object_payload["stroke"]["green"]["Points"][0]["co"],
+            {"X": 5, "Y": 20},
+        )
+        self.assertEqual(
+            object_payload["stroke"]["blue"]["Points"][0]["co"],
+            {"X": 5, "Y": 30},
+        )
+
+    def test_tracked_object_property_editor_update_writes_narrow_object_payload(self):
+        class FakeEffect:
+            def __init__(self):
+                self.data = {
+                    "objects": {
+                        "effect-uuid-23": {
+                            "delta_x": {"Points": [{"co": {"X": 5, "Y": 0.0}, "interpolation": 1}]},
+                            "delta_y": {"Points": [{"co": {"X": 5, "Y": 0.0}, "interpolation": 1}]},
+                        },
+                        "effect-uuid-24": {
+                            "delta_x": {"Points": [{"co": {"X": 5, "Y": 0.5}, "interpolation": 1}]},
+                        },
+                    }
+                }
+                self.saved = False
+
+            def save(self):
+                self.saved = True
+
+        effect = FakeEffect()
+        model = ClipStandardItemModel()
+        label_item = QStandardItem("Displacement X-axis")
+        value_item = QStandardItem("")
+        label_item.setData((
+            "delta_x",
+            {
+                "type": "float",
+                "closest_point_x": 5,
+                "previous_point_x": 5,
+                "object_id": "effect-uuid-23",
+                "choices": [],
+            }
+        ))
+        value_item.setData([("effect-uuid", "effect")])
+        model.appendRow([label_item, value_item])
+
+        helper = PropertiesModel.__new__(PropertiesModel)
+        helper.model = model
+        helper.frame_number = 5
+        helper.parent = FakePropertiesParent(model)
+        helper._trim_preview_mode = False
+        helper.ignore_update_signal = False
+        fake_app = types.SimpleNamespace(
+            window=types.SimpleNamespace(refreshFrameSignal=FakeSignal()),
+            _tr=lambda text: text,
+        )
+
+        with patch("windows.models.properties_model.Effect.get", return_value=effect), \
+             patch("windows.models.properties_model.get_app", return_value=fake_app):
+            PropertiesModel.value_updated(helper, value_item, value=0.25)
+
+        self.assertTrue(effect.saved)
+        self.assertEqual(["objects"], list(effect.data.keys()))
+        self.assertEqual(["effect-uuid-23"], list(effect.data["objects"].keys()))
+        object_payload = effect.data["objects"]["effect-uuid-23"]
+        self.assertEqual(["delta_x"], list(object_payload.keys()))
+        self.assertEqual(
+            object_payload["delta_x"]["Points"][0]["co"],
+            {"X": 5, "Y": 0.25},
+        )
+
+    def test_tracked_object_transform_modes_exclude_origin_and_rotation(self):
+        QWidget.__init__(self.widget)
+        self.widget.transform = QTransform()
+        self.widget.mouse_dragging = False
+        self.widget.transform_mode = None
+        self.widget.resize_button = types.SimpleNamespace(isVisible=lambda: False)
+        self.widget.cursors = {}
+        self.widget.transforming_effect = types.SimpleNamespace(data={})
+        self.widget.transforming_effect_object = types.SimpleNamespace(
+            info=types.SimpleNamespace(has_tracked_object=True, class_name="ObjectDetection")
+        )
+        self.widget.centerHandle = QRectF(44, 44, 12, 12)
+        self.widget.topLeftHandle = QRectF(0, 0, 12, 12)
+        self.widget.topRightHandle = QRectF(88, 0, 12, 12)
+        self.widget.bottomLeftHandle = QRectF(0, 88, 12, 12)
+        self.widget.bottomRightHandle = QRectF(88, 88, 12, 12)
+        self.widget.topHandle = QRectF(44, 0, 12, 12)
+        self.widget.bottomHandle = QRectF(44, 88, 12, 12)
+        self.widget.leftHandle = QRectF(0, 44, 12, 12)
+        self.widget.rightHandle = QRectF(88, 44, 12, 12)
+        self.widget.topShearHandle = QRectF(0, 0, 100, 12)
+        self.widget.leftShearHandle = QRectF(0, 0, 12, 100)
+        self.widget.rightShearHandle = QRectF(88, 0, 12, 100)
+        self.widget.bottomShearHandle = QRectF(0, 88, 100, 12)
+        self.widget.clipBounds = QRectF(0, 0, 100, 100)
+
+        VideoWidget.checkTransformMode(self.widget, 0, 0, 0, mouse_event_at(50, 50))
+        self.assertEqual(self.widget.hover_transform_mode, "location")
+
+        VideoWidget.checkTransformMode(self.widget, 0, 0, 0, mouse_event_at(150, 150))
+        self.assertIsNone(self.widget.hover_transform_mode)
+        self.assertEqual(self.widget.hover_cursor, Qt.ArrowCursor)
 
 
 if __name__ == "__main__":
