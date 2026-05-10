@@ -150,6 +150,32 @@ class VideoWidgetTransformTests(unittest.TestCase):
             self.assertLessEqual(top.y() + top.height(), 0.0)
             self.assertGreaterEqual(bottom.y(), self.viewport.height())
 
+    def test_margin_box_norm_converts_effect_margins_to_region(self):
+        raw = {
+            "left": {"value": 0.10},
+            "top": {"value": 0.20},
+            "right": {"value": 0.30},
+            "bottom": {"value": 0.40},
+        }
+
+        self.assertEqual(VideoWidget._margin_box_norm(raw), (0.10, 0.20, 0.70, 0.60))
+
+    def test_margin_box_clamp_preserves_opposing_edge(self):
+        left, top, right, bottom = VideoWidget._clamp_margin_values(
+            0.90, 0.90, 0.30, 0.30, prefer_left=True, prefer_top=True)
+
+        self.assertAlmostEqual(left, 0.70)
+        self.assertAlmostEqual(top, 0.70)
+        self.assertAlmostEqual(right, 0.30)
+        self.assertAlmostEqual(bottom, 0.30)
+
+    def test_effect_has_margin_box_from_class_name(self):
+        self.widget.transforming_effect = None
+        self.widget.transforming_effect_object = types.SimpleNamespace(
+            info=types.SimpleNamespace(class_name="Blur"))
+
+        self.assertTrue(VideoWidget._effect_has_margin_box(self.widget))
+
 
 if __name__ == "__main__":
     unittest.main()
