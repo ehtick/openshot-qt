@@ -27,6 +27,8 @@
  """
 from classes.info import YOLO_PATH
 import os
+
+YOLO5_PATH = os.path.join(YOLO_PATH, "Yolo5")
 # Not all Effects support pre-processing, so for now, this is a hard-coded
 # solution to providing the pre-processing params needed for these special effects.
 
@@ -151,28 +153,29 @@ effect_options = {
 
     "ObjectDetection": [
         {
-            "value": "https://github.com/OpenShot/openshot-qt/wiki/Object-Detection-Effect-(dependencies)",
-            "title": "Click here for instructions and dependencies...",
-            "type": "link",
-            "setting": "model-instructions"
+            "title": "YOLOv5 Files",
+            "type": "download-yolo5",
+            "setting": "download-yolo5",
+            "model-setting": "model",
+            "classes-setting": "classes_file"
         },
         {
-            "value": os.path.join(YOLO_PATH,"yolov3.weights"),
-            "title": "Model Weights",
-            "type": "text",
-            "setting": "model-weights"
+            "value": os.path.join(YOLO5_PATH, "yolov5s.onnx"),
+            "title": "ONNX Model",
+            "type": "file",
+            "setting": "model",
+            "file-filter": "ONNX model (*.onnx)",
+            "validator": "onnx",
+            "required": True
         },
         {
-            "value": os.path.join(YOLO_PATH,"yolov3.cfg"),
-            "title": "Model Config",
-            "type": "text",
-            "setting": "model-config"
-        },
-        {
-            "value": os.path.join(YOLO_PATH,"obj.names"),
-            "title": "Class names",
-            "type": "text",
-            "setting": "class-names"
+            "value": os.path.join(YOLO5_PATH, "obj.names"),
+            "title": "Class Names",
+            "type": "file",
+            "setting": "classes_file",
+            "file-filter": "Class names (*.names *.txt)",
+            "validator": "classes",
+            "required": True
         },
         {
             "title": "Processing Device",

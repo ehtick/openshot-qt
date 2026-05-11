@@ -203,7 +203,7 @@ class PropertiesModel(updates.UpdateInterface):
             if not object_id:
                 clip_data = {property_key: clip_data.get(property_key)}
             else:
-                clip_data = {'objects': {object_id: {property_key: clip_data.get(property_key)}}}
+                clip_data = self._tracked_object_update_payload(c.data, object_id, clip_data, property_key)
             c.data = clip_data
             c.save()
             any_updated = True
@@ -357,6 +357,12 @@ class PropertiesModel(updates.UpdateInterface):
         selected_idx = raw_properties.get("selected_object_index", {}).get("value")
         if selected_idx not in (None, "", "None"):
             selected_idx = str(selected_idx)
+            try:
+                selected_idx_number = int(float(selected_idx))
+            except (TypeError, ValueError):
+                selected_idx_number = None
+            if selected_idx_number == -1 and "all" in tracked_objects_raw_properties:
+                return "all"
             if selected_idx in tracked_objects_raw_properties:
                 return selected_idx
 
@@ -368,6 +374,34 @@ class PropertiesModel(updates.UpdateInterface):
 
         # Fallback to first tracked object
         return next(iter(tracked_objects_raw_properties.keys()))
+
+    def _tracked_object_is_all(self, object_id):
+        return str(object_id).strip().lower() in {"all", "*", "-1"}
+
+    def _tracked_object_clip_data(self, effect_data, object_id):
+        """Return editable tracked object data, using a real object as template for 'all'."""
+        objects = effect_data.get('objects', {})
+        if not object_id:
+            return effect_data, False
+        if self._tracked_object_is_all(object_id):
+            template = objects.get("all")
+            if not isinstance(template, dict):
+                template = next((value for key, value in objects.items()
+                                 if not self._tracked_object_is_all(key) and isinstance(value, dict)), {})
+            return json.loads(json.dumps(template or {})), True
+        return objects.get(object_id, {}), False
+
+    def _tracked_object_update_payload(self, effect_data, object_id, clip_data, property_key):
+        """Build an effect update payload for one tracked object property edit."""
+        property_payload = json.loads(json.dumps(clip_data.get(property_key)))
+        if self._tracked_object_is_all(object_id):
+            objects_payload = {object_id: {property_key: property_payload}}
+            for existing_id, existing_data in effect_data.get('objects', {}).items():
+                if self._tracked_object_is_all(existing_id) or not isinstance(existing_data, dict):
+                    continue
+                objects_payload[existing_id] = {property_key: property_payload}
+            return {'objects': objects_payload}
+        return {'objects': {object_id: {property_key: property_payload}}}
 
     # This method is invoked by the UpdateManager each time a change happens (i.e UpdateInterface)
     def changed(self, action):
@@ -507,8 +541,7 @@ class PropertiesModel(updates.UpdateInterface):
             # Create reference
             clip_data = c.data
             if object_id:
-                objects = c.data.get('objects', {})
-                clip_data = objects.get(object_id, {})
+                clip_data, is_all_objects_update = self._tracked_object_clip_data(c.data, object_id)
                 if not clip_data:
                     log.debug("No clip data found for this object id")
                     return
@@ -599,7 +632,7 @@ class PropertiesModel(updates.UpdateInterface):
                     else:
                         clip_data = {property_key: clip_data.get(property_key)}
                 else:
-                    clip_data = {'objects': {object_id: {property_key: clip_data.get(property_key)}}}
+                    clip_data = self._tracked_object_update_payload(c.data, object_id, clip_data, property_key)
 
                 # Save changes
                 if clip_updated:
@@ -666,8 +699,7 @@ class PropertiesModel(updates.UpdateInterface):
                     # Create reference
                     clip_data = c.data
                     if object_id:
-                        objects = c.data.get('objects', {})
-                        clip_data = objects.get(object_id, {})
+                        clip_data, is_all_objects_update = self._tracked_object_clip_data(c.data, object_id)
                         if not isinstance(clip_data, dict):
                             clip_data = {}
 
@@ -759,7 +791,7 @@ class PropertiesModel(updates.UpdateInterface):
                     if not object_id:
                         clip_data = {property_key: clip_data.get(property_key)}
                     else:
-                        clip_data = {'objects': {object_id: {property_key: clip_data.get(property_key)}}}
+                        clip_data = self._tracked_object_update_payload(c.data, object_id, clip_data, property_key)
 
                     # Save changes
                     if clip_updated:
@@ -947,8 +979,7 @@ class PropertiesModel(updates.UpdateInterface):
                 # Create reference
                 clip_data = c.data
                 if object_id:
-                    objects = c.data.get('objects', {})
-                    clip_data = objects.get(object_id, {})
+                    clip_data, is_all_objects_update = self._tracked_object_clip_data(c.data, object_id)
                     if not clip_data:
                         log.debug("No clip data found for this object id")
                         return
@@ -960,6 +991,14 @@ class PropertiesModel(updates.UpdateInterface):
                     and property_type == "float"
                 ):
                     clip_data[property_key] = {"Points": []}
+                elif (
+                    property_key not in clip_data
+                    and object_id
+                    and property_type in {"bool", "float", "int"}
+                ):
+                    clip_data[property_key] = {
+                        "Points": json.loads(json.dumps(property[1].get("Points", [])))
+                    }
 
                 # Update clip attribute
                 if property_key in clip_data:
@@ -1198,7 +1237,7 @@ class PropertiesModel(updates.UpdateInterface):
                     else:
                         clip_data = {property_key: clip_data.get(property_key)}
                 else:
-                    clip_data = {'objects': {object_id: {property_key: clip_data.get(property_key)}}}
+                    clip_data = self._tracked_object_update_payload(c.data, object_id, clip_data, property_key)
 
                 # Save changes
                 if clip_updated:

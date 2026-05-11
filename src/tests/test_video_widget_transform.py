@@ -27,6 +27,7 @@
 
 import os
 import sys
+import tempfile
 import types
 import unittest
 from unittest.mock import patch
@@ -64,6 +65,7 @@ ensure_app_state(app, DummySettings, extra_attrs={"window": types.SimpleNamespac
 
 from windows.video_widget import VideoWidget
 from windows.models.properties_model import ClipStandardItemModel, PropertiesModel
+from windows.process_effect import ProcessEffect
 
 
 def clip_with(scale_mode, gravity=openshot.GRAVITY_CENTER):
@@ -138,6 +140,18 @@ class VideoWidgetTransformTests(unittest.TestCase):
 
                 self.assertLessEqual(left.x() + left.width(), 0.0)
                 self.assertGreaterEqual(right.x(), self.viewport.width())
+
+    def test_yolo5_file_sha256(self):
+        with tempfile.NamedTemporaryFile(delete=False) as test_file:
+            test_file.write(b"openshot-yolov5")
+            test_path = test_file.name
+        try:
+            self.assertEqual(
+                ProcessEffect.file_sha256(None, test_path),
+                "c54dd3b21ba1b2283d358605d1c7740ce50adc337b4682f5d96c954db4390337",
+            )
+        finally:
+            os.remove(test_path)
 
     def test_location_offset_inverse_round_trips_drag_motion(self):
         # Crop square in a 16:9 viewport renders as 160x160, centered at y=-35.
@@ -473,6 +487,320 @@ class VideoWidgetTransformTests(unittest.TestCase):
             object_payload["delta_x"]["Points"][0]["co"],
             {"X": 5, "Y": 0.25},
         )
+
+    def test_all_tracked_objects_property_update_writes_all_payload(self):
+        class FakeEffect:
+            def __init__(self):
+                self.data = {
+                    "objects": {
+                        "effect-uuid-23": {
+                            "background_alpha": {"Points": [{"co": {"X": 1, "Y": 0.15}, "interpolation": 1}]},
+                            "delta_x": {"Points": [{"co": {"X": 1, "Y": 0.0}, "interpolation": 1}]},
+                            "stroke": {
+                                "red": {"Points": [{"co": {"X": 1, "Y": 10}, "interpolation": 1}]},
+                                "green": {"Points": [{"co": {"X": 1, "Y": 20}, "interpolation": 1}]},
+                                "blue": {"Points": [{"co": {"X": 1, "Y": 30}, "interpolation": 1}]},
+                            },
+                        },
+                        "effect-uuid-24": {
+                            "background_alpha": {"Points": [{"co": {"X": 1, "Y": 0.15}, "interpolation": 1}]},
+                        },
+                    }
+                }
+                self.saved = False
+
+            def save(self):
+                self.saved = True
+
+        effect = FakeEffect()
+        model = ClipStandardItemModel()
+        label_item = QStandardItem("Background Alpha")
+        value_item = QStandardItem("")
+        label_item.setData((
+            "background_alpha",
+            {
+                "type": "float",
+                "closest_point_x": 1,
+                "previous_point_x": 1,
+                "object_id": "all",
+                "choices": [],
+            }
+        ))
+        value_item.setData([("effect-uuid", "effect")])
+        model.appendRow([label_item, value_item])
+
+        helper = PropertiesModel.__new__(PropertiesModel)
+        helper.model = model
+        helper.frame_number = 1
+        helper.parent = FakePropertiesParent(model)
+        helper._trim_preview_mode = False
+        helper.ignore_update_signal = False
+        fake_app = types.SimpleNamespace(
+            window=types.SimpleNamespace(refreshFrameSignal=FakeSignal()),
+            _tr=lambda text: text,
+            project=types.SimpleNamespace(get=lambda key: {"num": 30, "den": 1}),
+        )
+
+        with patch("windows.models.properties_model.Effect.get", return_value=effect), \
+             patch("windows.models.properties_model.get_app", return_value=fake_app):
+            PropertiesModel.value_updated(helper, value_item, value=0.35)
+
+        self.assertTrue(effect.saved)
+        self.assertEqual(["objects"], list(effect.data.keys()))
+        self.assertIn("all", effect.data["objects"])
+        self.assertIn("effect-uuid-23", effect.data["objects"])
+        self.assertIn("effect-uuid-24", effect.data["objects"])
+        object_payload = effect.data["objects"]["all"]
+        self.assertEqual(["background_alpha"], list(object_payload.keys()))
+        self.assertEqual(
+            object_payload["background_alpha"]["Points"][0]["co"],
+            {"X": 1, "Y": 0.35},
+        )
+        self.assertEqual(
+            effect.data["objects"]["effect-uuid-23"]["background_alpha"]["Points"][0]["co"],
+            {"X": 1, "Y": 0.35},
+        )
+
+    def test_all_tracked_objects_transform_update_writes_all_payload(self):
+        class FakeEffect:
+            def __init__(self):
+                self.data = {
+                    "objects": {
+                        "effect-uuid-23": {
+                            "delta_x": {"Points": [{"co": {"X": 5, "Y": 0.0}, "interpolation": 1}]},
+                        },
+                        "effect-uuid-24": {
+                            "delta_x": {"Points": [{"co": {"X": 5, "Y": 0.25}, "interpolation": 1}]},
+                        },
+                    }
+                }
+                self.saved = False
+
+            def save(self):
+                self.saved = True
+
+        effect = FakeEffect()
+        model = ClipStandardItemModel()
+        label_item = QStandardItem("Displacement X-axis")
+        value_item = QStandardItem("")
+        label_item.setData((
+            "delta_x",
+            {
+                "type": "float",
+                "closest_point_x": 5,
+                "previous_point_x": 5,
+                "object_id": "all",
+                "choices": [],
+            }
+        ))
+        value_item.setData([("effect-uuid", "effect")])
+        model.appendRow([label_item, value_item])
+
+        helper = PropertiesModel.__new__(PropertiesModel)
+        helper.model = model
+        helper.frame_number = 5
+        helper.parent = FakePropertiesParent(model)
+        helper._trim_preview_mode = False
+        helper.ignore_update_signal = False
+        fake_app = types.SimpleNamespace(
+            window=types.SimpleNamespace(refreshFrameSignal=FakeSignal()),
+            _tr=lambda text: text,
+            project=types.SimpleNamespace(get=lambda key: {"num": 30, "den": 1}),
+        )
+
+        with patch("windows.models.properties_model.Effect.get", return_value=effect), \
+             patch("windows.models.properties_model.get_app", return_value=fake_app):
+            PropertiesModel.value_updated(helper, value_item, value=0.5)
+
+        self.assertTrue(effect.saved)
+        self.assertEqual(["objects"], list(effect.data.keys()))
+        self.assertIn("all", effect.data["objects"])
+        self.assertIn("effect-uuid-23", effect.data["objects"])
+        self.assertIn("effect-uuid-24", effect.data["objects"])
+        object_payload = effect.data["objects"]["all"]
+        self.assertEqual(["delta_x"], list(object_payload.keys()))
+        self.assertEqual(
+            object_payload["delta_x"]["Points"][0]["co"],
+            {"X": 5, "Y": 0.5},
+        )
+        self.assertEqual(
+            effect.data["objects"]["effect-uuid-24"]["delta_x"]["Points"][0]["co"],
+            {"X": 5, "Y": 0.5},
+        )
+
+    def test_all_tracked_objects_color_update_writes_all_payload(self):
+        class FakeEffect:
+            def __init__(self):
+                self.data = {
+                    "objects": {
+                        "effect-uuid-23": {
+                            "stroke": {
+                                "red": {"Points": [{"co": {"X": 1, "Y": 10}, "interpolation": 1}]},
+                                "green": {"Points": [{"co": {"X": 1, "Y": 20}, "interpolation": 1}]},
+                                "blue": {"Points": [{"co": {"X": 1, "Y": 30}, "interpolation": 1}]},
+                            },
+                        }
+                    }
+                }
+                self.saved = False
+
+            def save(self):
+                self.saved = True
+
+        effect = FakeEffect()
+        model = ClipStandardItemModel()
+        label_item = QStandardItem("Border")
+        value_item = QStandardItem("")
+        label_item.setData((
+            "stroke",
+            {
+                "type": "color",
+                "closest_point_x": 1,
+                "previous_point_x": 1,
+                "object_id": "all",
+                "red": {"value": 10, "Points": []},
+                "green": {"value": 20, "Points": []},
+                "blue": {"value": 30, "Points": []},
+            }
+        ))
+        value_item.setData([("effect-uuid", "effect")])
+        model.appendRow([label_item, value_item])
+
+        helper = PropertiesModel.__new__(PropertiesModel)
+        helper.model = model
+        helper.frame_number = 1
+        helper.parent = FakePropertiesParent(model)
+        helper._trim_preview_mode = False
+        helper.ignore_update_signal = False
+        fake_app = types.SimpleNamespace(
+            window=types.SimpleNamespace(refreshFrameSignal=FakeSignal()),
+            _tr=lambda text: text,
+        )
+
+        with patch("windows.models.properties_model.Effect.get", return_value=effect), \
+             patch("windows.models.properties_model.get_app", return_value=fake_app):
+            PropertiesModel.color_update(helper, value_item, QColor(100, 110, 120, 255))
+
+        self.assertTrue(effect.saved)
+        self.assertEqual(["objects"], list(effect.data.keys()))
+        self.assertIn("all", effect.data["objects"])
+        self.assertIn("effect-uuid-23", effect.data["objects"])
+        object_payload = effect.data["objects"]["all"]
+        self.assertEqual(["stroke"], list(object_payload.keys()))
+        self.assertEqual(object_payload["stroke"]["red"]["Points"][0]["co"], {"X": 1, "Y": 100})
+        self.assertEqual(object_payload["stroke"]["green"]["Points"][0]["co"], {"X": 1, "Y": 110})
+        self.assertEqual(object_payload["stroke"]["blue"]["Points"][0]["co"], {"X": 1, "Y": 120})
+        self.assertEqual(effect.data["objects"]["effect-uuid-23"]["stroke"]["red"]["Points"][0]["co"], {"X": 1, "Y": 100})
+
+    def test_all_tracked_objects_update_saves_only_edited_property(self):
+        class FakeEffect:
+            def __init__(self):
+                self.data = {
+                    "objects": {
+                        "all": {
+                            "stroke_width": {"Points": [{"co": {"X": 1, "Y": 8.0}, "interpolation": 1}]},
+                            "stroke_alpha": {"Points": [{"co": {"X": 1, "Y": 0.7}, "interpolation": 1}]},
+                        },
+                    }
+                }
+                self.saved = False
+
+            def save(self):
+                self.saved = True
+
+        effect = FakeEffect()
+        model = ClipStandardItemModel()
+        label_item = QStandardItem("Stroke alpha")
+        value_item = QStandardItem("")
+        label_item.setData((
+            "stroke_alpha",
+            {
+                "type": "float",
+                "closest_point_x": 1,
+                "previous_point_x": 1,
+                "object_id": "all",
+                "choices": [],
+            }
+        ))
+        value_item.setData([("effect-uuid", "effect")])
+        model.appendRow([label_item, value_item])
+
+        helper = PropertiesModel.__new__(PropertiesModel)
+        helper.model = model
+        helper.frame_number = 1
+        helper.parent = FakePropertiesParent(model)
+        helper._trim_preview_mode = False
+        helper.ignore_update_signal = False
+        fake_app = types.SimpleNamespace(
+            window=types.SimpleNamespace(refreshFrameSignal=FakeSignal()),
+            _tr=lambda text: text,
+            project=types.SimpleNamespace(get=lambda key: {"num": 30, "den": 1}),
+        )
+
+        with patch("windows.models.properties_model.Effect.get", return_value=effect), \
+             patch("windows.models.properties_model.get_app", return_value=fake_app):
+            PropertiesModel.value_updated(helper, value_item, value=0.25)
+
+        object_payload = effect.data["objects"]["all"]
+        self.assertEqual(["stroke_alpha"], list(object_payload.keys()))
+        self.assertEqual(object_payload["stroke_alpha"]["Points"][0]["co"], {"X": 1, "Y": 0.25})
+
+    def test_all_tracked_objects_update_seeds_missing_keyframe_property(self):
+        class FakeEffect:
+            def __init__(self):
+                self.data = {
+                    "objects": {
+                        "all": {
+                            "stroke_width": {"Points": [{"co": {"X": 1, "Y": 8.0}, "interpolation": 1}]},
+                        },
+                        "effect-uuid-23": {
+                            "stroke_alpha": {"Points": [{"co": {"X": 1, "Y": 0.7}, "interpolation": 1}]},
+                        },
+                    }
+                }
+                self.saved = False
+
+            def save(self):
+                self.saved = True
+
+        effect = FakeEffect()
+        model = ClipStandardItemModel()
+        label_item = QStandardItem("Stroke alpha")
+        value_item = QStandardItem("")
+        label_item.setData((
+            "stroke_alpha",
+            {
+                "type": "float",
+                "closest_point_x": 1,
+                "previous_point_x": 1,
+                "object_id": "all",
+                "choices": [],
+                "Points": [{"co": {"X": 1, "Y": 0.7}, "interpolation": 1}],
+            }
+        ))
+        value_item.setData([("effect-uuid", "effect")])
+        model.appendRow([label_item, value_item])
+
+        helper = PropertiesModel.__new__(PropertiesModel)
+        helper.model = model
+        helper.frame_number = 1
+        helper.parent = FakePropertiesParent(model)
+        helper._trim_preview_mode = False
+        helper.ignore_update_signal = False
+        fake_app = types.SimpleNamespace(
+            window=types.SimpleNamespace(refreshFrameSignal=FakeSignal()),
+            _tr=lambda text: text,
+            project=types.SimpleNamespace(get=lambda key: {"num": 30, "den": 1}),
+        )
+
+        with patch("windows.models.properties_model.Effect.get", return_value=effect), \
+             patch("windows.models.properties_model.get_app", return_value=fake_app):
+            PropertiesModel.value_updated(helper, value_item, value=0.25)
+
+        object_payload = effect.data["objects"]["all"]
+        self.assertEqual(["stroke_alpha"], list(object_payload.keys()))
+        self.assertIsInstance(object_payload["stroke_alpha"], dict)
+        self.assertEqual(object_payload["stroke_alpha"]["Points"][0]["co"], {"X": 1, "Y": 0.25})
 
     def test_tracked_object_transform_modes_exclude_origin_and_rotation(self):
         QWidget.__init__(self.widget)
