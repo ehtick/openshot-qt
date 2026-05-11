@@ -153,7 +153,7 @@ effect_options = {
 
     "ObjectDetection": [
         {
-            "title": "YOLOv5 Files",
+            "title": "Model Files",
             "type": "download-yolo5",
             "setting": "download-yolo5",
             "model-setting": "model",
@@ -161,10 +161,10 @@ effect_options = {
         },
         {
             "value": os.path.join(YOLO5_PATH, "yolov5s.onnx"),
-            "title": "ONNX Model",
+            "title": "Model File",
             "type": "file",
             "setting": "model",
-            "file-filter": "ONNX model (*.onnx)",
+            "file-filter": "Model files (*.onnx)",
             "validator": "onnx",
             "required": True
         },

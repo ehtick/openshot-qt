@@ -31,10 +31,12 @@ import json
 import functools
 import webbrowser
 import hashlib
+import subprocess
+import sys
 import urllib.request
 import zipfile
 
-from qt_api import Qt, pyqtSignal, QCoreApplication
+from qt_api import Qt, pyqtSignal, QCoreApplication, QTimer
 from qt_api import QPainter
 from qt_api import (
     QPushButton, QDialog, QLabel, QDoubleSpinBox, QSpinBox, QLineEdit,
@@ -49,14 +51,18 @@ from classes.app import get_app
 from classes.logger import log
 from classes.metrics import *
 
-YOLO5_DOWNLOAD_URL = "https://www.openshot.org/static/files/yolov5/yolov5s-openshot.zip"
+YOLO5_DOWNLOAD_URL = "https://cdn.openshot.org/static/files/yolov5/yolov5s-openshot.zip"
 YOLO5_DOWNLOAD_SHA256 = "cd401831d6a700cb827b4470ec0a505fb8802a85075fcd55c279cb4b73e02c69"
 YOLO5_DIR = os.path.join(info.YOLO_PATH, "Yolo5")
 YOLO5_MODEL_PATH = os.path.join(YOLO5_DIR, "yolov5s.onnx")
 YOLO5_CLASSES_PATH = os.path.join(YOLO5_DIR, "obj.names")
 YOLO5_MODEL_SHA256 = "ffcac948408e3731ba6b0059e125f3d759672830771b72d5081fb6244ff47e5d"
 YOLO5_CLASSES_SHA256 = "bd17f1ee35d5f3c862a4894605855abbb9dda4b0621fdb0ac4c2c8c7bb7e730a"
-YOLO5_MODEL_MIN_SIZE = 20 * 1024 * 1024
+YOLO5_MODEL_NAME = "YOLOv5"
+
+
+class DownloadCancelled(Exception):
+    """Raised when a user cancels an in-progress download."""
 
 
 class RegionButton(QPushButton):
@@ -98,6 +104,11 @@ class ProcessEffect(QDialog):
         self.effect_class = effect_class
         self.context = {}
         self.file_fields = {}
+        self.onnx_validation_cache = {}
+        self.file_validation_timer = QTimer(self)
+        self.file_validation_timer.setInterval(300)
+        self.file_validation_timer.setSingleShot(True)
+        self.file_validation_timer.timeout.connect(self.update_file_validation)
 
         # Get all effect JSON data, and find effect's display name (based on the class name)
         raw_effects_list = json.loads(openshot.EffectInfo.Json())
@@ -132,12 +143,6 @@ class ProcessEffect(QDialog):
         # Loop through options and create widgets
         form_layout = self.scrollAreaWidgetContents.layout()
         for param in effect_params:
-            if (
-                param["type"] == "download-yolo5"
-                and self.yolo5_default_files_ready()
-            ):
-                continue
-
             # Create Label
             widget = None
             label = QLabel()
@@ -146,13 +151,13 @@ class ProcessEffect(QDialog):
 
             if param["type"] == "link":
                 # create a clickable link
-                label.setText('<a href="%s" style="color: #FFFFFF">%s</a>' % (param["value"], _(param["title"])))
+                label.setText('<a href="%s">%s</a>' % (param["value"], _(param["title"])))
                 label.setTextInteractionFlags(Qt.TextBrowserInteraction)
                 label.linkActivated.connect(functools.partial(self.link_activated, widget, param))
 
             if param["type"] == "download-yolo5":
                 widget = QPushButton(_("Download"))
-                widget.setToolTip(_("Download the YOLOv5 ONNX model and class names."))
+                widget.setToolTip(self.model_message(_("Download %(model)s model files.")))
                 widget.clicked.connect(functools.partial(self.download_yolo5_clicked, widget, param))
 
             if param["type"] == "spinner":
@@ -287,11 +292,6 @@ class ProcessEffect(QDialog):
                 label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
                 form_layout.addRow(label)
 
-        # Add error field
-        self.error_label = QLabel("", self)
-        self.error_label.setStyleSheet("color: red;")
-        form_layout.addRow(self.error_label)
-
         # Add buttons
         self.cancel_button = QPushButton(_('Cancel'))
         self.process_button = QPushButton(_('Process Effect'))
@@ -306,6 +306,10 @@ class ProcessEffect(QDialog):
     def link_activated(self, widget, param, value):
         """Link activated"""
         webbrowser.open(value, new=1)
+
+    def model_message(self, message):
+        """Format a translated message with the object detection model name."""
+        return message % {"model": YOLO5_MODEL_NAME}
 
     def spinner_value_changed(self, widget, param, value):
         """Spinner value change callback"""
@@ -343,7 +347,7 @@ class ProcessEffect(QDialog):
         if value is None:
             value = widget.text()
         self.context[param["setting"]] = value
-        self.update_file_validation()
+        self.file_validation_timer.start()
         log.info(self.context)
 
     def file_browse_clicked(self, widget, param):
@@ -355,53 +359,108 @@ class ProcessEffect(QDialog):
             self,
             _("Choose %s") % _(param["title"]),
             start_dir,
-            param.get("file-filter", _("All files (*)")),
+            _(param.get("file-filter", "All files (*)")),
         )[0]
         if selected_path:
             widget.setText(selected_path)
 
+    def validate_onnx_model_load(self, path):
+        """Return whether OpenCV can load this ONNX model."""
+        _ = get_app()._tr
+        try:
+            stat = os.stat(path)
+        except OSError:
+            return False, _("File not found")
+
+        cache_key = (os.path.abspath(path), stat.st_mtime_ns, stat.st_size)
+        cached = self.onnx_validation_cache.get(cache_key)
+        if cached:
+            return cached
+
+        validator_code = """
+import sys
+
+try:
+    import cv2
+except ImportError:
+    sys.exit(2)
+
+try:
+    cv2.dnn.readNetFromONNX(sys.argv[1])
+except Exception as ex:
+    sys.stderr.write(str(ex))
+    sys.exit(1)
+"""
+        try:
+            validation = subprocess.run(
+                [sys.executable, "-c", validator_code, path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=15,
+            )
+        except subprocess.TimeoutExpired:
+            result = (False, _("Unable to load model file."))
+            self.onnx_validation_cache[cache_key] = result
+            log.error("ONNX model validation timed out: %s", path)
+            return result
+
+        if validation.returncode == 2:
+            result = (True, _("Ready"))
+        elif validation.returncode != 0:
+            error_text = (validation.stderr or "").strip()
+            if validation.returncode < 0:
+                log.error("ONNX model validation crashed with signal %s", -validation.returncode)
+            elif error_text:
+                log.error("ONNX model validation failed: %s", error_text)
+            else:
+                log.error("ONNX model validation failed with code %s", validation.returncode)
+
+            if "Unsupported data type: FLOAT16" in error_text:
+                result = (
+                    False,
+                    self.model_message(_("%(model)s requires an FP32 model file for this OpenCV build.")),
+                )
+            else:
+                result = (False, _("Unable to load model file."))
+        else:
+            result = (True, _("Ready"))
+
+        self.onnx_validation_cache[cache_key] = result
+        return result
+
     def validate_file_param(self, param, path):
         """Validate a pre-processing file field."""
+        _ = get_app()._tr
         if param.get("required") and not path:
-            return False, "Required file"
+            return False, _("Required file")
         if not path:
             return True, ""
         if not os.path.isfile(path):
-            return False, "File not found"
+            return False, _("File not found")
 
         validator = param.get("validator")
         if validator == "onnx":
             if not path.lower().endswith(".onnx"):
-                return False, "Expected .onnx file"
-            file_size = os.path.getsize(path)
-            if file_size < 1024 * 1024:
-                return False, "ONNX file is too small"
-            if os.path.abspath(path) == os.path.abspath(YOLO5_MODEL_PATH) and file_size < YOLO5_MODEL_MIN_SIZE:
-                return False, "Expected an FP32 YOLOv5s ONNX model. Please download the compatible model."
+                return False, _("Expected a model file.")
+            if os.path.getsize(path) <= 0:
+                return False, _("Model file is empty.")
+            return self.validate_onnx_model_load(path)
         elif validator == "classes":
             try:
                 with open(path, "r", encoding="utf-8") as classes_file:
                     class_names = [line.strip() for line in classes_file if line.strip()]
             except OSError:
-                return False, "Unable to read class names"
+                return False, _("Unable to read class names")
             if not class_names:
-                return False, "Class names file is empty"
-        return True, "Ready"
-
-    def yolo5_default_files_ready(self):
-        """Return whether the default YOLOv5 files exist and pass lightweight validation."""
-        model_valid, _ = self.validate_file_param(
-            {"validator": "onnx", "required": True},
-            YOLO5_MODEL_PATH,
-        )
-        classes_valid, _ = self.validate_file_param(
-            {"validator": "classes", "required": True},
-            YOLO5_CLASSES_PATH,
-        )
-        return model_valid and classes_valid
+                return False, _("Class names file is empty")
+        return True, _("Ready")
 
     def update_file_validation(self):
         """Update validation indicators and Process button state."""
+        if self.file_validation_timer.isActive():
+            self.file_validation_timer.stop()
+
         all_valid = True
         for setting, field in self.file_fields.items():
             path = field["path"].text()
@@ -423,37 +482,73 @@ class ProcessEffect(QDialog):
                 digest.update(chunk)
         return digest.hexdigest()
 
+    def yolo5_default_files_match(self):
+        """Return whether the default YOLOv5 files already match expected checksums."""
+        try:
+            return (
+                os.path.isfile(YOLO5_MODEL_PATH)
+                and os.path.isfile(YOLO5_CLASSES_PATH)
+                and self.file_sha256(YOLO5_MODEL_PATH) == YOLO5_MODEL_SHA256
+                and self.file_sha256(YOLO5_CLASSES_PATH) == YOLO5_CLASSES_SHA256
+            )
+        except OSError:
+            return False
+
+    def set_yolo5_default_file_fields(self, param):
+        """Point the YOLOv5 file inputs at the default downloaded files."""
+        for setting, path in (
+            (param.get("model-setting"), YOLO5_MODEL_PATH),
+            (param.get("classes-setting"), YOLO5_CLASSES_PATH),
+        ):
+            field = self.file_fields.get(setting)
+            if field:
+                field["path"].setText(path)
+
     def download_yolo5_clicked(self, widget, param):
         """Download the default YOLOv5 model files."""
         _ = get_app()._tr
         os.makedirs(YOLO5_DIR, exist_ok=True)
 
+        if self.yolo5_default_files_match():
+            self.set_yolo5_default_file_fields(param)
+            self.update_file_validation()
+            QMessageBox.information(
+                self,
+                self.model_message(_("Download %(model)s Files")),
+                self.model_message(_("The %(model)s files are already downloaded.")),
+            )
+            return
+
         progress = QProgressDialog(
-            _("Downloading YOLOv5 model..."),
+            self.model_message(_("Downloading %(model)s files...")),
             _("Cancel"),
             0,
             100,
             self,
         )
-        progress.setWindowTitle(_("Download YOLOv5 Files"))
+        progress.setWindowTitle(self.model_message(_("Download %(model)s Files")))
         progress.setWindowModality(Qt.WindowModal)
         progress.setMinimumDuration(0)
+        zip_download_path = os.path.join(YOLO5_DIR, "yolov5s-openshot.zip.download")
+        model_download_path = "{}.download".format(YOLO5_MODEL_PATH)
+        classes_download_path = "{}.download".format(YOLO5_CLASSES_PATH)
+
+        def remove_partial_downloads():
+            for path in (zip_download_path, model_download_path, classes_download_path):
+                if os.path.exists(path):
+                    os.remove(path)
 
         def report_hook(block_count, block_size, total_size):
             if total_size > 0:
                 progress.setValue(min(100, int(block_count * block_size * 100 / total_size)))
                 QCoreApplication.processEvents()
             if progress.wasCanceled():
-                raise RuntimeError("Download cancelled")
+                raise DownloadCancelled()
 
         try:
-            zip_download_path = os.path.join(YOLO5_DIR, "yolov5s-openshot.zip.download")
-            model_download_path = "{}.download".format(YOLO5_MODEL_PATH)
-            classes_download_path = "{}.download".format(YOLO5_CLASSES_PATH)
-
             urllib.request.urlretrieve(YOLO5_DOWNLOAD_URL, zip_download_path, report_hook)
             if self.file_sha256(zip_download_path) != YOLO5_DOWNLOAD_SHA256:
-                raise ValueError("Downloaded YOLOv5 archive checksum did not match")
+                raise ValueError(self.model_message(_("Downloaded %(model)s files are invalid.")))
 
             with zipfile.ZipFile(zip_download_path) as yolo5_zip:
                 for member_name, destination_path in (
@@ -464,37 +559,29 @@ class ProcessEffect(QDialog):
                         output_file.write(source_file.read())
 
             if self.file_sha256(model_download_path) != YOLO5_MODEL_SHA256:
-                raise ValueError("Downloaded YOLOv5 model checksum did not match")
+                raise ValueError(self.model_message(_("Downloaded %(model)s files are invalid.")))
             if self.file_sha256(classes_download_path) != YOLO5_CLASSES_SHA256:
-                raise ValueError("Downloaded YOLOv5 class names checksum did not match")
+                raise ValueError(self.model_message(_("Downloaded %(model)s files are invalid.")))
 
             os.replace(model_download_path, YOLO5_MODEL_PATH)
             os.replace(classes_download_path, YOLO5_CLASSES_PATH)
+        except DownloadCancelled:
+            remove_partial_downloads()
+            log.info("YOLOv5 file download cancelled")
+            self.update_file_validation()
+            return
         except Exception as ex:
-            for path in (
-                os.path.join(YOLO5_DIR, "yolov5s-openshot.zip.download"),
-                "{}.download".format(YOLO5_MODEL_PATH),
-                "{}.download".format(YOLO5_CLASSES_PATH),
-            ):
-                if os.path.exists(path):
-                    os.remove(path)
+            remove_partial_downloads()
             QMessageBox.warning(self, _("Download Failed"), str(ex))
             log.error("Failed to download YOLOv5 files: %s", ex)
             self.update_file_validation()
             return
         finally:
-            zip_download_path = os.path.join(YOLO5_DIR, "yolov5s-openshot.zip.download")
             if os.path.exists(zip_download_path):
                 os.remove(zip_download_path)
             progress.close()
 
-        for setting, path in (
-            (param.get("model-setting"), YOLO5_MODEL_PATH),
-            (param.get("classes-setting"), YOLO5_CLASSES_PATH),
-        ):
-            field = self.file_fields.get(setting)
-            if field:
-                field["path"].setText(path)
+        self.set_yolo5_default_file_fields(param)
         self.update_file_validation()
 
     def rect_select_clicked(self, widget, param):
@@ -566,6 +653,7 @@ class ProcessEffect(QDialog):
 
     def accept(self):
         """ Start processing effect """
+        _ = get_app()._tr
         self.update_file_validation()
         if self.file_fields and not self.process_button.isEnabled():
             return
@@ -589,26 +677,51 @@ class ProcessEffect(QDialog):
         # Load into JSON string info about protobuf data path
         jsonString = json.dumps(self.context)
 
-        # Generate processed data
-        processing = openshot.ClipProcessingJobs(self.effect_class, jsonString)
-        processing.processClip(self.clip_instance, jsonString)
+        def show_processing_error(message=None):
+            """Show a processing failure and leave the dialog open for correction."""
+            if not message:
+                message = _("Unable to process this effect. Check the model files and settings.")
+            self.progressBar.setEnabled(False)
+            self.process_button.setEnabled(True)
+            QMessageBox.warning(self, _("Processing Failed"), message)
 
-        # TODO: This is just a temporary fix. We need to find a better way to allow the user to fix the error
-        # The while loop is handling the error message. If pre-processing returns an error, a message
-        # will be displayed for 3 seconds and the effect will be closed.
-        start = time.time()
-        while processing.GetError():
-            self.error_label.setText(processing.GetErrorMessage())
-            self.error_label.repaint()
-            if (time.time() - start) > 3:
-                self.exporting = False
-                processing.CancelProcessing()
-                while(not processing.IsDone() ):
-                    continue
-                super(ProcessEffect, self).reject()
+        def cancel_processing(max_wait_seconds=1.0):
+            """Request cancellation without allowing libopenshot to freeze this dialog."""
+            processing.CancelProcessing()
+            wait_start = time.time()
+            while not processing.IsDone() and (time.time() - wait_start) < max_wait_seconds:
+                QCoreApplication.processEvents()
+                time.sleep(0.01)
+
+        # Generate processed data
+        try:
+            processing = openshot.ClipProcessingJobs(self.effect_class, jsonString)
+            processing.processClip(self.clip_instance, jsonString)
+        except Exception as ex:
+            log.error("Failed to start effect processing: %s", ex)
+            show_processing_error(str(ex))
+            return
 
         # get processing status
+        blank_error_start = None
         while(not processing.IsDone() ):
+            if processing.GetError():
+                message = (processing.GetErrorMessage() or "").strip()
+                if message:
+                    log.error("Effect processing failed: %s", message)
+                    cancel_processing()
+                    show_processing_error(message)
+                    return
+                if blank_error_start is None:
+                    blank_error_start = time.time()
+                elif time.time() - blank_error_start > 3.0:
+                    log.error("Effect processing failed without an error message")
+                    cancel_processing()
+                    show_processing_error()
+                    return
+            else:
+                blank_error_start = None
+
             # update progressbar
             progressionStatus = processing.GetProgress()
             self.progressBar.setValue(int(progressionStatus))
@@ -619,7 +732,16 @@ class ProcessEffect(QDialog):
 
             # if the cancel button was pressed, close the processing thread
             if(self.cancel_clip_processing):
-                processing.CancelProcessing()
+                cancel_processing()
+
+        if not self.cancel_clip_processing and processing.GetError():
+            message = (processing.GetErrorMessage() or "").strip()
+            log.error(
+                "Effect processing failed%s",
+                ": %s" % message if message else "",
+            )
+            show_processing_error(message)
+            return
 
         if(not self.cancel_clip_processing):
             # Load processed data into effect
