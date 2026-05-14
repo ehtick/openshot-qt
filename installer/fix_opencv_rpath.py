@@ -80,17 +80,26 @@ def main(argv):
     parser.add_argument("binding", help="Path to _openshot.so")
     parser.add_argument("opencv_root", help="OpenCV install prefix")
     parser.add_argument("stage_dir", help="Directory for staged OpenCV dylibs")
+    parser.add_argument(
+        "extra_binaries",
+        nargs="*",
+        help="Additional dylibs or extension modules to rewrite before freeze",
+    )
     args = parser.parse_args(argv)
 
     binding = os.path.abspath(args.binding)
     opencv_root = os.path.abspath(args.opencv_root)
     stage_dir = os.path.abspath(args.stage_dir)
+    extra_binaries = [os.path.abspath(path) for path in args.extra_binaries]
 
     if not os.path.exists(binding):
         raise FileNotFoundError(f"OpenShot Python binding not found: {binding}")
+    for path in extra_binaries:
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Additional binary not found: {path}")
 
     stage_opencv_dylibs(opencv_root, stage_dir)
-    for path in [binding] + sorted(glob.glob(os.path.join(stage_dir, "*.dylib"))):
+    for path in [binding] + extra_binaries + sorted(glob.glob(os.path.join(stage_dir, "*.dylib"))):
         rewrite_opencv_dependencies(path, stage_dir)
     rewrite_opencv_ids(stage_dir)
     return 0
