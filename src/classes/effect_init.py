@@ -180,7 +180,7 @@ effect_options = {
         {
             "title": "Processing Device",
             "setting": "processing-device",
-            "value": "GPU",
+            "value": "CPU",
             "values": [
                 {
                     "value": "GPU",
