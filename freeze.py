@@ -57,6 +57,7 @@ import os
 import sys
 import fnmatch
 import json
+import subprocess
 from shutil import copytree, rmtree, copy
 from cx_Freeze import setup, Executable
 import cx_Freeze
@@ -174,6 +175,106 @@ def find_files(directory, patterns):
                     if fnmatch.fnmatch(basename, pattern):
                         filename = os.path.join(root, basename)
                         yield filename
+
+
+def find_windows_imports(binary_path):
+    """Return DLL imports reported by objdump for a Windows binary."""
+    log.info("Inspecting Windows DLL imports: %s", binary_path)
+    try:
+        output = subprocess.check_output(
+            ["objdump", "-p", binary_path],
+            stderr=subprocess.STDOUT,
+            universal_newlines=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as ex:
+        log.warning("Unable to inspect Windows DLL imports for %s: %s", binary_path, ex)
+        return None
+
+    imports = []
+    for line in output.splitlines():
+        line = line.strip()
+        if line.startswith("DLL Name:"):
+            imports.append(line.split(":", 1)[1].strip())
+
+    log.info("Found %s imported DLLs in %s", len(imports), binary_path)
+    for dll_name in imports:
+        log.info("  imports: %s", dll_name)
+    return imports
+
+
+def find_windows_opencv_dlls(opencv_root=None, opencv_dll_dir=None):
+    """Return OpenCV DLLs available in the configured Windows OpenCV install."""
+    opencv_bin_paths = []
+    if opencv_dll_dir:
+        opencv_bin_paths.append(opencv_dll_dir)
+    if opencv_root:
+        opencv_bin_paths.extend([
+            os.path.join(opencv_root, "bin"),
+            os.path.join(opencv_root, "x64", "mingw", "bin"),
+        ])
+
+    opencv_dlls = []
+    for opencv_bin_path in opencv_bin_paths:
+        found_dlls = list(find_files(opencv_bin_path, ["*opencv*.dll"]))
+        log.info(
+            "Found %s Windows OpenCV DLLs in candidate path: %s",
+            len(found_dlls), opencv_bin_path
+        )
+        opencv_dlls.extend(found_dlls)
+
+    if not opencv_dlls and opencv_root:
+        log.warning("No Windows OpenCV runtime DLLs found in known bin paths: %s", opencv_bin_paths)
+        log.info("Searching Windows OpenCV prefix for runtime DLLs: %s", opencv_root)
+        opencv_dlls = list(find_files(opencv_root, ["*opencv*.dll"]))
+
+    dll_by_name = {}
+    for dll_path in opencv_dlls:
+        dll_name = os.path.basename(dll_path).lower()
+        if dll_name in dll_by_name:
+            log.info("Ignoring duplicate Windows OpenCV DLL candidate: %s", dll_path)
+            continue
+        dll_by_name[dll_name] = dll_path
+        log.info("Available Windows OpenCV DLL: %s", dll_path)
+    return dll_by_name
+
+
+def find_required_windows_opencv_dlls(seed_binaries, opencv_dlls_by_name):
+    """Walk the OpenCV DLL import closure needed by seed Windows binaries."""
+    required_dlls = {}
+    inspected_binaries = set()
+    pending_binaries = list(seed_binaries)
+
+    log.info("Resolving Windows OpenCV DLL dependency closure")
+    for seed_binary in seed_binaries:
+        log.info("  seed binary: %s", seed_binary)
+
+    while pending_binaries:
+        binary_path = pending_binaries.pop(0)
+        normalized_binary_path = os.path.normcase(os.path.abspath(binary_path))
+        if normalized_binary_path in inspected_binaries:
+            continue
+        inspected_binaries.add(normalized_binary_path)
+
+        imported_dlls = find_windows_imports(binary_path)
+        if imported_dlls is None:
+            return None
+
+        for imported_dll in imported_dlls:
+            imported_name = imported_dll.lower()
+            if "opencv" not in imported_name:
+                continue
+
+            resolved_path = opencv_dlls_by_name.get(imported_name)
+            if not resolved_path:
+                log.warning("Imported OpenCV DLL was not found in configured OpenCV paths: %s", imported_dll)
+                continue
+
+            if imported_name not in required_dlls:
+                required_dlls[imported_name] = resolved_path
+                pending_binaries.append(resolved_path)
+                log.info("Required Windows OpenCV DLL: %s -> %s", imported_dll, resolved_path)
+
+    return [required_dlls[name] for name in sorted(required_dlls)]
 
 
 def should_package_source_file(filename):
@@ -296,27 +397,34 @@ if sys.platform == "win32":
             log.warning("Missing optional Windows imageformat runtime DLL: %s", dll_path)
 
     # libopenshot's Python extension links directly to the OpenCV runtime DLLs.
-    # Copy them from the explicit CI/toolchain OpenCV path so we don't package
-    # stale pacman DLLs when a source-built OpenCV is installed side-by-side.
+    # Resolve the OpenCV dependency closure from the explicit CI/toolchain
+    # OpenCV path so we don't package stale pacman DLLs or every contrib DLL.
     opencv_root = os.getenv("OPENCV_ROOT")
     opencv_dll_dir = os.getenv("OPENCV_DLL_DIR")
     if opencv_root or opencv_dll_dir:
-        opencv_bin_paths = []
-        if opencv_dll_dir:
-            opencv_bin_paths.append(opencv_dll_dir)
-        if opencv_root:
-            opencv_bin_paths.extend([
-                os.path.join(opencv_root, "bin"),
-                os.path.join(opencv_root, "x64", "mingw", "bin"),
-            ])
-        opencv_runtime_dlls = []
-        for opencv_bin_path in opencv_bin_paths:
-            opencv_runtime_dlls.extend(find_files(opencv_bin_path, ["*opencv*.dll"]))
-        if not opencv_runtime_dlls:
-            log.warning("No Windows OpenCV runtime DLLs found in known bin paths: %s", opencv_bin_paths)
-            if opencv_root:
-                log.info("Searching Windows OpenCV prefix for runtime DLLs: %s", opencv_root)
-                opencv_runtime_dlls = list(find_files(opencv_root, ["*opencv*.dll"]))
+        opencv_dlls_by_name = find_windows_opencv_dlls(opencv_root, opencv_dll_dir)
+        seed_binaries = []
+        seed_binaries.extend(glob.glob(os.path.join(PATH, "_openshot*.pyd")))
+        if artifact_path:
+            seed_binaries.extend(glob.glob(os.path.join(artifact_path, "python", "_openshot*.pyd")))
+            seed_binaries.extend(glob.glob(os.path.join(artifact_path, "bin", "*openshot*.dll")))
+        seed_binaries = sorted(set(path for path in seed_binaries if os.path.exists(path)))
+
+        if opencv_dlls_by_name and seed_binaries:
+            opencv_runtime_dlls = find_required_windows_opencv_dlls(seed_binaries, opencv_dlls_by_name)
+            if opencv_runtime_dlls is None:
+                log.warning("Falling back to packaging all discovered Windows OpenCV DLLs")
+                opencv_runtime_dlls = list(opencv_dlls_by_name.values())
+            elif not opencv_runtime_dlls:
+                log.warning("No OpenCV imports were discovered from seed binaries; packaging all discovered Windows OpenCV DLLs")
+                opencv_runtime_dlls = list(opencv_dlls_by_name.values())
+        else:
+            if not opencv_dlls_by_name:
+                log.warning("No Windows OpenCV runtime DLLs found for OpenCV root: %s", opencv_root)
+            if not seed_binaries:
+                log.warning("No Windows OpenCV dependency seed binaries found")
+            opencv_runtime_dlls = list(opencv_dlls_by_name.values())
+
         if opencv_runtime_dlls:
             for dll_path in sorted(set(opencv_runtime_dlls)):
                 log.info("Adding Windows OpenCV runtime DLL: %s", dll_path)
