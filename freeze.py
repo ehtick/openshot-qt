@@ -151,8 +151,16 @@ if artifact_path:
     sys.path.insert(0, os.path.join(artifact_path, "lib"))
     sys.path.insert(0, os.path.join(artifact_path, "bin"))
 
-from classes import info
-from classes.logger import log
+print("Importing OpenShot freeze metadata modules", flush=True)
+try:
+    from classes import info
+    print("Imported classes.info", flush=True)
+    from classes.logger import log
+    print("Imported classes.logger", flush=True)
+except BaseException:
+    import traceback
+    traceback.print_exc()
+    raise
 log.info("Execution path: %s" % os.path.abspath(__file__))
 log.info("Artifact path detected and added to sys.path: %s" % artifact_path)
 
