@@ -103,6 +103,7 @@ class ProcessEffect(QDialog):
         self.context = {}
         self.file_fields = {}
         self.onnx_validation_cache = {}
+        self.processing_effect = False
         self.file_validation_timer = QTimer(self)
         self.file_validation_timer.setInterval(300)
         self.file_validation_timer.setSingleShot(True)
@@ -437,7 +438,13 @@ class ProcessEffect(QDialog):
             all_valid = all_valid and valid
 
         if hasattr(self, "process_button"):
-            self.process_button.setEnabled(all_valid)
+            self.process_button.setEnabled(all_valid and not self.processing_effect)
+
+    def set_processing_controls_enabled(self, enabled):
+        """Enable or disable editable processing controls."""
+        self.scrollArea.setEnabled(enabled)
+        self.process_button.setEnabled(enabled)
+        self.cancel_button.setEnabled(True)
 
     def file_sha256(self, path):
         """Return the SHA256 checksum of a file."""
@@ -633,7 +640,8 @@ class ProcessEffect(QDialog):
 
         # Enable ProgressBar
         self.progressBar.setEnabled(True)
-        self.process_button.setEnabled(False)
+        self.processing_effect = True
+        self.set_processing_controls_enabled(False)
 
         # Print effect settings
         log.info(self.context)
@@ -655,7 +663,9 @@ class ProcessEffect(QDialog):
             if not message:
                 message = _("Unable to process this effect. Check the model files and settings.")
             self.progressBar.setEnabled(False)
-            self.process_button.setEnabled(True)
+            self.processing_effect = False
+            self.set_processing_controls_enabled(True)
+            self.update_file_validation()
             QMessageBox.warning(self, _("Processing Failed"), message)
 
         def cancel_processing(max_wait_seconds=1.0):

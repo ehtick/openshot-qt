@@ -67,6 +67,7 @@ from windows.video_widget import VideoWidget
 from windows.models.properties_model import ClipStandardItemModel, PropertiesModel
 from windows.process_effect import ProcessEffect
 from classes import http_client
+from classes.effect_init import effect_options
 
 
 def clip_with(scale_mode, gravity=openshot.GRAVITY_CENTER):
@@ -188,6 +189,31 @@ class VideoWidgetTransformTests(unittest.TestCase):
 
         self.assertFalse(valid)
         self.assertEqual(message, "Failed to load ONNX model: bad graph")
+
+    def test_object_detection_generate_masks_option_is_not_shown(self):
+        generate_masks = [
+            option for option in effect_options["ObjectDetection"]
+            if option.get("setting") == "generate_masks"
+        ]
+
+        self.assertEqual(generate_masks, [])
+
+    def test_process_effect_disables_editable_controls_while_processing(self):
+        process = ProcessEffect.__new__(ProcessEffect)
+        enabled_calls = {
+            "scroll": [],
+            "process": [],
+            "cancel": [],
+        }
+        process.scrollArea = types.SimpleNamespace(setEnabled=enabled_calls["scroll"].append)
+        process.process_button = types.SimpleNamespace(setEnabled=enabled_calls["process"].append)
+        process.cancel_button = types.SimpleNamespace(setEnabled=enabled_calls["cancel"].append)
+
+        ProcessEffect.set_processing_controls_enabled(process, False)
+
+        self.assertEqual(enabled_calls["scroll"], [False])
+        self.assertEqual(enabled_calls["process"], [False])
+        self.assertEqual(enabled_calls["cancel"], [True])
 
     def test_yolo5_ssl_context_prefers_certifi_bundle(self):
         certifi_stub = types.SimpleNamespace(where=lambda: "/tmp/cacert.pem")
@@ -333,6 +359,31 @@ class VideoWidgetTransformTests(unittest.TestCase):
 
         self.assertEqual(object_id, "effect-uuid-1")
         self.assertEqual(props["name"], "one")
+
+    def test_tracked_object_resolver_ignores_all_selection_for_preview_transform(self):
+        self.widget.transforming_effect = None
+        objects = {
+            "all": {"visible": {"value": 1}, "name": "all objects"},
+            "effect-uuid-3": {"visible": {"value": 1}, "name": "three"},
+        }
+        raw = {"selected_object_index": {"value": -1}}
+
+        object_id, props = VideoWidget._resolve_tracked_object(self.widget, objects, raw)
+
+        self.assertIsNone(object_id)
+        self.assertIsNone(props)
+
+    def test_tracked_object_resolver_fallback_skips_all_object(self):
+        self.widget.transforming_effect = None
+        objects = {
+            "all": {"visible": {"value": 1}, "name": "all objects"},
+            "effect-uuid-3": {"visible": {"value": 1}, "name": "three"},
+        }
+
+        object_id, props = VideoWidget._resolve_tracked_object(self.widget, objects, {})
+
+        self.assertEqual(object_id, "effect-uuid-3")
+        self.assertEqual(props["name"], "three")
 
     def test_update_effect_property_writes_only_changed_tracked_object_property(self):
         class FakeEffect:

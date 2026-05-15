@@ -1637,10 +1637,22 @@ class VideoWidget(QWidget, updates.UpdateInterface):
                 raw_properties = json.loads(self.transforming_effect_object.PropertiesJSON(clip_frame_number))
                 objects = raw_properties.get('objects', {})
                 if not objects:
+                    self.hover_transform_mode = None
+                    self.transform_mode = None
+                    self.hover_cursor = Qt.ArrowCursor
+                    self.setCursor(self.hover_cursor)
+                    self.mouse_position = event.pos()
+                    self.mutex.unlock()
                     return
 
                 obj_id, raw_properties = self._resolve_tracked_object(objects, raw_properties)
                 if not obj_id or not raw_properties:
+                    self.hover_transform_mode = None
+                    self.transform_mode = None
+                    self.hover_cursor = Qt.ArrowCursor
+                    self.setCursor(self.hover_cursor)
+                    self.mouse_position = event.pos()
+                    self.mutex.unlock()
                     return
 
                 if not self._tracked_object_visible(raw_properties):
@@ -2409,6 +2421,8 @@ class VideoWidget(QWidget, updates.UpdateInterface):
                 selected_idx = str(int(float(selected_idx)))
             except (TypeError, ValueError):
                 selected_idx = str(selected_idx)
+            if selected_idx == "-1":
+                return None, None
             if selected_idx in objects:
                 return selected_idx, objects[selected_idx]
 
@@ -2419,11 +2433,15 @@ class VideoWidget(QWidget, updates.UpdateInterface):
                     return object_id, object_props
 
         for object_id, object_props in objects.items():
+            if str(object_id).lower() == "all":
+                continue
             if self._tracked_object_visible(object_props):
                 return object_id, object_props
 
-        object_id = next(iter(objects))
-        return object_id, objects.get(object_id)
+        for object_id, object_props in objects.items():
+            if str(object_id).lower() != "all":
+                return object_id, object_props
+        return None, None
 
     def refreshTriggered(self):
         """Signal to refresh viewport (i.e. a property might have changed that effects the preview)"""
