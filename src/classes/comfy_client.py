@@ -27,7 +27,6 @@
 
 import json
 import os
-import ssl
 import base64
 import uuid
 from datetime import datetime
@@ -35,12 +34,28 @@ import re
 import socket
 import struct
 from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+from urllib.request import Request, urlopen as _stdlib_urlopen
 from urllib.parse import quote, urlencode
 from urllib.parse import urlparse
 
-from classes import info
+from classes import http_client, info
 from classes.logger import log
+
+
+def _validate_urlopen_scheme(url):
+    request_url = getattr(url, "full_url", url)
+    scheme = urlparse(str(request_url)).scheme.lower()
+    if scheme not in ("http", "https"):
+        raise ValueError("Unsupported URL scheme for ComfyUI request: {}".format(scheme or "<empty>"))
+    return request_url, scheme
+
+
+def urlopen(url, *args, **kwargs):
+    """Open Comfy URLs with packaged CA handling for HTTPS."""
+    request_url, scheme = _validate_urlopen_scheme(url)
+    if scheme == "https" and "context" not in kwargs:
+        kwargs["context"] = http_client.ssl_context()
+    return _stdlib_urlopen(url, *args, **kwargs)  # nosec B310 - URL schemes are restricted above.
 
 
 class ComfyProgressSocket:
@@ -65,7 +80,7 @@ class ComfyProgressSocket:
 
         raw = socket.create_connection((host, port), timeout=6.0)
         if scheme == "https":
-            ctx = ssl.create_default_context()
+            ctx = http_client.ssl_context()
             raw = ctx.wrap_socket(raw, server_hostname=host)
         # Allow slower remote/proxied websocket handshakes.
         raw.settimeout(6.0)

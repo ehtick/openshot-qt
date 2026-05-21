@@ -36,7 +36,7 @@ from qt_api import Qt, pyqtSignal
 from qt_api import QIcon, QSize, QTimer
 from qt_api import QDialog, QLabel
 
-from classes import info, ui_util
+from classes import http_client, info, release_details, ui_util
 from classes.logger import log
 from classes.app import get_app
 from classes.metrics import track_metric_screen
@@ -44,7 +44,6 @@ from windows.views.credits_treeview import CreditsTreeView
 from windows.views.changelog_treeview import ChangelogTreeView
 from windows.views.menu import StyledContextMenu
 
-import requests
 import threading
 import json
 import datetime
@@ -453,20 +452,19 @@ class About(QDialog):
 
     def get_release_from_http(self):
         """Get the current version # from openshot.org"""
-        RELEASE_URL = 'http://www.openshot.org/releases/%s/'
+        url = release_details.release_details_url(info.VERSION)
 
-        # Send metric HTTP data
         try:
-            release_details = {}
-            r = requests.get(RELEASE_URL % info.VERSION,
-                             headers={"user-agent": "openshot-qt-%s" % info.VERSION}, verify=False)
-            if r.ok:
-                log.warning("Found current release: %s" % r.json())
-                release_details = r.json()
+            release_metadata = None
+            if url:
+                release_metadata = http_client.get_json(
+                    http_client.urls_with_http_fallback(url),
+                    "OpenShot release details",
+                    headers={"user-agent": "openshot-qt-%s" % info.VERSION},
+                )
+                log.info("Found current release: %s" % release_metadata)
             else:
-                log.warning("Failed to find current release: %s" % r.status_code)
-            release_git_SHA = release_details.get("sha", "")
-            release_notes = release_details.get("notes", "")
+                log.info("Skipping OpenShot release details lookup for non-release version: %s", info.VERSION)
 
             # get translations
             self.app = get_app()
@@ -480,28 +478,42 @@ class About(QDialog):
                     version_info = json.loads(f.read())
                     if version_info:
                         frozen_git_SHA = version_info.get("openshot-qt", {}).get("CI_COMMIT_SHA", "")
-                        build_name = version_info.get('build_name')
+                        build_name = version_info.get('build_name') or ""
                         string_release_date = _("Release Date")
                         string_release_notes = _("Release Notes")
                         string_official = _("Official")
                         version_date = version_info.get("date")
 
-                        # Parse the date string into a datetime object
-                        date_obj = datetime.datetime.strptime(version_date, "%Y-%m-%d %H:%M")
-                        formatted_date = date_obj.strftime("%Y-%m-%d")
+                        formatted_date = ""
+                        if version_date:
+                            try:
+                                date_obj = datetime.datetime.strptime(version_date, "%Y-%m-%d %H:%M")
+                                formatted_date = date_obj.strftime("%Y-%m-%d")
+                            except Exception:
+                                log.warning("Failed to parse release date: %s", version_date, exc_info=1)
 
-                        if frozen_git_SHA == release_git_SHA:
+                        if release_metadata and frozen_git_SHA == release_metadata.get("sha", ""):
                             # Remove -release-candidate... from build name
-                            log.warning("Official release detected with SHA (%s) for v%s" % (release_git_SHA, info.VERSION))
+                            log.warning(
+                                "Official release detected with SHA (%s) for v%s" %
+                                (release_metadata.get("sha", ""), info.VERSION))
                             build_name = build_name.replace("-candidate", "")
-                            frozen_version_label = f'{build_name} | {string_official}<br/>{string_release_date}: {formatted_date}'
-                            if string_release_notes:
-                                frozen_version_label += f' | <a href="{release_notes}" style="text-decoration:none;color: #91C3FF;">{string_release_notes}</a>'
+                            frozen_version_label = f'{build_name} | {string_official}'
+                            if formatted_date:
+                                frozen_version_label += f'<br/>{string_release_date}: {formatted_date}'
+                            release_notes = release_metadata.get("notes")
+                            if string_release_notes and release_notes:
+                                frozen_version_label += (
+                                    f' | <a href="{release_notes}" '
+                                    f'style="text-decoration:none;color: #91C3FF;">{string_release_notes}</a>')
                         else:
                             # Display current build name - unedited
-                            log.warning("Build SHA (%s) does not match an official release SHA (%s) for v%s" %
-                                        (frozen_git_SHA, release_git_SHA, info.VERSION))
-                            frozen_version_label = f"{build_name}<br/>{string_release_date}: {formatted_date}"
+                            if release_metadata:
+                                log.warning("Build SHA (%s) does not match an official release SHA (%s) for v%s" %
+                                            (frozen_git_SHA, release_metadata.get("sha", ""), info.VERSION))
+                            frozen_version_label = build_name or ""
+                            if formatted_date:
+                                frozen_version_label += f"<br/>{string_release_date}: {formatted_date}"
 
             # Init some variables
             openshot_qt_version = _("Version: %s") % info.VERSION
@@ -513,8 +525,8 @@ class About(QDialog):
             # emit release found
             self.releaseFound.emit(version_text)
 
-        except Exception as Ex:
-            log.error("Failed to get version from: %s" % RELEASE_URL % info.VERSION)
+        except Exception:
+            log.warning("Failed to get OpenShot release details", exc_info=True)
 
 
     def load_credit(self):

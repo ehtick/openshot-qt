@@ -27,6 +27,7 @@
 
 import copy
 import importlib
+import math
 import os
 import sys
 import types
@@ -46,7 +47,7 @@ from qt_api import QColor, QCursor, QImage, QPainter
 from qt_api import QApplication
 from classes import info
 from classes.updates import UpdateAction
-from qt_test_app import ensure_app_state as ensure_qt_app_state, get_or_create_app
+from tests.qt_test_app import ensure_app_state as ensure_qt_app_state, get_or_create_app
 
 QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)
 
@@ -139,6 +140,31 @@ class TimelineHelperTests(unittest.TestCase):
         self.assertEqual(edit.parse_text("0"), 1)
         self.assertEqual(edit.parse_text("00:00:00,00"), 1)
         self.assertIsNone(edit.parse_text("bad"))
+
+    def test_playhead_time_edit_commit_centers_on_new_playhead_frame(self):
+        helper = types.SimpleNamespace()
+        helper.current_frame = 1
+        helper.playhead_time_editor = None
+        helper.updated = 0
+        helper.seeks = []
+        helper.center_calls = 0
+        helper.update = lambda: setattr(helper, "updated", helper.updated + 1)
+        helper._emit_playhead_seek = lambda frame, start_preroll=True, force=False: helper.seeks.append(
+            (frame, start_preroll, force)
+        )
+        helper.centerOnPlayhead = lambda: setattr(helper, "center_calls", helper.center_calls + 1)
+
+        self.qwidget_base_module.TimelineWidgetBase._commit_playhead_time_edit(
+            helper,
+            301,
+            start_preroll=False,
+            force=False,
+        )
+
+        self.assertEqual(helper.current_frame, 301)
+        self.assertEqual(helper.updated, 1)
+        self.assertEqual(helper.seeks, [(301, False, False)])
+        self.assertEqual(helper.center_calls, 1)
 
     def make_time_helper(self):
         timeline_module = self.timeline_module
@@ -3874,6 +3900,60 @@ class TimelineHelperTests(unittest.TestCase):
 
         self.assertEqual(interval, 2.0)
         self.assertIn(8.0, starts)
+
+    def test_build_thumbnail_slots_entire_style_uses_pixel_stable_geometry(self):
+        pixels_per_second = 23.8
+        painter = self.make_clip_painter(
+            thumbnail_style="entire",
+            pixels_per_second=pixels_per_second,
+            project_fps=24.0,
+        )
+        clip = types.SimpleNamespace(
+            id="C1",
+            data={
+                "file_id": "F1",
+                "start": 0.0,
+                "end": 12.0,
+                "duration": 12.0,
+                "position": 0.0,
+                "reader": {"fps": {"num": 24, "den": 1}, "duration": 12.0},
+            },
+        )
+        inner = self.clip_paint_module.QRectF(
+            0.0,
+            0.0,
+            12.0 * pixels_per_second,
+            40.0,
+        )
+        segment = {
+            "offset_seconds": 0.0,
+            "duration_seconds": 12.0,
+            "clip_duration": 12.0,
+            "segment_width": 12.0 * pixels_per_second,
+            "clip_width": 12.0 * pixels_per_second,
+            "includes_start": True,
+            "includes_end": True,
+        }
+        timing = painter._segment_timing(segment, 12.0)
+
+        slots, _interval = painter._build_thumbnail_slots(clip, inner, segment, "entire", timing)
+        rects = [
+            rect
+            for _slot_start, rect in slots
+            if rect.x() >= 0.0 and rect.right() <= inner.right()
+        ]
+        spacings = [
+            round(rects[index + 1].x() - rects[index].x(), 6)
+            for index in range(len(rects) - 1)
+        ]
+
+        self.assertGreaterEqual(len(spacings), 2)
+        self.assertTrue(
+            all(
+                math.isclose(spacing, rects[0].width(), abs_tol=1e-6)
+                for spacing in spacings
+            )
+        )
 
     def test_expire_thumbnail_requests_clears_edge_slot_fallback_cache(self):
         painter = self.make_clip_painter(thumbnail_style="entire", pixels_per_second=24.0, project_fps=24.0)

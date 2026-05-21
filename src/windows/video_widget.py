@@ -319,7 +319,8 @@ class VideoWidget(QWidget, updates.UpdateInterface):
         self, painter, sx, sy, source_width, source_height,
         origin_x, origin_y,
         x1=None, y1=None, x2=None, y2=None, rotation=None,
-        skip_origin=False
+        skip_origin=False,
+        muted_handles=False
     ):
         # Corner and origin glyph on-screen sizes
         cs = self.cs
@@ -397,7 +398,7 @@ class VideoWidget(QWidget, updates.UpdateInterface):
                                         self.topLeftHandle.height())
 
         # Pen color with global opacity applied
-        color_hex = "#d3d3d3" if skip_origin else "#53a0ed"
+        color_hex = "#d3d3d3" if muted_handles else "#53a0ed"
         pen_color = QColor(color_hex)
         pen_color.setAlphaF(getattr(self, "handle_opacity", 1.0))
         pen = QPen(QBrush(pen_color), 1.5)
@@ -430,6 +431,8 @@ class VideoWidget(QWidget, updates.UpdateInterface):
                 QLineF(center - halfW, center + halfW),
                 QLineF(center - halfH, center + halfH),
             ])
+        else:
+            self.centerHandle = None
 
         painter.resetTransform()
 
@@ -569,6 +572,7 @@ class VideoWidget(QWidget, updates.UpdateInterface):
             crop_params = None
             crop_norm = None
             margin_box_norm = None
+            tracked_object_overlay = False
 
             # Effect overlays
             if (self.transforming_effect
@@ -584,9 +588,10 @@ class VideoWidget(QWidget, updates.UpdateInterface):
                 raw_eff = json.loads(self.transforming_effect_object.PropertiesJSON(frame))
 
                 if getattr(eff_info, 'has_tracked_object', False):
+                    tracked_object_overlay = True
                     objs = raw_eff.get("objects", {}) or {}
                     if objs:
-                        oid, eprops = self._resolve_tracked_object(objs)
+                        oid, eprops = self._resolve_tracked_object(objs, raw_eff)
                         if oid and eprops and self._tracked_object_visible(eprops):
                             x1_abs = clip_rect.x() + eprops.get("x1", {}).get("value", 0.0) * clip_rect.width()
                             y1_abs = clip_rect.y() + eprops.get("y1", {}).get("value", 0.0) * clip_rect.height()
@@ -677,7 +682,13 @@ class VideoWidget(QWidget, updates.UpdateInterface):
                     x1 = y1 = x2 = y2 = None
                 self.drawTransformHandler(
                     painter, sx, sy, sw, sh, ox, oy,
-                    x1, y1, x2, y2, skip_origin=(is_crop or margin_box_norm is not None)
+                    x1, y1, x2, y2,
+                    skip_origin=(
+                        is_crop
+                        or margin_box_norm is not None
+                        or tracked_object_overlay
+                    ),
+                    muted_handles=(is_crop or margin_box_norm is not None)
                 )
 
                 # Crop origin glyph (screen space; constant size; with opacity)
@@ -974,6 +985,7 @@ class VideoWidget(QWidget, updates.UpdateInterface):
         self.mouse_pressed = False
         self.mouse_dragging = False
         self.transform_mode = None
+        self.hover_transform_mode = None
         self.rotation_drag_value = None
         self.margin_box_drag_anchor = None
 
@@ -1065,11 +1077,8 @@ class VideoWidget(QWidget, updates.UpdateInterface):
                 get_app().updates.ignore_history = False
 
         if self.transforming_effect and self.original_effect_data:
-            get_app().updates.ignore_history = True
             get_app().updates.transaction_id = self.transaction_id
-            self.transforming_effect.save()
             get_app().updates.apply_last_action_to_history(self.original_effect_data)
-            get_app().updates.ignore_history = False
 
         # Clear transaction and data
         get_app().updates.transaction_id = None
@@ -1077,6 +1086,7 @@ class VideoWidget(QWidget, updates.UpdateInterface):
         self.original_clip_data = None
         self.original_clip_data_map = {}
         self.original_effect_data = None
+        self.setCursor(Qt.ArrowCursor)
 
     def rotateCursor(self, pixmap, rotation, shear_x, shear_y):
         """Rotate cursor based on the current transform"""
@@ -1147,6 +1157,10 @@ class VideoWidget(QWidget, updates.UpdateInterface):
             self.transforming_effect and self.transforming_effect_object
             and self._effect_has_margin_box()
         )
+        is_tracked_object_effect = (
+            self.transforming_effect and self.transforming_effect_object
+            and getattr(self.transforming_effect_object.info, 'has_tracked_object', False)
+        )
         is_crop_effect = effect_class_name == 'Crop'
         if is_margin_box_effect:
             handle_uis = [h for h in handle_uis if not h["mode"].startswith('shear_') and h["mode"] != 'origin']
@@ -1154,6 +1168,12 @@ class VideoWidget(QWidget, updates.UpdateInterface):
                 {"mode": None, "cursor": None}
                 if is_crop_effect else {"mode": 'draw_margin_box', "cursor": "cross"}
             )
+        elif is_tracked_object_effect:
+            handle_uis = [
+                h for h in handle_uis
+                if not h["mode"].startswith('shear_') and h["mode"] != 'origin'
+            ]
+            non_handle_uis["outside"] = {"mode": None, "cursor": None}
 
         # Ignore any handles that were not drawn
         handle_uis = [h for h in handle_uis if h["handle"]]
@@ -1617,10 +1637,22 @@ class VideoWidget(QWidget, updates.UpdateInterface):
                 raw_properties = json.loads(self.transforming_effect_object.PropertiesJSON(clip_frame_number))
                 objects = raw_properties.get('objects', {})
                 if not objects:
+                    self.hover_transform_mode = None
+                    self.transform_mode = None
+                    self.hover_cursor = Qt.ArrowCursor
+                    self.setCursor(self.hover_cursor)
+                    self.mouse_position = event.pos()
+                    self.mutex.unlock()
                     return
 
-                obj_id, raw_properties = self._resolve_tracked_object(objects)
+                obj_id, raw_properties = self._resolve_tracked_object(objects, raw_properties)
                 if not obj_id or not raw_properties:
+                    self.hover_transform_mode = None
+                    self.transform_mode = None
+                    self.hover_cursor = Qt.ArrowCursor
+                    self.setCursor(self.hover_cursor)
+                    self.mouse_position = event.pos()
+                    self.mutex.unlock()
                     return
 
                 if not self._tracked_object_visible(raw_properties):
@@ -1645,16 +1677,15 @@ class VideoWidget(QWidget, updates.UpdateInterface):
                         location_x += x_motion / viewport_rect.width()
                         location_y += y_motion / viewport_rect.height()
 
-                        # Update keyframe value (or create new one)
-                        self.updateEffectProperty(
-                            self.transforming_effect.id, clip_frame_number,
+                        # Update keyframe values (or create new ones)
+                        self.updateEffectProperties(
+                            self.transforming_effect.id,
+                            clip_frame_number,
                             obj_id,
-                            'delta_x', location_x,
-                            refresh=False)
-                        self.updateEffectProperty(
-                            self.transforming_effect.id, clip_frame_number,
-                            obj_id,
-                            'delta_y', location_y)
+                            {
+                                'delta_x': location_x,
+                                'delta_y': location_y,
+                            })
 
                     elif self.transform_mode == 'rotation':
                         # Get current rotation keyframe value
@@ -1721,19 +1752,18 @@ class VideoWidget(QWidget, updates.UpdateInterface):
                             elif scale_y:
                                 scale_x = scale_y
 
-                        # Update keyframe value (or create new one)
-                        both_scaled = scale_x != 0.001 and scale_y != 0.001
+                        # Update keyframe values (or create new ones)
+                        updates = {}
                         if scale_x != 0.001:
-                            self.updateEffectProperty(
-                                self.transforming_effect.id,
-                                clip_frame_number, obj_id,
-                                'scale_x', scale_x,
-                                refresh=(not both_scaled))
+                            updates['scale_x'] = scale_x
                         if scale_y != 0.001:
-                            self.updateEffectProperty(
+                            updates['scale_y'] = scale_y
+                        if updates:
+                            self.updateEffectProperties(
                                 self.transforming_effect.id,
-                                clip_frame_number, obj_id,
-                                'scale_y', scale_y)
+                                clip_frame_number,
+                                obj_id,
+                                updates)
 
             elif getattr(self.transforming_effect_object.info, 'class_name', '') == 'Crop':
                 raw_properties = json.loads(
@@ -1853,15 +1883,12 @@ class VideoWidget(QWidget, updates.UpdateInterface):
                     if abs(new_y - crop_y) > 0.0001:
                         updates['y'] = new_y
 
-                    for i, (prop, val) in enumerate(updates.items()):
-                        self.updateEffectProperty(
-                            eff_id,
-                            clip_frame_number,
-                            None,
-                            prop,
-                            val,
-                            refresh=(i == len(updates) - 1),
-                        )
+                    self.updateEffectProperties(
+                        eff_id,
+                        clip_frame_number,
+                        None,
+                        updates,
+                    )
 
             elif self._effect_has_margin_box():
                 raw_properties = json.loads(
@@ -1965,15 +1992,12 @@ class VideoWidget(QWidget, updates.UpdateInterface):
                     if abs(new_bottom - margin_bottom) > 0.0001:
                         updates['bottom'] = new_bottom
 
-                    for i, (prop, val) in enumerate(updates.items()):
-                        self.updateEffectProperty(
-                            eff_id,
-                            clip_frame_number,
-                            None,
-                            prop,
-                            val,
-                            refresh=(i == len(updates) - 1),
-                        )
+                    self.updateEffectProperties(
+                        eff_id,
+                        clip_frame_number,
+                        None,
+                        updates,
+                    )
 
             # Force re-paint
             self.update()
@@ -2055,8 +2079,17 @@ class VideoWidget(QWidget, updates.UpdateInterface):
 
     def updateEffectProperty(self, effect_id, frame_number, obj_id, property_key, new_value, refresh=True):
         """Update a keyframe property to a new value, adding or updating keyframes as needed"""
-        found_point = False
-        effect_updated = False
+        self.updateEffectProperties(
+            effect_id,
+            frame_number,
+            obj_id,
+            {property_key: new_value},
+            refresh=refresh)
+
+    def updateEffectProperties(self, effect_id, frame_number, obj_id, property_updates, refresh=True):
+        """Update one or more effect keyframe properties in a single project update."""
+        if not property_updates:
+            return
 
         c = Effect.get(id=effect_id)
 
@@ -2066,47 +2099,59 @@ class VideoWidget(QWidget, updates.UpdateInterface):
 
         # Clamp frame number to a sane range (effects share clip timing, so keep >= 1)
         frame_number = max(1, int(round(frame_number)))
+        updated_properties = {}
 
         try:
             if obj_id is not None:
-                props = c.data['objects'][obj_id]
+                objects = c.data.setdefault('objects', {})
+                props = objects.setdefault(obj_id, {})
             else:
                 props = c.data
-            if property_key not in props and property_key in {'left', 'top', 'right', 'bottom'}:
-                props[property_key] = {"Points": []}
-            points_list = props[property_key]["Points"]
         except (TypeError, KeyError):
             log.error("Corrupted project data!", exc_info=1)
             return
 
-        if property_key in {'left', 'top', 'right', 'bottom'} and new_value is not None:
-            new_value = min(max(float(new_value), 0.0), 1.0)
+        for property_key, new_value in property_updates.items():
+            found_point = False
+            if property_key not in props:
+                props[property_key] = {"Points": []}
+            if not isinstance(props[property_key], dict) or "Points" not in props[property_key]:
+                props[property_key] = {"Points": []}
+            points_list = props[property_key].setdefault("Points", [])
 
-        for point in points_list:
-            co = point.get("co", {})
+            if property_key in {'left', 'top', 'right', 'bottom'} and new_value is not None:
+                new_value = min(max(float(new_value), 0.0), 1.0)
 
-            if co.get("X") == frame_number:
-                found_point = True
-                effect_updated = True
-                point.update({
-                    "co": {"X": frame_number, "Y": float(new_value)},
-                    "interpolation": openshot.BEZIER,
-                })
+            for point in points_list:
+                co = point.get("co", {})
 
-        if not found_point and new_value is not None:
-            effect_updated = True
-            log.info("Creating new point at X=%s", frame_number)
-            points_list.append({
-                'co': {'X': frame_number, 'Y': float(new_value)},
-                'interpolation': openshot.BEZIER,
-                })
+                if co.get("X") == frame_number:
+                    found_point = True
+                    point.update({
+                        "co": {"X": frame_number, "Y": float(new_value)},
+                        "interpolation": openshot.BEZIER,
+                    })
 
-        if effect_updated:
+            if not found_point and new_value is not None:
+                log.info("Creating new point at X=%s", frame_number)
+                points_list.append({
+                    'co': {'X': frame_number, 'Y': float(new_value)},
+                    'interpolation': openshot.BEZIER
+                    })
+
+            if new_value is not None:
+                updated_properties[property_key] = props.get(property_key, {"Points": []})
+
+        if updated_properties:
             # Reduce # of clip properties we are saving (performance boost)
             if obj_id is not None:
-                c.data = {'objects': {obj_id: c.data.get('objects', {}).get(obj_id)}}
+                c.data = {
+                    'objects': {
+                        obj_id: updated_properties
+                    }
+                }
             else:
-                c.data = {property_key: c.data.get(property_key)}
+                c.data = updated_properties
             if self.transaction_id:
                 get_app().updates.transaction_id = self.transaction_id
             c.save()
@@ -2352,17 +2397,32 @@ class VideoWidget(QWidget, updates.UpdateInterface):
             return True
         return bool(visible_prop)
 
-    def _resolve_tracked_object(self, objects):
+    def _resolve_tracked_object(self, objects, raw_properties=None):
         """Resolve selected tracked-object key from effect data."""
         if not objects:
             return None, None
 
         selected_idx = None
-        if self.transforming_effect:
+        if raw_properties:
+            selected_prop = raw_properties.get("selected_object_index")
+            if isinstance(selected_prop, dict):
+                selected_idx = selected_prop.get("value")
+            else:
+                selected_idx = selected_prop
+        if selected_idx in (None, "", "None") and self.transforming_effect:
             selected_idx = self.transforming_effect.data.get("selected_object_index")
+            if isinstance(selected_idx, dict):
+                points = selected_idx.get("Points") or []
+                if points:
+                    selected_idx = points[0].get("co", {}).get("Y")
 
         if selected_idx not in (None, "", "None"):
-            selected_idx = str(selected_idx)
+            try:
+                selected_idx = str(int(float(selected_idx)))
+            except (TypeError, ValueError):
+                selected_idx = str(selected_idx)
+            if selected_idx == "-1":
+                return None, None
             if selected_idx in objects:
                 return selected_idx, objects[selected_idx]
 
@@ -2373,11 +2433,15 @@ class VideoWidget(QWidget, updates.UpdateInterface):
                     return object_id, object_props
 
         for object_id, object_props in objects.items():
+            if str(object_id).lower() == "all":
+                continue
             if self._tracked_object_visible(object_props):
                 return object_id, object_props
 
-        object_id = next(iter(objects))
-        return object_id, objects.get(object_id)
+        for object_id, object_props in objects.items():
+            if str(object_id).lower() != "all":
+                return object_id, object_props
+        return None, None
 
     def refreshTriggered(self):
         """Signal to refresh viewport (i.e. a property might have changed that effects the preview)"""

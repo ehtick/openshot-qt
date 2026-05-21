@@ -832,6 +832,7 @@ class TimelineWidgetBase(QWidget):
             start_preroll=bool(start_preroll),
             force=bool(force),
         )
+        self.centerOnPlayhead()
         editor = getattr(self, "playhead_time_editor", None)
         if editor and force:
             editor.hide()
@@ -991,12 +992,12 @@ class TimelineWidgetBase(QWidget):
             self.clip_painter.paint(painter)
             self.transition_painter.paint(painter)
             self._paint_drag_preview(painter)
-            self.playback_cache_painter.paint(painter)
             self.keyframe_painter.paint(painter)
             self.track_painter.paint_names(painter)
             self.keyframe_panel_painter.paint(painter, mode="overlay")
             self.selection_painter.paint(painter)
             self.ruler_painter.paint(painter)
+            self.playback_cache_painter.paint(painter)
             self.marker_painter.paint(painter)
             self.playhead_painter.paint(painter)
             self.ruler_painter.paint_overlay(painter)

@@ -42,7 +42,7 @@ from qt_api import QApplication
 
 from classes.project_data import ProjectDataStore
 from classes.updates import UpdateManager
-from qt_test_app import ensure_app_state as ensure_qt_app_state, get_or_create_app
+from tests.qt_test_app import ensure_app_state as ensure_qt_app_state, get_or_create_app
 
 
 class DummySettings:
@@ -131,6 +131,42 @@ class ProjectDataTests(unittest.TestCase):
 
     def tearDown(self):
         ensure_app_state(self.app)
+
+    def test_set_deep_merges_tracked_object_updates(self):
+        store = make_store()
+        store._data = {
+            "clips": [
+                {
+                    "id": "C1",
+                    "effects": [
+                        {
+                            "id": "E1",
+                            "name": "Object Detector",
+                            "objects": {
+                                "E1-0": {
+                                    "delta_x": {"Points": []},
+                                    "delta_y": {"Points": []},
+                                },
+                                "E1-1": {
+                                    "delta_x": {"Points": []},
+                                    "delta_y": {"Points": []},
+                                },
+                            },
+                        }
+                    ],
+                }
+            ]
+        }
+
+        store._set(
+            ["clips", {"id": "C1"}, "effects", {"id": "E1"}],
+            {"objects": {"E1-1": {"delta_x": {"Points": [{"co": {"X": 5, "Y": 0.25}}]}}}},
+        )
+
+        objects = store._data["clips"][0]["effects"][0]["objects"]
+        self.assertIn("E1-0", objects)
+        self.assertEqual(objects["E1-1"]["delta_y"], {"Points": []})
+        self.assertEqual(objects["E1-1"]["delta_x"]["Points"][0]["co"], {"X": 5, "Y": 0.25})
 
     def test_load_restores_history_and_enables_waveform_clear(self):
         store = make_store()
